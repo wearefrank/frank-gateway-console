@@ -14,6 +14,8 @@ import java.util.List;
 @Service
 public class YamlStoreService {
 
+    private static final String REMOTE_PATH = "/tmp/";
+
     private final File file = new File("apisix_config.yaml");
     private final ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
 

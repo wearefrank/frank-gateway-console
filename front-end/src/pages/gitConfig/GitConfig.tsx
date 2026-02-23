@@ -1,99 +1,456 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+
+interface GitCredentials {
+    gitUsername: string;
+    gitToken: string;
+}
+
+interface GitStatus {
+    activeRepo?: string;
+    status?: string;
+    message?: string;
+    branch?: string;
+}
 
 export const GitConfig = () => {
-    // We default to the standard path defined in your Java Service
-    const [currentPath, setCurrentPath] = useState('/tmp/local-workspace');
-    const [status, setStatus] = useState<any>(null);
-    const [message, setMessage] = useState('');
+    const [repoUrl, setRepoUrl] = useState("");
+    const [repoName, setRepoName] = useState("");
+    const [newFolderName, setNewFolderName] = useState("");
+    const [folders, setFolders] = useState<string[]>([]);
+    const [localRepos, setLocalRepos] = useState<string[]>([]);
+    const [status, setStatus] = useState<GitStatus | null>(null);
+    const [message, setMessage] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [githubToken, setGithubToken] = useState("");
+    const [pushRemoteUrl, setPushRemoteUrl] = useState("");
+    const [isPrivate, setIsPrivate] = useState(true);
 
-    // 1. INIT: Resets to the default "Fake Remote" and "Local Workspace"
-    const handleInit = async () => {
-        try {
-            const res = await fetch('http://localhost:8080/api/git/init', { method: 'POST' });
-            const msg = await res.text();
+    const [gitCredentials, setGitCredentials] = useState<GitCredentials>({ gitUsername: "", gitToken: "" });
 
-            setMessage(msg);
-            setCurrentPath('/tmp/local-workspace'); // Reset path to default
-        } catch (e) {
-            console.error(e);
-        }
+    useEffect(() => {
+        refresh();
+    }, []);
+
+    const refresh = async () => {
+        await fetchFolders();
+        await fetchStatus();
+        await fetchRepos();
+        await getGitCredentials();
     };
 
-    const handleSwitch = async () => {
-        const newPath = prompt("Enter path for new workspace:", "/tmp/workspace-2");
-        if (!newPath) return;
-
+    const fetchRepos = async () => {
         try {
-            const res = await fetch('http://localhost:8080/api/git/switch', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: newPath })
-            });
-            const msg = await res.text();
-
-            setMessage(msg);
-            setCurrentPath(newPath); // Update our state to point to the new folder
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    // 3. CHECK STATUS: Now dynamic based on 'currentPath'
-    const checkStatus = async () => {
-        try {
-            // We pass the path so the backend knows which folder to check
-            const res = await fetch(`http://localhost:8080/api/git/status?path=${currentPath}`);
+            const res = await fetch(`http://localhost:8080/api/git/repos`);
+            if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
-            setStatus(data);
+            setLocalRepos(data);
         } catch (err) {
             console.error(err);
         }
     };
 
-    // Re-check status whenever the Current Path changes (e.g. after a switch)
-    useEffect(() => { checkStatus(); }, [currentPath]);
+    const fetchStatus = async () => {
+        try {
+            const res = await fetch(`http://localhost:8080/api/git/status`);
+            const data = await res.json();
+            setStatus(data);
+            // Auto-fill repo name if active
+            if (data?.activeRepo && data.activeRepo !== 'none' && !repoName) {
+                setRepoName(data.activeRepo);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const fetchFolders = async () => {
+        try {
+            const res = await fetch(`http://localhost:8080/api/git/folders`);
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            setFolders(data);
+        } catch (err: unknown) {
+            console.error(err);
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            setMessage("Error fetching folders: " + errorMessage);
+        }
+    };
+
+    const handleLoad = async () => {
+        if (!repoUrl || !repoName) {
+            alert("Enter both Repository Name and URL");
+            return;
+        }
+        setLoading(true);
+        setMessage("");
+        try {
+            const res = await fetch("http://localhost:8080/api/git/clone", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url: repoUrl, name: repoName })
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(text);
+            setMessage(text);
+            await refresh();
+        } catch (e: unknown) {
+            console.error(e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            setMessage("Failed to load: " + errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleInit = async () => {
+        if (!repoName) {
+            alert("Enter a Repository Name first");
+            return;
+        }
+        setLoading(true);
+        setMessage("");
+        try {
+            const res = await fetch("http://localhost:8080/api/git/init", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: repoName })
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(text);
+            setMessage(text);
+            await refresh();
+        } catch (e: unknown) {
+            console.error(e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            setMessage("Failed to initialize: " + errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSwitch = async (name: string) => {
+        setLoading(true);
+        setMessage("");
+        try {
+            const res = await fetch("http://localhost:8080/api/git/switch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name })
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(text);
+            setMessage(text);
+            setRepoName(name);
+            await refresh();
+        } catch (e: unknown) {
+            console.error(e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            setMessage("Failed to switch: " + errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreateFolder = async () => {
+        if (!newFolderName) {
+            alert("Enter a folder name");
+            return;
+        }
+        setLoading(true);
+        setMessage("");
+        try {
+            const res = await fetch("http://localhost:8080/api/git/folders", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newFolderName })
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(text);
+            setMessage(text);
+            setNewFolderName("");
+            await fetchFolders();
+        } catch (e: unknown) {
+            console.error(e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            setMessage("Failed to create folder: " + errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handlePush = async () => {
+        if (!githubToken) {
+            alert("GitHub Personal Access Token is required");
+            return;
+        }
+        setLoading(true);
+        setMessage("");
+        try {
+            const res = await fetch("http://localhost:8080/api/git/push", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: pushRemoteUrl || null,
+                    token: githubToken
+                })
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(text);
+            setMessage(text);
+            await fetchStatus();
+        } catch (e: unknown) {
+            console.error(e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            setMessage("Push failed: " + errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreateRemote = async () => {
+        if (!repoName || !githubToken) {
+            alert("Enter both Repository Name and GitHub Token");
+            return;
+        }
+        setLoading(true);
+        setMessage("");
+        try {
+            const res = await fetch("http://localhost:8080/api/git/create-remote", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: repoName,
+                    token: githubToken,
+                    private: isPrivate
+                })
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(text);
+            setMessage(text);
+            await refresh();
+        } catch (e: unknown) {
+            console.error(e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            setMessage("Failed to create remote repository: " + errorMessage);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGitCredentials = async () => {
+        if (!gitCredentials.gitUsername || !gitCredentials.gitToken) {
+            alert("Enter both Git Username and Token");
+        }
+        try {
+            const res = await fetch("http://localhost:8080/api/git/credentials", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(gitCredentials)
+            });
+            const text = await res.text();
+            if (!res.ok) throw new Error(text);
+            setMessage(text);
+        } catch (e: unknown) {
+            console.error(e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            setMessage("Failed to save credentials: " + errorMessage);
+        }
+    }
+
+    const getGitCredentials = async () => {
+        try {
+            const res = await fetch("http://localhost:8080/api/git/credentials");
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            setGitCredentials(data);
+        } catch (err) {
+            console.error(err);
+        }
+    }
 
     return (
-        <div style={{ padding: '20px', border: '1px solid #ccc', borderRadius: '8px', maxWidth: '400px' }}>
-            <h3>Git Workspace Tester</h3>
+        <div className="container" style={{ maxWidth: "800px" }}>
+            <h3 className="card-title">Git Repository Management</h3>
 
-            {/* Status Display */}
-            <div style={{ marginBottom: '15px', padding: '10px', background: '#f5f5f5', borderRadius: '4px' }}>
-                <div style={{fontSize: '11px', color: '#555', marginBottom: '5px'}}>
-                    CURRENT PATH: {currentPath}
+            <div className="grid grid-2">
+                <div>
+                    {/* Repository Selector/Namer */}
+                    <div className="form-group">
+                        <label className="form-label">Repository Name</label>
+                        <input
+                            value={repoName}
+                            onChange={(e) => setRepoName(e.target.value)}
+                            placeholder="e.g. my-project, test-repo"
+                        />
+                    </div>
+
+                    <div className="card mb-4">
+                        <label className="form-label">Clone Remote Repo into '{repoName || "..."}':</label>
+                        <input
+                            value={repoUrl}
+                            onChange={(e) => setRepoUrl(e.target.value)}
+                            placeholder="https://github.com/user/repo.git"
+                            className="mb-2"
+                        />
+                        <button onClick={handleLoad} disabled={loading || !repoName} style={{ width: "100%" }}>
+                            Clone & Load
+                        </button>
+                    </div>
+
+                    <div className="card mb-4" style={{ borderStyle: "dashed", borderColor: "var(--border-dim)" }}>
+                        <label className="form-label">Or Initialize New Local '{repoName || "..."}':</label>
+                        <button onClick={handleInit} disabled={loading || !repoName} style={{ width: "100%" }}>
+                            Initialize Empty
+                        </button>
+                    </div>
+
+                    <div className="card mb-4">
+                        <label className="form-label">Create New GitHub Repo '{repoName || "..."}':</label>
+                        <div className="text-small text-muted mb-2">
+                            Requires GitHub Token (below)
+                        </div>
+                        <label className="flex align-center mb-3 text-small" style={{ cursor: "pointer" }}>
+                            <input 
+                                type="checkbox" 
+                                checked={isPrivate} 
+                                onChange={(e) => setIsPrivate(e.target.checked)}
+                                style={{ width: "auto", marginRight: 8 }}
+                            />
+                            Private Repository
+                        </label>
+                        <button 
+                            onClick={handleCreateRemote} 
+                            disabled={loading || !repoName || !githubToken} 
+                            className="btn-outline-success"
+                            style={{ width: "100%" }}
+                        >
+                            Create on GitHub
+                        </button>
+                    </div>
                 </div>
 
-                <strong>Status: </strong>
-                <span style={{ color: status?.status === 'OK' ? 'green' : 'red', fontWeight: 'bold' }}>
-                    {status ? status.status : 'Loading...'}
-                </span>
-
-                {status?.status === 'OK' && (
-                    <div style={{ fontSize: '12px', marginTop: '5px', color: '#666', fontFamily: 'monospace' }}>
-                        HEAD: {status.head?.substring(0, 7)}
+                <div>
+                    {/* Local Repositories List */}
+                    <div className="card mb-3">
+                        <strong className="text-small">Switch to Local Repo:</strong>
+                        <div className="flex gap-sm" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                            {localRepos.length > 0 ? localRepos.map(name => (
+                                <button 
+                                    key={name} 
+                                    onClick={() => handleSwitch(name)}
+                                    disabled={loading || status?.activeRepo === name}
+                                    className="text-small"
+                                    style={{ 
+                                        padding: "4px 10px", 
+                                        backgroundColor: status?.activeRepo === name ? "var(--bg-tertiary)" : "var(--button-bg)",
+                                        borderColor: status?.activeRepo === name ? "var(--accent-color)" : "var(--border-dim)",
+                                        color: status?.activeRepo === name ? "var(--accent-color)" : "var(--text-secondary)",
+                                        boxShadow: status?.activeRepo === name ? "var(--shadow-sm)" : "none"
+                                    }}
+                                >
+                                    {name}
+                                </button>
+                            )) : <div className="text-small text-muted">No local repos found.</div>}
+                        </div>
                     </div>
-                )}
+
+                    {/* Current Status Section */}
+                    <div className="card mb-3 text-small">
+                        <strong>Current Status:</strong>
+                        <div style={{ marginTop: 5, color: status?.status === 'error' ? 'var(--error-color)' : 'var(--success-color)' }}>
+                            {status ? status.message : "Loading status..."}
+                        </div>
+                        {status?.branch && <div className="text-muted" style={{ fontSize: 12 }}>Branch: {status.branch}</div>}
+                    </div>
+
+                    <div className="mb-4">
+                        <label className="form-label">Create Folder in Active Repo:</label>
+                        <div className="flex gap-sm">
+                            <input
+                                value={newFolderName}
+                                onChange={(e) => setNewFolderName(e.target.value)}
+                                placeholder="e.g. docs, src"
+                            />
+                            <button onClick={handleCreateFolder} disabled={loading || status?.status === 'none'}>
+                                Add
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="card mb-2">
+                        <strong className="text-small">Folders in Active Repo:</strong>
+                        <ul className="scroll-y text-small mb-0" style={{ marginTop: 8, maxHeight: "120px" }}>
+                            {folders.length > 0 ? folders.map(f => <li key={f}>{f}</li>) : <li className="text-muted">No folders found</li>}
+                        </ul>
+                    </div>
+
+                    <div className="card">
+                        <strong className="text-small mb-2" style={{ display: "block" }}>Push to GitHub:</strong>
+                        <input
+                            type="password"
+                            value={githubToken}
+                            onChange={(e) => setGithubToken(e.target.value)}
+                            placeholder="GitHub Personal Access Token"
+                            className="mb-2"
+                        />
+                        {status?.status === 'local' && (
+                            <input
+                                type="text"
+                                value={pushRemoteUrl}
+                                onChange={(e) => setPushRemoteUrl(e.target.value)}
+                                placeholder="GitHub Repository URL (https://...)"
+                                className="mb-2"
+                            />
+                        )}
+                        <button 
+                            onClick={handlePush} 
+                            disabled={loading || status?.status === 'none'} 
+                            className="btn-success"
+                            style={{ width: "100%", border: "none" }}
+                        >
+                            {loading ? "Pushing..." : "Push to Remote"}
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
-                <button
-                    onClick={handleInit}
-                    style={{ padding: '10px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                    Reset to Default Workspace
-                </button>
-
-                <button
-                    onClick={handleSwitch}
-                    style={{ padding: '10px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                >
-                    Switch / Create New Workspace...
-                </button>
+            <div className="justify-between align-center card mt-4" style={{ marginTop: 20 }}>Git Credentials
+                <div className="flex gap-sm">
+                    <input
+                        type="text"
+                        value={gitCredentials.gitUsername}
+                        onChange={(e) => setGitCredentials({ ...gitCredentials, gitUsername: e.target.value })}
+                        placeholder="GitHub Username"
+                        style={{ width: "auto" }}
+                    />
+                    <input
+                        type="password"
+                        value={gitCredentials.gitToken}
+                        onChange={(e) => setGitCredentials({ ...gitCredentials, gitToken: e.target.value })}
+                        placeholder="GitHub Personal Access Token"
+                        style={{ width: "auto" }}
+                    />
+                </div>
+                <br/>
+                <div>
+                    Current Credentials: <br/>
+                    {gitCredentials.gitUsername} / {gitCredentials.gitToken.substring(0, 4)}.../
+                </div>
+                <button onClick={handleGitCredentials} className="btn-outline-success">Save</button>
+                <button onClick={getGitCredentials} className="btn-outline-primary">Get</button>
             </div>
 
-            {message && <p style={{ fontSize: '13px', color: '#28a745', marginTop: '15px', borderTop: '1px solid #eee', paddingTop: '10px' }}>
-                LOG: {message}
-            </p>}
+            {message && (
+                <div className="text-small mb-3" style={{ 
+                    color: message.startsWith("Failed") || message.startsWith("Error") ? "var(--error-color)" : "var(--success-color)", 
+                    marginTop: 10, 
+                    borderTop: "1px solid var(--border-color)", 
+                    paddingTop: 10,
+                    wordBreak: "break-all"
+                }}>
+                    <strong>LOG:</strong> {message}
+                </div>
+            )}
         </div>
     );
 };

@@ -8,7 +8,6 @@ public record YamlApisixConfig(
         String adminKey,
         @JsonProperty("adminUrl")
         String adminUrl,
-
         @JsonProperty("routes")
         ArrayList<RouteDto> routes
 ) {}

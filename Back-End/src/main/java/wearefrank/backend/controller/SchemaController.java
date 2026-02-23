@@ -21,4 +21,9 @@ public class SchemaController {
     public String getRouteSchema() {
         return schemaService.getRouteSchema();
     }
+
+    @GetMapping()
+    public String getFullSchema() {
+        return schemaService.getFullSchema();
+    }
 }

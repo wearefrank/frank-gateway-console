@@ -246,7 +246,7 @@ export const RouteDesigner: React.FC = () => {
                             <button
                                 className={styles['copy-btn']}
                                 onClick={addConfigToList}
-                                style={{ backgroundColor: '#10b981', color: 'white', border: 'none' }}
+                                style={{ backgroundColor: 'var(--accent-color)', color: '#1a1a1a', border: 'none', fontWeight: 'bold' }}
                             >
                                 + Add to List
                             </button>

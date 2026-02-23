@@ -18,24 +18,24 @@
 }
 
 .header-container p {
-    color: #666;
+    color: var(--text-secondary);
     font-size: 14px;
 }
 
 .section {
-    background: white;
+    background: var(--bg-secondary);
     padding: 20px;
     border-radius: 8px;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
 }
 
 .section-title {
     margin-top: 0;
     margin-bottom: 20px;
     font-size: 16px;
-    color: #111827;
-    border-bottom: 2px solid #f3f4f6;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--bg-tertiary);
     padding-bottom: 10px;
 }
 
@@ -54,21 +54,28 @@
 .label {
     font-size: 13px;
     font-weight: 600;
-    color: #374151;
+    color: var(--text-secondary);
 }
 
 .label .required {
-    color: red;
+    color: var(--error-color);
 }
 
 .input {
     padding: 8px 12px;
     border-radius: 6px;
-    border: 1px solid #d1d5db;
+    border: 1px solid var(--border-dim);
+    background-color: var(--input-bg);
+    color: var(--text-primary);
     outline: none;
     width: 100%;
     box-sizing: border-box;
-    transition: border-color 0.2s;
+    transition: all 0.2s;
+}
+
+.input:focus {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(253, 195, 0, 0.2);
 }
 
 .methods-container {
@@ -85,15 +92,16 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s;
-    background: #f3f4f6;
-    color: #374151;
-    border: 1px solid #e5e7eb;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-dim);
 }
 
 .chip.active {
-    background: #3b82f6;
-    color: white;
-    border: 1px solid #2563eb;
+    background: var(--accent-color);
+    color: #1a1a1a;
+    font-weight: 600;
+    border-color: var(--accent-hover);
 }
 
 .upstream-table {
@@ -104,7 +112,7 @@
 
 .upstream-table th {
     text-align: left;
-    color: #666;
+    color: var(--text-secondary);
     padding: 8px 0;
 }
 
@@ -129,7 +137,7 @@
 }
 
 .remove-node-btn {
-    color: red;
+    color: var(--error-color);
     border: none;
     background: none;
     cursor: pointer;
@@ -138,7 +146,7 @@
 
 .add-node-btn {
     margin-top: 10px;
-    color: #2563eb;
+    color: var(--accent-color);
     background: none;
     border: none;
     cursor: pointer;
@@ -152,43 +160,49 @@
 }
 
 .preview-card {
-    background: #1e293b;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    box-shadow: var(--shadow-md);
 }
 
 .preview-header {
     padding: 15px 20px;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
 .preview-header span {
-    color: #fff;
+    color: var(--text-primary);
     font-weight: bold;
 }
 
 .copy-btn {
-    background: #3b82f6;
-    color: white;
-    border: none;
+    background: var(--button-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
     padding: 6px 12px;
     border-radius: 4px;
     cursor: pointer;
 }
 
+.copy-btn:hover {
+    background-color: var(--bg-tertiary);
+}
+
 .preview-content {
     margin: 0;
     padding: 20px;
-    color: #a5b4fc;
+    color: var(--accent-color);
     font-family: monospace;
     font-size: 13px;
     line-height: 1.6;
     overflow-x: auto;
     text-align: unset;
+    background-color: var(--bg-color);
 }
 
 .next-step-alert {

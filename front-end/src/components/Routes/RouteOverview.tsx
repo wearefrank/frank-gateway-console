@@ -13,21 +13,15 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, id, isLive }) => {
     const displayId = id || route.id || 'N/A';
     
     return (
-        <div style={{ 
-            border: `1px solid ${isLive ? '#ddd' : '#4CAF50'}`, 
-            padding: '15px', 
-            borderRadius: '8px',
-            background: isLive ? '#fcfcfc' : '#fff',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-        }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="card">
+            <div className="flex justify-between align-center">
                 <strong style={{ fontSize: '16px' }}>{route.name || (isLive ? `Route ${displayId}` : 'Unnamed Route')}</strong>
                 {isLive && (
-                    <span style={{ 
-                        fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
-                        background: isEnabled ? '#e6fffa' : '#fff5f5',
-                        color: isEnabled ? '#2c7a7b' : '#c53030',
-                        border: `1px solid ${isEnabled ? '#2c7a7b' : '#c53030'}`,
+                    <span className="text-small" style={{ 
+                        padding: '2px 8px', borderRadius: '12px',
+                        background: isEnabled ? 'rgba(99, 230, 190, 0.1)' : 'rgba(255, 107, 107, 0.1)',
+                        color: isEnabled ? 'var(--success-color)' : 'var(--error-color)',
+                        border: `1px solid ${isEnabled ? 'var(--success-color)' : 'var(--error-color)'}`,
                         fontWeight: 'bold'
                     }}>
                         {isEnabled ? 'LIVE' : 'DISABLED'}
@@ -35,23 +29,23 @@ const RouteCard: React.FC<RouteCardProps> = ({ route, id, isLive }) => {
                 )}
             </div>
             
-            <div style={{ margin: '10px 0' }}>
-                <code style={{ background: '#f0f0f0', padding: '2px 5px', borderRadius: '3px', fontSize: '13px' }}>{route.uri}</code>
+            <div className="mb-3 mt-2" style={{ marginTop: '10px' }}>
+                <code className="text-small" style={{ background: 'var(--bg-tertiary)', padding: '2px 5px', borderRadius: '3px', color: 'var(--text-primary)' }}>{route.uri}</code>
             </div>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '12px', color: '#666' }}>
+            <div className="flex gap-sm text-small text-muted" style={{ flexWrap: 'wrap' }}>
                 {route.methods && (
-                    <span style={{ border: '1px solid #eee', padding: '1px 6px', borderRadius: '4px' }}>
+                    <span style={{ border: '1px solid var(--border-color)', padding: '1px 6px', borderRadius: '4px' }}>
                         Methods: {route.methods.join(', ')}
                     </span>
                 )}
                 {(route.upstream_id || route.upstreamId) && (
-                    <span style={{ border: '1px solid #eee', padding: '1px 6px', borderRadius: '4px', background: '#f9f9f9' }}>
+                    <span style={{ border: '1px solid var(--border-color)', padding: '1px 6px', borderRadius: '4px', background: 'var(--bg-tertiary)' }}>
                         Upstream: {route.upstream_id || route.upstreamId}
                     </span>
                 )}
                 {route.plugins && (
-                    <span style={{ border: '1px solid #eee', padding: '1px 6px', borderRadius: '4px', background: '#f9f9f9' }}>
+                    <span style={{ border: '1px solid var(--border-color)', padding: '1px 6px', borderRadius: '4px', background: 'var(--bg-tertiary)' }}>
                         Plugins: {Object.keys(route.plugins).length}
                     </span>
                 )}
@@ -67,7 +61,7 @@ export const RouteOverview = () => {
     const isLoading = liveLoading || savedLoading;
 
     if (isLoading) return (
-        <div style={{ padding: '40px', textAlign: 'center' }}>
+        <div className="container" style={{ textAlign: 'center', padding: '40px' }}>
             <h2>Loading routes...</h2>
         </div>
     );
@@ -75,28 +69,28 @@ export const RouteOverview = () => {
     const liveRoutes = liveData?.list || [];
 
     return (
-        <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-            <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Link to="/" style={{ textDecoration: 'none', color: '#007bff' }}>← Back to Home</Link>
-                <h1 style={{ margin: 0 }}>Route Management</h1>
+        <div className="container">
+            <div className="flex justify-between align-center mb-4">
+                <Link to="/" style={{ textDecoration: 'none' }}>← Back to Home</Link>
+                <h1 className="mb-0">Route Management</h1>
                 <div style={{ width: '100px' }}></div> {/* Spacer */}
             </div>
             
             <CreateRoute />
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', marginTop: '30px' }}>
+            <div className="grid grid-2" style={{ marginTop: '30px' }}>
                 {/* Saved Routes Section */}
                 <section>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                        <h2 style={{ margin: 0, fontSize: '20px' }}>YAML Config (Drafts)</h2>
-                        <button onClick={refetchSaved} style={{ cursor: 'pointer' }}>Refresh</button>
+                    <div className="flex justify-between align-center mb-3">
+                        <h2 className="mb-0" style={{ fontSize: '20px' }}>YAML Config (Drafts)</h2>
+                        <button onClick={refetchSaved}>Refresh</button>
                     </div>
                     
-                    {savedError && <p style={{ color: 'red', background: '#fff1f0', padding: '10px' }}>{savedError}</p>}
+                    {savedError && <p className="text-error card" style={{ background: 'rgba(255, 107, 107, 0.1)' }}>{savedError}</p>}
                     
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    <div className="flex flex-column gap-md">
                         {savedRoutes?.length === 0 ? (
-                            <div style={{ padding: '30px', textAlign: 'center', border: '2px dashed #eee', borderRadius: '8px', color: '#888' }}>
+                            <div className="card text-muted" style={{ padding: '30px', textAlign: 'center', borderStyle: 'dashed' }}>
                                 No saved routes in YAML.
                             </div>
                         ) : (
@@ -109,16 +103,16 @@ export const RouteOverview = () => {
 
                 {/* Live Routes Section */}
                 <section>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                        <h2 style={{ margin: 0, fontSize: '20px' }}>Live in APISIX</h2>
-                        <button onClick={refetchLive} style={{ cursor: 'pointer' }}>Refresh</button>
+                    <div className="flex justify-between align-center mb-3">
+                        <h2 className="mb-0" style={{ fontSize: '20px' }}>Live in APISIX</h2>
+                        <button onClick={refetchLive}>Refresh</button>
                     </div>
 
-                    {liveError && <p style={{ color: 'red', background: '#fff1f0', padding: '10px' }}>Could not reach APISIX. Is it running?</p>}
+                    {liveError && <p className="text-error card" style={{ background: 'rgba(255, 107, 107, 0.1)' }}>Could not reach APISIX. Is it running?</p>}
                     
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    <div className="flex flex-column gap-md">
                         {liveRoutes.length === 0 ? (
-                            <div style={{ padding: '30px', textAlign: 'center', border: '2px dashed #eee', borderRadius: '8px', color: '#888' }}>
+                            <div className="card text-muted" style={{ padding: '30px', textAlign: 'center', borderStyle: 'dashed' }}>
                                 No routes found in APISIX.
                             </div>
                         ) : (

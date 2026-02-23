@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <link rel="shortcut icon" href="https://frankacademy.nl/pluginfile.php/1/theme_boost_union/favicon/64x64/1769426701/favicon-32x32.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function(){
+        try{
+          var t = localStorage.getItem('theme');
+          if(t){ document.documentElement.setAttribute('data-theme', t); }
+        }catch(e){}
+      })();
+    </script>
     <title>Frank!GateWay</title>
   </head>
   <body>

@@ -58,8 +58,8 @@ export const Config = () => {
     if (configFetch.error) return <p style={{color: 'red'}}>Error: {configFetch.error}</p>;
 
     return (
-        <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-            <Link to="/"><button>back</button></Link>
+        <div className="container" style={{ maxWidth: '800px' }}>
+            <Link to="/"><button className="mb-4">back</button></Link>
 
             <h1>Config</h1>
 

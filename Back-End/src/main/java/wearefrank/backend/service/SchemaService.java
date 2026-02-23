@@ -6,6 +6,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
+
 @Service
 public class SchemaService {
 
@@ -33,6 +34,25 @@ public class SchemaService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/apisix/admin/schema/route"))
                     .header("X-API-KEY", apiKey)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("Failed to fetch schema from APISIX. Status code: " + response.statusCode());
+            }
+
+            return response.body();
+        } catch (Exception e) {
+            throw new RuntimeException("Error connecting to APISIX: " + e.getMessage(), e);
+        }
+    }
+
+    public String getFullSchema() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("http://127.0.0.1:9092/v1/schema"))
                     .GET()
                     .build();
 
