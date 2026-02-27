@@ -1,15 +1,24 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import yaml from 'js-yaml';
+import './configLoader.css';
 import { type ApisixConfig, type ValidationLog } from '../../actions/SchemaValidation';
 import { ConfigManager } from '../../actions/ConfigManager';
+import { LoaderHeader } from './components/LoaderHeader';
+import { FileUpload } from './components/FileUpload';
+import { ConfigEditor } from './components/ConfigEditor';
+import { ValidationLogs } from './components/ValidationLogs';
+import { SchemaView } from './components/SchemaView';
 
 
 export const ApisixConfigLoader = () => {
     const [config, setConfig] = useState<ApisixConfig | null>(null);
-    const [jsonText, setJsonText] = useState<string>('');
+    const [configText, setConfigText] = useState<string>('');
+    const [viewMode, setViewMode] = useState<'yaml' | 'json'>('yaml');
+    const [showWhitespace, setShowWhitespace] = useState(false);
     const [schema, setSchema] = useState<Record<string, unknown> | null>(null);
     const [logs, setLogs] = useState<ValidationLog[]>([]);
     const [loading, setLoading] = useState(false);
+    const [validConfig, setValidConfig] = useState(true);
 
     // Singleton
     const configManager = useMemo(() => new ConfigManager(), []);
@@ -21,22 +30,39 @@ export const ApisixConfigLoader = () => {
         ]);
     }, []);
 
-    const handleJsonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const handleConfigChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newValue = e.target.value;
-        setJsonText(newValue);
+        setConfigText(newValue);
         
         if (!newValue.trim()) {
             setConfig(null);
             configManager.setConfig({} as ApisixConfig); // Clear config
+            setValidConfig(true); // Empty input shouldn't show as invalid
             return;
         }
 
         try {
-            const parsed = JSON.parse(newValue);
+            const parsed = yaml.load(newValue) as ApisixConfig;
             setConfig(parsed);
             configManager.setConfig(parsed);
+            setValidConfig(true);
         } catch (err) {
-            // Don't want to spam the console with invalid JSON errors
+            setValidConfig(false);
+        }
+    };
+
+    const toggleViewMode = (mode: 'yaml' | 'json') => {
+        if (mode === viewMode) return;
+        setViewMode(mode);
+        if (config) {
+            try {
+                const formatted = mode === 'json' 
+                    ? JSON.stringify(config, null, 2) 
+                    : yaml.dump(config);
+                setConfigText(formatted);
+            } catch (err) {
+                addLog('error', `Failed to convert to ${mode.toUpperCase()}`);
+            }
         }
     };
 
@@ -69,18 +95,27 @@ export const ApisixConfigLoader = () => {
             try {
                 const parsed = yaml.load(content) as ApisixConfig;
                 setConfig(parsed);
-                setJsonText(JSON.stringify(parsed, null, 2));
+                setConfigText(viewMode === 'json' ? JSON.stringify(parsed, null, 2) : yaml.dump(parsed));
                 configManager.setConfig(parsed);
                 // Clear previous validation logs
                 setLogs([]);
+                setValidConfig(true);
             } catch {
-                addLog('error', 'Failed to parse YAML file.');
+                addLog('error', 'Failed to parse file.');
+                setValidConfig(false);
             }
         };
         reader.readAsText(file);
     };
 
-    const clearLogs = () => setLogs([])
+    const clearLogs = () => setLogs([]);
+
+    const handleNewConfig = () => {
+        setConfig(null);
+        setConfigText('');
+        configManager.setConfig({} as ApisixConfig);
+        setValidConfig(true);
+    };
 
     useEffect(() => {
         if (config && schema) {
@@ -98,143 +133,33 @@ export const ApisixConfigLoader = () => {
 
     return (
         <div className="container">
-            <div className="flex justify-between align-center mb-4 pb-3" style={{ borderBottom: '1px solid var(--border-dim)' }}>
-                <div>
-                    <h2 className="mb-1">APISIX Config Validator</h2>
-                </div>
-                <div className="flex align-center gap-md">
-                    <div className={schema ? "text-success text-small" : "text-muted text-small"} style={{ fontWeight: 600 }}>
-                        {schema ? 'Schema Active' : 'Schema Missing'}
-                    </div>
-                    <button
-                        onClick={fetchSchema}
-                        disabled={loading}
-                        className={loading ? "" : "btn-primary"}
-                    >
-                        {loading ? 'Fetching...' : 'Fetch Schema'}
-                    </button>
-                </div>
-            </div>
+            <LoaderHeader 
+                schema={schema} 
+                loading={loading} 
+                onFetch={fetchSchema} 
+            />
 
-            {/* File Upload */}
-            <div className="mb-4">
-                <label className="form-label">Configuration File</label>
-                <input
-                    type="file"
-                    accept=".yaml,.yml"
-                    onChange={handleFileUpload}
+            <FileUpload onFileUpload={handleFileUpload} />
+
+            <div className="grid grid-2 loader-grid">
+                <ConfigEditor 
+                    configText={configText}
+                    viewMode={viewMode}
+                    showWhitespace={showWhitespace}
+                    validConfig={validConfig}
+                    onConfigChange={handleConfigChange}
+                    onToggleWhitespace={() => setShowWhitespace(!showWhitespace)}
+                    onToggleViewMode={toggleViewMode}
+                    onNewConfig={handleNewConfig}
+                />
+
+                <ValidationLogs 
+                    logs={logs} 
+                    onClear={clearLogs} 
                 />
             </div>
 
-            {/* Main View */}
-            <div className="grid grid-2" style={{ height: '600px' }}>
-
-                {/* Left */}
-                <div className="card flex flex-column" style={{ padding: 0, overflow: 'hidden', position: 'relative' }}>
-                    <div className="card-header flex justify-between align-center">
-                        Parsed Configuration
-                        <button 
-                            className="text-small" 
-                            style={{ padding: '2px 8px' }} 
-                            onClick={() => { setConfig(null); setJsonText(''); configManager.setConfig({} as ApisixConfig); }}
-                        >
-                            New
-                        </button>
-                    </div>
-                    <div style={{ flex: 1, overflow: 'hidden', padding: '16px', fontFamily: 'monospace', fontSize: '12px', position: 'relative' }}>
-                        <textarea
-                            value={jsonText}
-                            onChange={handleJsonChange}
-                            spellCheck={false}
-                            placeholder='{"routes": []}'
-                            style={{
-                                width: '100%',
-                                height: '100%',
-                                border: 'none',
-                                outline: 'none',
-                                resize: 'none',
-                                backgroundColor: 'transparent',
-                                color: 'inherit',
-                                fontFamily: 'inherit',
-                                fontSize: 'inherit',
-                                padding: '0',
-                                lineHeight: '1.4',
-                                position: 'relative',
-                                zIndex: 2,
-                                overflow: 'auto'
-                            }}
-                        />
-                        {!jsonText && (
-                            <div className="flex align-center justify-center text-muted text-small" 
-                                 style={{ 
-                                     position: 'absolute', 
-                                     top: 0, left: 0, right: 0, bottom: 0, 
-                                     pointerEvents: 'none', 
-                                     fontStyle: 'italic',
-                                     padding: '16px',
-                                     textAlign: 'center'
-                                 }}>
-                                No file uploaded yet.<br/>Type or paste JSON here...
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Right */}
-                <div className="card flex flex-column" style={{ padding: 0, overflow: 'hidden' }}>
-                    <div className="flex justify-between align-center card-header">
-                        Validation Results
-                        <button className="text-small" style={{ padding: '4px 8px' }} onClick={clearLogs}>Clear</button>
-                    </div>
-                    <div className="flex flex-column gap-sm scroll-y" style={{ flex: 1, padding: '16px' }}>
-
-                        {logs.map(log => (
-                            <div key={log.id} style={{
-                                padding: '12px',
-                                borderRadius: '6px',
-                                fontSize: '13px',
-                                backgroundColor: getLogColor(log.type),
-                                borderLeft: `4px solid ${getLogBorder(log.type)}`
-                            }}>
-                                <div className="flex justify-between mb-1 text-small" style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                                    <strong style={{textTransform: 'uppercase'}}>{log.type}</strong>
-                                    <span>{log.timestamp}</span>
-                                </div>
-                                <div style={{ wordBreak: 'break-word' }}>{log.message}</div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-            </div>
-            <div className="card mt-4" style={{ padding: 0, overflow: 'hidden' }}>
-                <div style={{ padding: '12px 16px', backgroundColor: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border-dim)', fontWeight: 600, fontSize: '14px' }}>
-                    Reference Schema
-                </div>
-                <div className="scroll-y" style={{ maxHeight: '400px', padding: '16px' }}>
-                    {schema ? <pre style={{ margin: 0, fontSize: '12px' }}>{JSON.stringify(schema, null, 2)}</pre> : <div className="text-muted text-small italic">Fetch schema...</div>}
-                </div>
-            </div>
+            <SchemaView schema={schema} />
         </div>
     );
-};
-
-// --- Styles (Refactored to use Global Styles) ---
-
-const getLogColor = (type: string) => {
-    switch (type) {
-        case 'error': return 'rgba(255, 107, 107, 0.1)';
-        case 'success': return 'rgba(99, 230, 190, 0.1)';
-        case 'warning': return 'rgba(253, 195, 0, 0.1)';
-        default: return 'var(--bg-tertiary)';
-    }
-};
-
-const getLogBorder = (type: string) => {
-    switch (type) {
-        case 'error': return 'var(--error-color)';
-        case 'success': return 'var(--success-color)';
-        case 'warning': return 'var(--accent-color)';
-        default: return 'var(--text-secondary)';
-    }
 };

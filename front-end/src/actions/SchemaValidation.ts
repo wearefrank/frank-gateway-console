@@ -1,5 +1,6 @@
-import Ajv from 'ajv';
+import Ajv, {type ErrorObject, type ValidateFunction} from 'ajv';
 import addFormats from 'ajv-formats';
+import type {DataValidationCxt} from "ajv/lib/types";
 
 export interface ValidationLog {
     id: number;
@@ -8,18 +9,49 @@ export interface ValidationLog {
     message: string;
 }
 
+// Type aliases for better readability
+export type JsonSchema = Record<string, unknown>;
+export type PluginConfiguration = Record<string, unknown>;
+export type ResourceConfiguration = Record<string, unknown>;
+
 export interface ApisixConfig {
-    routes?: any[];
-    [key: string]: any;
+    routes?: ResourceConfiguration[];
+    [key: string]: unknown; // fallback for unknown keys
+}
+
+interface PluginDef {
+    schema?: JsonSchema;
+    consumer_schema?: JsonSchema;
+    [key: string]: unknown; // fallback for unknown keys
+}
+
+export interface SchemaCatalog {
+    plugins?: Record<string, PluginDef>;
+    stream_plugins?: Record<string, PluginDef>;
+    main?: JsonSchema;
+    [key: string]: unknown;
+}
+
+interface PluginValidator {
+    (
+        schema: JsonSchema,
+        data: unknown,
+        parentSchema?: unknown,
+        dataCtx?: DataValidationCxt // Note the optional '?'
+    ): boolean;
+    errors?: Partial<ErrorObject>[];
 }
 
 export type AddLog = (type: ValidationLog['type'], message: string) => void;
 
 export class SchemaValidator {
     private ajv: Ajv;
-    private schema: any | null = null;
+    private schema: SchemaCatalog | null = null;
     private config: ApisixConfig | null = null;
     private currentAddLog: AddLog | null = null;
+
+    // cache of plugin schemas, keyed by plugin name
+    private pluginSchemasCache: Map<string, ValidateFunction> = new Map();
 
     constructor() {
         this.ajv = new Ajv({
@@ -32,80 +64,137 @@ export class SchemaValidator {
     }
 
     public addPluginDetection() {
+
+        const validatePlugins: PluginValidator = (
+            _schema: JsonSchema,
+            data: unknown,
+            _parentSchema: unknown,
+            dataCtx?: DataValidationCxt,
+        ) => {
+
+            const path = dataCtx?.instancePath || '';
+            const parentName = this.extractParentName(path);
+            const resourceType = path.split('/')[1] || 'unknown resource';
+
+            const pluginsData = (data || {}) as Record<string, PluginConfiguration>;
+
+            const valid = Object.keys(pluginsData).every(pluginName => {
+                return this.validatePluginConfig(pluginName, pluginsData[pluginName], resourceType, parentName);
+            });
+
+            if (!valid) {
+                validatePlugins.errors = [{
+                    keyword: 'detectPlugins',
+                    message: 'One or more plugins have invalid configurations',
+                    params: {'location': 'plugins'},
+                    instancePath: path
+                }];
+            }
+
+            if (valid && validatePlugins.errors) {
+                validatePlugins.errors = undefined;
+            }
+
+            return valid;
+        };
+
         this.ajv.addKeyword({
             keyword: 'detectPlugins',
             type: 'object',
-            validate: (_schema: any, data: any, _parentSchema: any, dataPath: any) => {
-                const path = dataPath?.instancePath || '';
-                const parentName = this.extractParentName(path);
-                const resourceType = path.split('/')[1] || 'unknown resource';
-
-                Object.keys(data).forEach(pluginName => {
-                    this.validatePluginConfig(pluginName, data[pluginName], resourceType, parentName);
-                });
-
-                return true;
-            },
+            validate: validatePlugins,
+            errors: true
         })
     }
 
-    private validatePluginConfig(pluginName: string, pluginConfig: any, resourceType: string, parentName: string) {
-        const pluginSchema = this.findPluginSchema(pluginName);
+    private validatePluginConfig(pluginName: string, pluginConfig: unknown, resourceType: string, parentName: string): boolean {
+        const pluginSchema = this.findPluginSchema(pluginName, resourceType);
 
         if (!pluginSchema) {
             this.currentAddLog?.('warning', `Plugin '${pluginName}' in ${resourceType} '${parentName}' is unknown (no schema found).`);
-            return;
+            return true;
         }
 
-        try {
-            const validate = this.ajv.compile(pluginSchema);
-            const valid = validate(pluginConfig);
+        const cacheKey = `${resourceType}::${pluginName}`;
+        let validate = this.pluginSchemasCache.get(cacheKey);
 
-            if (valid) {
-                this.currentAddLog?.('info', `Plugin '${pluginName}' in ${resourceType} '${parentName}' is valid.`);
-            } else {
-                validate.errors?.forEach(err => {
-                    const errorPath = `${resourceType}/${parentName}/plugins/${pluginName}${err.instancePath}`;
-                    this.currentAddLog?.('error', `${errorPath}: ${err.message}`);
-                });
+        if (!validate) {
+            try {
+                validate = this.ajv.compile(pluginSchema);
+                this.pluginSchemasCache.set(cacheKey, validate);
+            } catch (err: unknown) {
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                this.currentAddLog?.('warning', `Failed to compile schema for plugin '${pluginName}': ${errorMessage}`);
+                return false;
             }
-        } catch (err: any) {
-            this.currentAddLog?.('warning', `Failed to compile schema for plugin '${pluginName}': ${err.message}`);
         }
+
+        const valid = validate(pluginConfig);
+
+        if (valid) {
+            this.currentAddLog?.('info', `Plugin '${pluginName}' in ${resourceType} '${parentName}' is valid.`);
+            return true;
+        }
+
+        // Errors in the validation have to be inserted here and this can only return true or false
+        if (validate.errors) {
+            validate.errors.map(err => {
+                const path = err.instancePath || '';
+                const message = err.message || 'Unknown error';
+                this.currentAddLog?.('error', `Plugin '${pluginName}' in ${resourceType} '${parentName}': ${path} - ${message}`);
+            });
+        }
+
+        this.currentAddLog?.('error', `Plugin '${pluginName}' in ${resourceType} '${parentName}' is invalid.`);
+        return false;
     }
 
-    private findPluginSchema(pluginName: string): any | null {
-        if (!this.schema || !this.schema.plugins) {
+    private findPluginSchema(pluginName: string, resourceType: string): JsonSchema | null {
+        if (!this.schema) return null;
+
+
+        const plugins = this.schema.plugins;
+        const streamPlugins = this.schema.stream_plugins;
+
+        const pluginDef = plugins?.[pluginName] || streamPlugins?.[pluginName];
+
+        if (!pluginDef) {
             return null;
         }
-        // plugin schema's can be found next to main in the root of the schema json
-        const pluginDef = this.schema.plugins[pluginName];
-        const schema = pluginDef ? pluginDef.schema : null;
 
-        if (schema) {
-            // Seems to be only in plugin schema's
-            // Issue: "minLength" must be integer, but some schemas might have it as string "1"
-            this.fixSchemaTypes(schema);
+        let schema: JsonSchema | undefined = undefined;
+
+        const isConsumerContext = resourceType === 'consumers' || resourceType === 'consumer_groups';
+        if (isConsumerContext && pluginDef.consumer_schema) {
+            schema = pluginDef.consumer_schema;
+        } else {
+            schema = pluginDef.schema;
         }
 
-        return schema;
+        if (schema) {
+            this.fixSchemaTypes(schema);
+            return schema;
+        }
+
+        return null;
     }
 
-    private fixSchemaTypes(schema: any) {
-        if (!schema || typeof schema !== 'object') return;
 
-        const numericKeys = ['minLength', 'maxLength', 'minItems', 'maxItems'];
+    private fixSchemaTypes(schema: JsonSchema) {
+        if (!this.isJsonSchema(schema)) return;
+
+        const numericKeys = ['minLength'];
+        // const numericKeys = [];
 
         for (const key in schema) {
             if (numericKeys.includes(key) && typeof schema[key] === 'string') {
-                const val = parseInt(schema[key], 10);
+                const val = parseInt(schema[key] as string, 10);
                 if (!isNaN(val)) {
                     schema[key] = val;
                 }
             }
 
-            if (typeof schema[key] === 'object') {
-                this.fixSchemaTypes(schema[key]);
+            if (this.isJsonSchema(schema[key])) {
+                this.fixSchemaTypes(schema[key] as JsonSchema);
             }
         }
     }
@@ -126,14 +215,21 @@ export class SchemaValidator {
         if (Array.isArray(resourceList)) {
             const resource = resourceList[index];
             if (resource) {
-                return resource.name || resource.id || `[index:${index}]`;
+
+                if (resource.name) {
+                    return `name: ${resource.name}`;
+                } else if (resource.id) {
+                    return `id: ${resource.id}`;
+                }
+
+                return `[${index}]`;
             }
         }
 
         return `${resourceType}[${indexStr}]`;
     }
 
-    public setSchema(schema: any) {
+    public setSchema(schema: SchemaCatalog | null) {
         this.schema = schema;
     }
 
@@ -145,7 +241,7 @@ export class SchemaValidator {
         return this.config;
     }
 
-    public getSchema(): any | null {
+    public getSchema(): SchemaCatalog | null {
         return this.schema;
     }
 
@@ -153,56 +249,89 @@ export class SchemaValidator {
     public validate(addLog: AddLog) {
         this.currentAddLog = addLog;
         try {
+            if (!this.config) return;
+
             if (!this.schema?.main) {
                 addLog('warning', 'Schema catalog missing');
                 return;
             }
 
-            if (!this.config) return;
-
             const definitions = this.schema.main;
+
+            if (!definitions || !this.isJsonSchema(definitions)) {
+                addLog('warning', 'Schema definitions missing');
+                return;
+            }
+
             this.injectPluginDetectionProperties(definitions);
 
+            // we get the propper plugin schema an give it to the validator
             const properties = this.buildValidationProperties(definitions);
 
             const validate = this.ajv.compile({
                 type: 'object',
                 properties,
                 definitions,
-                additionalProperties: true
+                additionalProperties: false,
             });
 
             if (validate(this.config)) {
                 addLog('success', 'Configuration is VALID');
             } else {
                 this.handleValidationErrors(validate, addLog);
+
             }
-        } catch (err: any) {
-            addLog('error', `Validation failure: ${err.message}`);
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            addLog('error', `Validation failure: ${errorMessage}`);
         } finally {
             this.currentAddLog = null;
         }
     }
 
-    private injectPluginDetectionProperties(definitions: any) {
-        if (!definitions) return;
-        Object.values(definitions).forEach((def: any) => {
-            if (def?.properties?.plugins) {
-                def.properties.plugins.detectPlugins = true;
+    private injectPluginDetectionProperties(definitions: JsonSchema | null) {
+        if (!this.isJsonSchema(definitions)) return;
+
+        interface DefinitionShape {
+            properties?: {
+                plugins?: {
+                    detectPlugins?: boolean;
+                    [key: string]: unknown;
+                };
+                [key: string]: unknown;
+            };
+            [key: string]: unknown;
+        }
+
+
+        Object.values(definitions).forEach((def: unknown) => {
+            if (this.isJsonSchema(def)) {
+                const typedDef = def as DefinitionShape;
+
+                if (typedDef.properties?.plugins) {
+                    typedDef.properties.plugins.detectPlugins = true;
+                }
             }
         });
     }
 
-    private buildValidationProperties(definitions: any): any {
-        const properties: any = {};
-        if (!definitions || !this.config) return properties;
+    private buildValidationProperties(definitions: unknown): JsonSchema {
+        const properties: JsonSchema = {};
+
+        const config = this.config;
+
+        if (!this.isJsonSchema(definitions) || !config) {
+            return properties;
+        }
 
         const defNames = Object.keys(definitions);
+
         defNames.forEach((defName: string) => {
             // some names are in plural
             const candidateKeys = [defName, `${defName}s`];
+
             candidateKeys.forEach((key) => {
-                const cfgVal = (this.config as any)[key];
+                const cfgVal = config[key];
                 if (Array.isArray(cfgVal)) {
                     properties[key] = {
                         type: 'array',
@@ -210,19 +339,32 @@ export class SchemaValidator {
                     };
                 }
             });
+
         });
         return properties;
     }
 
-    private handleValidationErrors(validate: any, addLog: AddLog) {
+    private handleValidationErrors(validate: ValidateFunction, addLog: AddLog) {
         if (!validate.errors) return;
-        validate.errors.forEach((err: any) => {
-            addLog('error', `${this.formatAjvPath(err.instancePath)}: ${err.message}`);
+        validate.errors.forEach((err: ErrorObject) => {
+
+            if (err.keyword === 'additionalProperties') {
+                addLog('warning', `${this.formatAjvPathName(err)}: ${err.message}`);
+            }
+
+            addLog('error', `${this.formatAjvPathName(err)}: ${err.message}`);
         });
     }
 
-    private formatAjvPath(path: string): string {
-        if (!path || path === '' || path === '/') return 'root';
-        return path.substring(1).replace(/\//g, '.');
+    private formatAjvPathName(ErrorObj: ErrorObject): string {
+        return ErrorObj.instancePath;
+    }
+
+    private isJsonSchema(def: unknown): def is JsonSchema {
+        return (
+            def !== null &&
+            typeof def === 'object' &&
+            !Array.isArray(def)
+        );
     }
 }
