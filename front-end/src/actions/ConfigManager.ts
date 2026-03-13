@@ -1,4 +1,5 @@
-import {type ApisixConfig, SchemaValidator, type AddLog } from './SchemaValidation';
+import {type ApisixConfig, SchemaValidator } from './SchemaValidation';
+import { type ValidationLog } from './ValidationLogger';
 
 export class ConfigManager {
     private validator: SchemaValidator;
@@ -24,10 +25,14 @@ export class ConfigManager {
         return this.validator.getSchema();
     }
 
-    public validate(addLog: AddLog) {
-        if (!this.config) return
+    public validate(): ValidationLog[] {
+        if (!this.config) return [];
 
         this.validator.setConfig(this.config);
-        this.validator.validate(addLog);
+        return this.validator.validateConfig();
+    }
+
+    public setFillInDefaults(fillInDefaults: boolean) {
+        this.validator.setFillInDefaults(fillInDefaults);
     }
 }
