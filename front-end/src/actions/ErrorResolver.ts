@@ -1,9 +1,23 @@
 import type {ErrorObject} from "ajv";
 
 export interface ResolvedError {
-    message: string,
-    path: string
-    errorObject?: AjvErrorCollection
+    message: string;
+    path: string;
+    errorObject?: AjvErrorCollection;
+    hint?: FieldHint;
+}
+
+interface FieldHint {
+    field: string;
+    type?: string;
+    enum?: string[];
+    default?: unknown;
+    minimum?: number;
+    maximum?: number;
+    requiredWhen?: {
+        condition: string;   // e.g. "policy = 'redis'"
+        fields: string[];
+    }[];
 }
 
 interface AjvErrorCollection {
@@ -16,6 +30,7 @@ interface ClassifiedErrors {
     direct: ErrorObject[];
     ifThenWrappers: ErrorObject[];
     ifThenLeaves: ErrorObject[];
+    anyOfErrors: ErrorObject[];
 }
 
 interface IfConditionProperties {
@@ -54,7 +69,6 @@ class ErrorResolver {
         this.resolvedErrors = [];
 
         for (const ajvErrors of this.errors) {
-            // console.log(ajvErrors);
 
             const filteredErrors = ajvErrors.sourceErrors.filter(
                 e => !this.skippedKeywords.includes(e.keyword)
@@ -64,18 +78,29 @@ class ErrorResolver {
 
             const resolvedErrors = this.classifyErrors(filteredErrors);
             const messages: ResolvedError[] = [];
+            console.log(resolvedErrors.anyOfErrors.length > 0)
 
-            messages.push(...this.resolveDirectErrors(resolvedErrors.direct, ajvErrors))
-
-            messages.push(...this.resolveBranchErrors(resolvedErrors.ifThenWrappers, resolvedErrors.ifThenLeaves, ajvErrors))
-
-            // TODO: add oneOf / anyOf error handling
+            if (resolvedErrors.direct.length > 0) {
+                messages.push(...this.resolveDirectErrors(resolvedErrors.direct, ajvErrors))
+            }
+            if (resolvedErrors.ifThenWrappers.length > 0) {
+                messages.push(...this.resolveBranchErrors(resolvedErrors.ifThenWrappers, resolvedErrors.ifThenLeaves, ajvErrors))
+            }
+            if (resolvedErrors.anyOfErrors.length > 0) {
+                messages.push(...this.resolveAnyOfErrors(resolvedErrors.anyOfErrors, ajvErrors))
+            }
 
             this.resolvedErrors.push(...messages)
         }
 
-
         return this.resolvedErrors;
+    }
+
+    private resolveAnyOfErrors(errors: ErrorObject[], entry: AjvErrorCollection): ResolvedError[] {
+
+        console.log(errors, entry)
+
+        return [];
     }
 
     private classifyErrors(errors: ErrorObject[]): ClassifiedErrors {
@@ -83,6 +108,7 @@ class ErrorResolver {
             direct: [],
             ifThenWrappers: [],
             ifThenLeaves: [],
+            anyOfErrors: [],
         };
 
         for (const error of errors) {
@@ -94,6 +120,11 @@ class ErrorResolver {
             if (this.isUnderIfThenPath(error)) {
                 result.ifThenLeaves.push(error)
                 continue;
+            }
+
+            if (error.keyword === 'oneOf') {
+                result.anyOfErrors.push(error)
+                continue
             }
 
             result.direct.push(error);
@@ -108,8 +139,6 @@ class ErrorResolver {
 
     private resolveBranchErrors(ifThenWrappers: ErrorObject[], ifThenLeaves: ErrorObject[], entry: AjvErrorCollection): ResolvedError[] {
         const resolvedErrors: ResolvedError[] = [];
-
-        console.log(entry.type)
 
         if (ifThenLeaves.length === 0) return resolvedErrors;
 
@@ -150,13 +179,67 @@ class ErrorResolver {
                     });
                 });
             } else if (matchResult === 'vacuous') {
-                console.log('Vacuous match for if-then wrapper:', entry);
+                resolvedErrors.push(...this.handleVacuousErrors(wrapper, parsed, entry))
             }
-
-
         });
 
         return resolvedErrors;
+    }
+
+
+    private handleVacuousErrors(wrapper: ErrorObject, parsed: IfConditionProperties[], entry: AjvErrorCollection): ResolvedError[] {
+        const field = parsed[0]?.field;
+
+        if (!field) return [];
+
+        const schema = wrapper.parentSchema;
+
+        if (!schema) return [];
+
+        if (this.isObject(schema) && this.isObject(schema.properties) && field in schema.properties) {
+
+            const propDef = schema.properties[field];
+
+            if (!this.isObject(propDef)) return [];
+
+            let options: string[];
+            if (Array.isArray(propDef.enum)) {
+                options = propDef.enum.map(String);
+            } else if ('const' in propDef) {
+                options = [String(propDef.const)];
+            } else {
+                return [{
+                    message: `${entry.parent}: '${field}' could not find any constraint properties.`,
+                    path: entry.type,
+                    errorObject: entry,
+                }];
+            }
+
+
+            // If no specific enum or const options were found, return a generic error message.
+            if (options.length === 0) {
+                return [{
+                    message: `${entry.parent}: '${field}' is required`,
+                    path: entry.type,
+                    errorObject: entry,
+                }];
+            }
+
+            const defaultValue = 'default' in propDef ? String(propDef.default) : undefined;
+            const defaultNote = defaultValue ? ` (default: '${defaultValue}')` : '';
+
+            return [{
+                message: `${entry.parent}: '${field}' is required${defaultNote}, options: ${options.join(', ')}`,
+                path: entry.type,
+                errorObject: entry,
+                hint: {
+                    field,
+                    enum: options,
+                    default: defaultValue,
+                },
+            }];
+        }
+        return [];
     }
 
     private buildConditionString(parsedConstraints: IfConditionProperties[]): string {
@@ -218,8 +301,6 @@ class ErrorResolver {
         return null;
     }
 
-
-
     private resolveDirectErrors(
         errors: ErrorObject[],
         entry: AjvErrorCollection
@@ -230,7 +311,6 @@ class ErrorResolver {
             errorObject: entry,
         }));
     }
-
 
     private formatDirectError(err: ErrorObject): string {
 
@@ -259,6 +339,10 @@ class ErrorResolver {
             default:
                 return err.message ?? 'unknown validation error';
         }
+    }
+
+    private isObject(val: unknown): val is Record<string, unknown> {
+        return val !== null && typeof val === 'object' && !Array.isArray(val);
     }
 }
 
