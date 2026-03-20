@@ -17,9 +17,11 @@ import java.util.UUID;
 public class RouteController {
 
     private final YamlStoreService yamlStoreService;
+    private final HttpClient httpClient;
 
-    public RouteController(YamlStoreService yamlStoreService) {
+    public RouteController(YamlStoreService yamlStoreService, HttpClient httpClient) {
         this.yamlStoreService = yamlStoreService;
+        this.httpClient = httpClient;
     }
 
     @GetMapping("/saved")
@@ -44,10 +46,11 @@ public class RouteController {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/apisix/admin/routes"))
                     .header("X-API-KEY", apiKey)
+                    .timeout(java.time.Duration.ofSeconds(10))
                     .GET()
                     .build();
 
-            HttpResponse<String> response = HttpClient.newHttpClient()
+            HttpResponse<String> response = httpClient
                     .send(request, HttpResponse.BodyHandlers.ofString());
 
             return response.body();

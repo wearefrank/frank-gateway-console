@@ -47,25 +47,18 @@ export const ValidationLogs = ({ logs, onClear, config }: ValidationLogsProps) =
                         </div>
                         <p className="log-footer">{log.formatErrorMessage() || 'No Message given'}</p>
                         {/* Extra details for errors */}
-                        {(log.type === 'error' || log.type === 'warning') && (
-                            <details>
-                                <summary>Extra info</summary>
-                                {log.errorObject && (
-                                    <div className="log-details mb-1" style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-                                        {/*{log.errorObject.keyword && <span>Keyword: <strong>{log.errorObject.keyword}</strong></span>}*/}
-                                        {/*{log.errorObject.params && Object.keys(log.errorObject.params).length > 0 && (*/}
-                                        {/*    <span className="ml-2">*/}
-                                        {/*        - Params: <code>{JSON.stringify(log.errorObject.params)}</code><br />*/}
-                                        {/*    </span>*/}
-                                        {/*)}*/}
-                                        {/*<span className="log-footer">Path: {log.errorObject.instancePath || 'No path specified'}</span><br />*/}
-                                        <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(log.errorObject, null, 2)}</pre>
-                                        <span className="log-footer">Path: {log.errorObject.instancePath || 'No path specified'}</span>
-                                    </div>
-                                )}
+                        {/*{(log.type === 'error' || log.type === 'warning') && (*/}
+                        {/*    <details>*/}
+                        {/*        <summary>Extra info</summary>*/}
+                        {/*        {log.errorObject && (*/}
+                        {/*            <div className="log-details mb-1" style={{ fontSize: '0.8rem', opacity: 0.8 }}>*/}
+                        {/*                <pre style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{JSON.stringify(log.errorObject, null, 2)}</pre>*/}
+                        {/*                <span className="log-footer">Path: {log.errorObject.instancePath || 'No path specified'}</span>*/}
+                        {/*            </div>*/}
+                        {/*        )}*/}
 
-                            </details>
-                        )}
+                        {/*    </details>*/}
+                        {/*)}*/}
                     </div>
                 ))}
             </div>

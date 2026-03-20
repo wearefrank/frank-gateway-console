@@ -2,6 +2,7 @@ import Ajv, {type ErrorObject, type ValidateFunction} from 'ajv';
 import addFormats from 'ajv-formats';
 import type {DataValidationCxt} from "ajv/lib/types";
 import { ValidationLogger, type ValidationLog, getResourceType } from './ValidationLogger';
+import ErrorResolver from "./ErrorResolver.ts";
 
 // Type aliases for better readability
 export type JsonSchema = Record<string, unknown>;
@@ -41,6 +42,7 @@ export class SchemaValidator {
     private schema: SchemaCatalog | null = null;
     private config: ApisixConfig | null = null;
     private logger = new ValidationLogger();
+    private errorResolver: ErrorResolver = new ErrorResolver();
 
     private fillInDefaults: boolean = false;
 
@@ -52,11 +54,69 @@ export class SchemaValidator {
             allErrors: true,
             strict: false,
             verbose: true,
-            useDefaults: 'empty',
+            // useDefaults: 'empty',
         });
         addFormats(this.ajv);
 
         this.addPluginDetection();
+    }
+
+    public validateConfig(): ValidationLog[] {
+
+        // Start a new validation cycle and clear all previous to prevent duplicates
+        this.logger.clear();
+        this.errorResolver.clear();
+        console.clear();
+
+        try {
+            if (!this.config) return [];
+
+            if (!this.schema?.main) {
+                this.logger.add('warning', 'Schema catalog missing');
+                return this.logger.getLogs();
+            }
+
+            const definitions = this.schema.main;
+
+            if (!definitions || !this.isJsonSchema(definitions)) {
+                this.logger.add('warning', 'Schema definitions missing');
+                return this.logger.getLogs();
+            }
+
+            this.injectPluginDetectionProperties(definitions);
+
+            // we get the propper plugin schema an give it to the validator
+            const properties = this.buildValidationProperties(definitions);
+
+            const validate = this.ajv.compile({
+                type: 'object',
+                properties,
+                definitions,
+                additionalProperties: false,
+            });
+
+            const payloadToValidate = structuredClone(this.config);
+            if (validate(payloadToValidate)) {
+                this.logger.add('success', 'Configuration is VALID');
+            } else {
+                this.handleValidationErrors(validate);
+
+            }
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            this.logger.add(
+                'error',
+                `Validation failure: ${errorMessage}`
+            );
+        }
+
+        // Resolve all collected AJV errors and feed them into the logger
+        const resolved = this.errorResolver.handleErrors();
+        for (const err of resolved) {
+            this.logger.add('error', err.message, err.path);
+        }
+
+        return this.logger.getLogs();
     }
 
     public addPluginDetection() {
@@ -148,24 +208,11 @@ export class SchemaValidator {
             return true;
         }
 
-        // Errors in the validation have to be inserted here, and this can only return true or false
         if (validate.errors) {
-            console.log('pluginName: ', pluginName);
-            console.log(validate.errors);
-            this.HandleAjvErrors(validate.errors);
+            this.errorResolver.addErrors(pluginPath, pluginName, validate.errors);
         }
 
         return false;
-    }
-
-    private HandleAjvErrors(errors: ErrorObject[]) {
-        if (!errors || errors.length === 0) {
-            return;
-        }
-
-        errors.forEach(error => {
-
-        })
     }
 
     private findPluginSchema(pluginName: string, resourceType: string): JsonSchema | null {
@@ -221,6 +268,7 @@ export class SchemaValidator {
 
     private applySchemaDefaults(schema: JsonSchema, config: unknown) {
         // a solution to https://github.com/ajv-validator/ajv/issues/127
+        // https://ajv.js.org/guide/modifying-data.html#assigning-defaults
         if (!this.fillInDefaults) {
             return;
         }
@@ -266,53 +314,6 @@ export class SchemaValidator {
 
     public setFillInDefaults(fillInDefaults: boolean) {
         this.fillInDefaults = fillInDefaults;
-    }
-
-    public validateConfig(): ValidationLog[] {
-        this.logger.clear();
-        console.clear();
-        try {
-            if (!this.config) return [];
-
-            if (!this.schema?.main) {
-                this.logger.add('warning', 'Schema catalog missing');
-                return this.logger.getLogs();
-            }
-
-            const definitions = this.schema.main;
-
-            if (!definitions || !this.isJsonSchema(definitions)) {
-                this.logger.add('warning', 'Schema definitions missing');
-                return this.logger.getLogs();
-            }
-
-            this.injectPluginDetectionProperties(definitions);
-
-            // we get the propper plugin schema an give it to the validator
-            const properties = this.buildValidationProperties(definitions);
-
-            const validate = this.ajv.compile({
-                type: 'object',
-                properties,
-                definitions,
-                additionalProperties: false,
-            });
-
-            const payloadToValidate = structuredClone(this.config);
-            if (validate(payloadToValidate)) {
-                this.logger.add('success', 'Configuration is VALID');
-            } else {
-                this.handleValidationErrors(validate);
-
-            }
-        } catch (err: unknown) {
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            this.logger.add(
-                'error',
-                `Validation failure: ${errorMessage}`
-            );
-        }
-        return this.logger.getLogs();
     }
 
     private injectPluginDetectionProperties(definitions: JsonSchema | null) {
@@ -372,10 +373,20 @@ export class SchemaValidator {
 
     private handleValidationErrors(validate: ValidateFunction) {
         if (!validate.errors) return;
+
+        const ajvErrors: ErrorObject[] = [];
+
         validate.errors.forEach((err: ErrorObject) => {
-            const type = err.keyword === 'additionalProperties' ? 'warning' : 'error';
-            this.logger.add(type, err.message || 'Unknown error', undefined, err);
+            if (err.keyword === 'additionalProperties') {
+                this.logger.add('warning', err.message || 'Unknown warning', undefined, err);
+            } else {
+                ajvErrors.push(err);
+            }
         });
+
+        if (ajvErrors.length > 0) {
+            this.errorResolver.addErrors('root', 'config', ajvErrors);
+        }
     }
 
     private isJsonSchema(def: unknown): def is JsonSchema {

@@ -51,18 +51,16 @@ export const ConfigEditor = ({
             validationLogs.forEach(log => {
                 if ((log.type === 'error' || log.type === 'warning') && log.path) {
 
-
                     const pathParts = log.path.split('/').filter(Boolean).map(p => {
                         const num = parseInt(p, 10);
                         return isNaN(num) ? p : num;
                     });
 
-
                     // searches the path parts in the document and returns the node (node is the whole indent)
                     const node = doc.getIn(pathParts, true) as Node;
                     if (node && node.range) {
                         // Added an ofset as everything was 1 line to far as we also want the parent marked
-                        const offset: number = 0;
+                        const offset: number = -1;
 
                         const startLine = lineCounter.linePos(node.range[0]).line + offset;
                         const endLine = lineCounter.linePos(node.range[1]).line + offset;

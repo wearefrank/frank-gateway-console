@@ -13,9 +13,9 @@ public class SchemaService {
     private final YamlStoreService yamlStoreService;
     private final HttpClient httpClient;
 
-    public SchemaService(YamlStoreService yamlStoreService) {
+    public SchemaService(YamlStoreService yamlStoreService, HttpClient httpClient) {
         this.yamlStoreService = yamlStoreService;
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = httpClient;
     }
 
     public String getRouteSchema() {
@@ -34,6 +34,7 @@ public class SchemaService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/apisix/admin/schema/route"))
                     .header("X-API-KEY", apiKey)
+                    .timeout(java.time.Duration.ofSeconds(10))
                     .GET()
                     .build();
 
@@ -53,6 +54,7 @@ public class SchemaService {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://127.0.0.1:9092/v1/schema"))
+                    .timeout(java.time.Duration.ofSeconds(10))
                     .GET()
                     .build();
 

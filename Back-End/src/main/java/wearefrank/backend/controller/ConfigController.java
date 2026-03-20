@@ -16,9 +16,11 @@ import java.net.http.HttpResponse;
 public class ConfigController {
 
     private final YamlStoreService yamlStoreService;
+    private final HttpClient httpClient;
 
-    public ConfigController(YamlStoreService yamlStoreService) {
+    public ConfigController(YamlStoreService yamlStoreService, HttpClient httpClient) {
         this.yamlStoreService = yamlStoreService;
+        this.httpClient = httpClient;
     }
 
     @GetMapping
@@ -46,10 +48,11 @@ public class ConfigController {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url + "/apisix/admin/routes"))
                     .header("X-API-KEY", key)
+                    .timeout(java.time.Duration.ofSeconds(10))
                     .GET()
                     .build();
 
-            HttpResponse<String> response = HttpClient.newHttpClient()
+            HttpResponse<String> response = httpClient
                     .send(request, HttpResponse.BodyHandlers.ofString());
 
             return response.statusCode() == 200;
