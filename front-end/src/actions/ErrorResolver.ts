@@ -16,7 +16,7 @@ interface FieldHint {
     maximum?: number;
     requiredWhen?: {
         condition: string;   // e.g. "policy = 'redis'"
-        fields: string[];
+        fields: string;
     }[];
 }
 
@@ -30,7 +30,7 @@ interface ClassifiedErrors {
     direct: ErrorObject[];
     ifThenWrappers: ErrorObject[];
     ifThenLeaves: ErrorObject[];
-    anyOfErrors: ErrorObject[];
+    oneOfErrors: ErrorObject[];
 }
 
 interface IfConditionProperties {
@@ -38,7 +38,6 @@ interface IfConditionProperties {
     kind: 'enum' | 'const',
     values: string[];
 }
-
 
 type MatchResult = 'match' | 'vacuous' | 'no-match' | 'unknown';
 
@@ -53,14 +52,6 @@ class ErrorResolver {
 
     public addErrors(type: string, parent: string, errors: ErrorObject[]) {
         this.errors.push({type, parent, sourceErrors: errors});
-    }
-
-    public getErrors() {
-        return this.errors;
-    }
-
-    public getResolvedErrors(): ResolvedError[] {
-        return this.resolvedErrors;
     }
 
     private skippedKeywords = ['detectPlugins'];
@@ -78,7 +69,6 @@ class ErrorResolver {
 
             const resolvedErrors = this.classifyErrors(filteredErrors);
             const messages: ResolvedError[] = [];
-            console.log(resolvedErrors.anyOfErrors.length > 0)
 
             if (resolvedErrors.direct.length > 0) {
                 messages.push(...this.resolveDirectErrors(resolvedErrors.direct, ajvErrors))
@@ -86,8 +76,8 @@ class ErrorResolver {
             if (resolvedErrors.ifThenWrappers.length > 0) {
                 messages.push(...this.resolveBranchErrors(resolvedErrors.ifThenWrappers, resolvedErrors.ifThenLeaves, ajvErrors))
             }
-            if (resolvedErrors.anyOfErrors.length > 0) {
-                messages.push(...this.resolveAnyOfErrors(resolvedErrors.anyOfErrors, ajvErrors))
+            if (resolvedErrors.oneOfErrors.length > 0) {
+                messages.push(...this.resolveOneOfErrors(resolvedErrors.oneOfErrors, ajvErrors))
             }
 
             this.resolvedErrors.push(...messages)
@@ -96,11 +86,77 @@ class ErrorResolver {
         return this.resolvedErrors;
     }
 
-    private resolveAnyOfErrors(errors: ErrorObject[], entry: AjvErrorCollection): ResolvedError[] {
+    private resolveOneOfErrors(errors: ErrorObject[], entry: AjvErrorCollection): ResolvedError[] {
+        const resolvedErrors: ResolvedError[] = [];
+        console.log(errors, entry);
 
-        console.log(errors, entry)
+        for (const error of errors) {
+            const schema = error.schema;
+            const data = error.data;
 
-        return [];
+            if (!Array.isArray(schema) || !this.isObject(data)) {
+                console.log('no schema or data')
+                continue;
+            }
+
+            if (error.params?.passingSchemas != null) {
+                // Multiple branches matched — tell user to pick one
+                const options = this.gatherOneOfOptions(schema);
+
+                console.log(options);
+
+                resolvedErrors.push({
+                    message: `${entry.parent}: oneOf — matches multiple variants. Options:\n| ${this.formatOptions(options)}`,
+                    path: entry.type,
+                    errorObject: entry,
+                });
+                continue;
+            }
+
+            const options = this.gatherOneOfOptions(schema);
+            resolvedErrors.push({
+                message: `${entry.parent}: oneOf — Options:\n| ${this.formatOptions(options)}`,
+                path: entry.type,
+                errorObject: entry,
+            });
+        }
+
+        console.log('resolvedErrors:', resolvedErrors)
+
+        return resolvedErrors;
+    }
+
+    private formatOptions = (options: string[][]) => {
+        return `${options.map(opt => opt.join(', ')).join('\n| ')}`;
+    };
+
+    private gatherOneOfOptions(schema: unknown): string[][] {
+        if (!Array.isArray(schema)) return [];
+
+        const options: string[][] = [];
+
+        for (const branch of schema) {
+            if (!this.isObject(branch)) continue;
+
+            let subOptions: string[] = [];
+
+            if (Array.isArray(branch.required)) {
+                subOptions = branch.required.map((item) => item.toString());
+                options.push(subOptions);
+                continue;
+            }
+
+            if (this.isObject(branch.properties)) {
+                subOptions = Object.keys(branch.properties);
+                options.push(subOptions);
+                continue;
+            }
+
+            subOptions.push('(unknown variant)');
+
+            options.push(subOptions)
+        }
+        return options;
     }
 
     private classifyErrors(errors: ErrorObject[]): ClassifiedErrors {
@@ -108,7 +164,7 @@ class ErrorResolver {
             direct: [],
             ifThenWrappers: [],
             ifThenLeaves: [],
-            anyOfErrors: [],
+            oneOfErrors: [],
         };
 
         for (const error of errors) {
@@ -123,7 +179,7 @@ class ErrorResolver {
             }
 
             if (error.keyword === 'oneOf') {
-                result.anyOfErrors.push(error)
+                result.oneOfErrors.push(error)
                 continue
             }
 
@@ -180,6 +236,8 @@ class ErrorResolver {
                 });
             } else if (matchResult === 'vacuous') {
                 resolvedErrors.push(...this.handleVacuousErrors(wrapper, parsed, entry))
+            } else {
+                console.log('Unhandled match result:', matchResult);
             }
         });
 
@@ -214,7 +272,6 @@ class ErrorResolver {
                     errorObject: entry,
                 }];
             }
-
 
             // If no specific enum or const options were found, return a generic error message.
             if (options.length === 0) {
@@ -344,6 +401,8 @@ class ErrorResolver {
     private isObject(val: unknown): val is Record<string, unknown> {
         return val !== null && typeof val === 'object' && !Array.isArray(val);
     }
+
+
 }
 
 export default ErrorResolver

@@ -147,6 +147,7 @@
 
 .log-footer {
     /*border-top: 1px solid var(--border-dim);*/
+    white-space: pre-line
 }
 
 .log-type {
