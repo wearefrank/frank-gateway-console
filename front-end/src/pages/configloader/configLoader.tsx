@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback, useMemo} from 'react';
+import React, {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import yaml from 'js-yaml';
 import './configLoader.css';
 import { type ApisixConfig } from '../../actions/SchemaValidation';
@@ -27,6 +27,8 @@ export const ApisixConfigLoader = () => {
     const [loading, setLoading] = useState(false);
     const [validConfig, setValidConfig] = useState(true);
     const [fillDefault, setFillDefault] = useState(() => localStorage.getItem('apisix-fill-default') === 'true');
+    const scrollKeyRef = useRef(0);
+    const [scrollToTarget, setScrollToTarget] = useState<{ path: string; key: number } | null>(null);
 
     // Singleton
     const configManager = useMemo(() => new ConfigManager(), []);
@@ -173,7 +175,7 @@ export const ApisixConfigLoader = () => {
             <FileUpload onFileUpload={handleFileUpload} />
 
             <div className="grid grid-2 loader-grid">
-                <ConfigEditor 
+                <ConfigEditor
                     configText={configText}
                     viewMode={viewMode}
                     showWhitespace={showWhitespace}
@@ -185,12 +187,19 @@ export const ApisixConfigLoader = () => {
                     onToggleViewMode={toggleViewMode}
                     onNewConfig={handleNewConfig}
                     onToggleFillDefaults={toggleFillDefault}
+                    scrollToTarget={scrollToTarget}
                 />
 
-                <ValidationLogs 
-                    logs={logs} 
-                    onClear={clearLogs} 
+                <ValidationLogs
+                    logs={logs}
+                    onClear={clearLogs}
                     config={config}
+                    onLogClick={(log) => {
+                        if (log.path) {
+                            scrollKeyRef.current += 1;
+                            setScrollToTarget({ path: log.path, key: scrollKeyRef.current });
+                        }
+                    }}
                 />
             </div>
 

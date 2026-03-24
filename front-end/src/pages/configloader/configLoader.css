@@ -61,6 +61,26 @@
 .editor-grid {
     position: relative;
     display: grid;
+    grid-template-columns: auto 1fr;
+    min-height: 100%;
+}
+
+.line-numbers {
+    padding-right: 12px;
+    text-align: right;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    user-select: none;
+    pointer-events: none;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: 1.5;
+    white-space: pre;
+}
+
+.editor-layers {
+    position: relative;
+    display: grid;
     min-height: 100%;
 }
 
@@ -100,11 +120,14 @@
 }
 
 .editor-placeholder {
-    grid-area: 1/1;
+    grid-column: 1 / -1;
     pointer-events: none;
     z-index: 3;
     font-style: italic;
     text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .loader-grid {
@@ -137,6 +160,16 @@
 .log-item.warning {
     background-color: rgba(253, 195, 0, 0.1);
     border-left-color: var(--accent-color);
+}
+
+.log-item.error[style*="cursor"],
+.log-item.warning[style*="cursor"] {
+    transition: filter 0.15s;
+}
+
+.log-item.error[style*="cursor"]:hover,
+.log-item.warning[style*="cursor"]:hover {
+    filter: brightness(1.2);
 }
 
 .log-header {

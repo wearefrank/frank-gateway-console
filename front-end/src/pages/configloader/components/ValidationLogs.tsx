@@ -6,9 +6,10 @@ interface ValidationLogsProps {
     logs: ValidationLog[];
     onClear: () => void;
     config?: ApisixConfig | null;
+    onLogClick?: (log: ValidationLog) => void;
 }
 
-export const ValidationLogs = ({ logs, onClear, config }: ValidationLogsProps) => {
+export const ValidationLogs = ({ logs, onClear, config, onLogClick }: ValidationLogsProps) => {
     const [hideInfo, setHideInfo] = useState(true);
 
     const filteredLogs = hideInfo ? logs.filter(log => log.type !== 'info') : logs;
@@ -32,7 +33,12 @@ export const ValidationLogs = ({ logs, onClear, config }: ValidationLogsProps) =
             <div className="flex flex-column gap-sm scroll-y log-container">
                 {/* Loop over logs */}
                 {filteredLogs.map((log, index) => (
-                    <div key={index} className={`log-item ${log.type}`}>
+                    <div
+                        key={index}
+                        className={`log-item ${log.type}`}
+                        style={(log.type === 'error' || log.type === 'warning') && log.path ? { cursor: 'pointer' } : undefined}
+                        onClick={() => (log.type === 'error' || log.type === 'warning') && log.path && onLogClick?.(log)}
+                    >
                         <div className="flex justify-between mb-1 log-header">
                             <strong className="log-type">{log.type}</strong>
                             {(() => {

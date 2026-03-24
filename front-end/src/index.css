@@ -12,8 +12,8 @@
   --text-primary: light-dark(#212529, #eeeeee);
   --text-secondary: light-dark(#495057, #aaaaaa);
   --border-color: light-dark(#b28900, #FDC300);
-  --border-dim: light-dark(rgba(178, 137, 0, 0.15), rgba(253, 195, 0, 0.3));
-  --accent-color: light-dark(#b28900, #FDC300);
+  --border-dim: light-dark(rgba(255, 202, 29, 0.15), rgba(253, 195, 0, 0.3));
+  --accent-color: light-dark(#FDC300, #FDC300);
   --accent-hover: light-dark(#917000, #e5b000);
   --success-color: light-dark(#28a745, #63e6be);
   --error-color: light-dark(#dc3545, #ff6b6b);

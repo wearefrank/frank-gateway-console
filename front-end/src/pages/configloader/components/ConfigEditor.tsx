@@ -1,4 +1,4 @@
-import {useMemo} from 'react';
+import {useEffect, useMemo, useRef} from 'react';
 import {ValidationLog} from '../../../actions/ValidationLogger';
 import {Document, LineCounter, parseDocument, type Node} from 'yaml';
 
@@ -14,6 +14,7 @@ interface ConfigEditorProps {
     onToggleFillDefaults: () => void;
     onToggleViewMode: (mode: 'yaml' | 'json') => void;
     onNewConfig: () => void;
+    scrollToTarget?: { path: string; key: number } | null;
 }
 
 export const ConfigEditor = ({
@@ -27,8 +28,11 @@ export const ConfigEditor = ({
                                  onToggleWhitespace,
                                  onToggleFillDefaults,
                                  onToggleViewMode,
-                                 onNewConfig
+                                 onNewConfig,
+                                 scrollToTarget
                              }: ConfigEditorProps) => {
+
+    const editorContainerRef = useRef<HTMLDivElement>(null);
 
     const errorLines = useMemo(() => {
         if (!configText) return new Set<number>();
@@ -79,6 +83,29 @@ export const ConfigEditor = ({
         return lines;
     }, [configText, validationLogs]);
 
+    useEffect(() => {
+        if (!scrollToTarget || !configText || !editorContainerRef.current) return;
+
+        try {
+            const lineCounter = new LineCounter();
+            const doc: Document = parseDocument(configText, {lineCounter});
+
+            const pathParts = scrollToTarget.path.split('/').filter(Boolean).map(p => {
+                const num = parseInt(p, 10);
+                return isNaN(num) ? p : num;
+            });
+
+            const node = doc.getIn(pathParts, true) as Node;
+            if (node && node.range) {
+                const targetLine = lineCounter.linePos(node.range[0]).line;
+                const lineHeight = parseFloat(getComputedStyle(editorContainerRef.current).lineHeight) || 21;
+                editorContainerRef.current.scrollTop = (targetLine - 1) * lineHeight;
+            }
+        } catch {
+            // ignore scroll errors
+        }
+    }, [scrollToTarget, configText]);
+
     return (
         <div
             className={`card flex flex-column config-card ${validConfig ? "editor-container" : "editor-container invalid"}`}>
@@ -121,8 +148,19 @@ export const ConfigEditor = ({
                     </button>
                 </div>
             </div>
-            <div className={"editor-container"}>
+            <div className={"editor-container"} ref={editorContainerRef}>
                 <div className="editor-grid">
+                    {/* Line numbers gutter */}
+                    {configText && (
+                        <div className="line-numbers">
+                            {configText.split('\n').map((_, index) => (
+                                <div key={index}>{index + 1}</div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Editor layers (stacked via grid-area) */}
+                    <div className="editor-layers">
                     {/* Hidden pre to provide dimensions */}
                     <pre className="editor-base">
                         {configText + (configText.endsWith('\n') ? ' ' : '\n')}
@@ -165,6 +203,7 @@ export const ConfigEditor = ({
                         spellCheck={false}
                         className="editor-textarea"
                     />
+                    </div>
 
                     {!configText && (
                         <div className="flex align-center justify-center text-muted text-small editor-placeholder">
