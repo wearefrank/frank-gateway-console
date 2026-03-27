@@ -1,0 +1,72 @@
+.layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+
+.yamlPreviewCard {
+    position: sticky;
+    top: 80px;
+}
+
+.yamlPreviewContent {
+    margin: 0;
+    padding: 16px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 60vh;
+    overflow-y: auto;
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+    border-radius: 0 0 8px 8px;
+}
+
+.routeForm {
+    padding: 16px;
+}
+
+.routeForm select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.875rem;
+    box-sizing: border-box;
+}
+
+.routeForm select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(253, 195, 0, 0.2);
+}
+
+.validationCard {
+    position: relative;
+}
+
+.validationBody {
+    padding: 0.5rem;
+}
+
+.errorMessage {
+    color: var(--error-color, #e74c3c);
+    margin-bottom: 0.25rem;
+}
+
+.warningMessage {
+    color: var(--warning-color, #f39c12);
+    margin-bottom: 0.25rem;
+}
+
+@media (max-width: 768px) {
+    .layout {
+        grid-template-columns: 1fr;
+    }
+}

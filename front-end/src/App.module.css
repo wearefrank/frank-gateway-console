@@ -1,0 +1,8 @@
+.homePage {
+    padding-top: 24px;
+}
+
+.homeTitle {
+    color: var(--accent-color);
+    margin-bottom: 12px;
+}

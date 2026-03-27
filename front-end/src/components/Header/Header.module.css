@@ -1,0 +1,62 @@
+.appHeader {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background-color: var(--bg-color);
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.headerInner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 20px;
+}
+
+.brand {
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.brand:hover {
+    color: var(--accent-color);
+}
+
+.brandAccent {
+    color: var(--accent-color);
+}
+
+.navLinks {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.navLinks a {
+    color: var(--text-secondary);
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+
+.navLinks a:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+}
+
+.navLinks a.active {
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-dim);
+}
+
+.headerActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.schemaStatus {
+    font-weight: 600;
+}

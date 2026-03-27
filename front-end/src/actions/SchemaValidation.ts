@@ -66,7 +66,6 @@ export class SchemaValidator {
         // Start a new validation cycle and clear all previous to prevent duplicates
         this.logger.clear();
         this.errorResolver.clear();
-        console.clear();
 
         try {
             if (!this.config) return [];
@@ -174,6 +173,50 @@ export class SchemaValidator {
             validate: validatePlugins,
             errors: true
         })
+    }
+
+    public validateCategory(categoryName: string, data: Record<string, unknown>): ValidationLog[] {
+        const logger = new ValidationLogger();
+        const errorResolver = new ErrorResolver();
+
+        if (!this.schema?.main) {
+            logger.add('warning', 'Schema catalog missing');
+            return logger.getLogs();
+        }
+
+        const definitions = this.schema.main;
+        const categorySchema = definitions[categoryName] as JsonSchema | undefined;
+
+        if (!categorySchema || !this.isJsonSchema(categorySchema)) {
+            logger.add('warning', `No schema definition found for "${categoryName}"`);
+            return logger.getLogs();
+        }
+
+        // Inject plugin detection if the category has a plugins property
+        this.injectPluginDetectionProperties({ [categoryName]: categorySchema });
+
+        try {
+            const validate = this.ajv.compile({
+                ...categorySchema,
+                definitions,
+            });
+
+            const payload = structuredClone(data);
+            if (validate(payload)) {
+                logger.add('success', `${categoryName} configuration is valid`);
+            } else if (validate.errors) {
+                errorResolver.addErrors(categoryName, categoryName, validate.errors);
+            }
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            logger.add('error', `Validation failure: ${errorMessage}`);
+        }
+
+        for (const err of errorResolver.handleErrors()) {
+            logger.add('error', err.message, err.path);
+        }
+
+        return logger.getLogs();
     }
 
     private validatePluginConfig(pluginName: string, pluginConfig: unknown, pluginPath: string): boolean {

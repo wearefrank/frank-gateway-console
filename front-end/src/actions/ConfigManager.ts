@@ -2,7 +2,7 @@ import {type ApisixConfig, type SchemaCatalog, SchemaValidator} from './SchemaVa
 import { type ValidationLog } from './ValidationLogger';
 
 export class ConfigManager {
-    private validator: SchemaValidator;
+    public validator: SchemaValidator;
     private config: ApisixConfig | null = null;
 
     constructor() {

@@ -1,0 +1,102 @@
+.page {
+    max-width: 800px;
+}
+
+.fullWidth {
+    width: 100%;
+}
+
+.dashedCard {
+    border-style: dashed;
+    border-color: var(--border-dim);
+}
+
+.cursorPointer {
+    cursor: pointer;
+}
+
+.checkboxAuto {
+    width: auto;
+    margin-right: 8px;
+}
+
+.repoList {
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.repoBtn {
+    padding: 4px 10px;
+}
+
+.repoBtnActive {
+    composes: repoBtn;
+    background-color: var(--bg-tertiary);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.repoBtnInactive {
+    composes: repoBtn;
+    background-color: var(--button-bg);
+    border-color: var(--border-dim);
+    color: var(--text-secondary);
+    box-shadow: none;
+}
+
+.statusMessage {
+    margin-top: 5px;
+}
+
+.statusSuccess {
+    composes: statusMessage;
+    color: var(--success-color);
+}
+
+.statusError {
+    composes: statusMessage;
+    color: var(--error-color);
+}
+
+.branchInfo {
+    font-size: 12px;
+}
+
+.folderList {
+    margin-top: 8px;
+    max-height: 120px;
+}
+
+.pushLabel {
+    display: block;
+}
+
+.noBorder {
+    border: none;
+}
+
+.credentialsCard {
+    margin-top: 20px;
+}
+
+.inputAuto {
+    width: auto;
+}
+
+.logMessage {
+    margin-top: 10px;
+    border-top: 1px solid var(--border-color);
+    padding-top: 10px;
+    word-break: break-all;
+}
+
+.logError {
+    composes: logMessage;
+    color: var(--error-color);
+}
+
+.logSuccess {
+    composes: logMessage;
+    color: var(--success-color);
+}

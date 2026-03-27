@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useRef} from 'react';
 import {ValidationLog} from '../../../actions/ValidationLogger';
 import {Document, LineCounter, parseDocument, type Node} from 'yaml';
+import styles from '../configLoader.module.css';
 
 interface ConfigEditorProps {
     configText: string;
@@ -108,12 +109,12 @@ export const ConfigEditor = ({
 
     return (
         <div
-            className={`card flex flex-column config-card ${validConfig ? "editor-container" : "editor-container invalid"}`}>
+            className={`card flex flex-column ${styles.configCard} ${validConfig ? styles.editorContainer : styles.editorContainerInvalid}`}>
             <div className="card-header flex justify-between align-center">
                 Parsed Configuration
                 <div className="flex align-center gap-sm">
                     <button
-                        className={showWhitespace ? 'btn-primary text-small btn-icon' : 'text-small btn-icon'}
+                        className={showWhitespace ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
                         onClick={onToggleWhitespace}
                         title="Show Whitespace"
                     >
@@ -121,38 +122,38 @@ export const ConfigEditor = ({
                     </button>
 
                     <button
-                        className={fillDefaults ? 'btn-primary text-small btn-icon' : 'text-small btn-icon'}
+                        className={fillDefaults ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
                         onClick={onToggleFillDefaults}
                         title="Fill in Defaults"
                     >
                         {fillDefaults ? 'Don\'t fill' : 'Fill'}
                     </button>
 
-                    <div className="flex border rounded overflow-hidden toggle-group">
+                    <div className={`flex ${styles.toggleGroup}`}>
                         <button
-                            className={viewMode === 'yaml' ? 'toggle-btn active' : 'toggle-btn'}
+                            className={viewMode === 'yaml' ? styles.toggleBtnActive : styles.toggleBtn}
                             onClick={() => onToggleViewMode('yaml')}
                         >YAML
                         </button>
                         <button
-                            className={viewMode === 'json' ? 'toggle-btn active' : 'toggle-btn'}
+                            className={viewMode === 'json' ? styles.toggleBtnActive : styles.toggleBtn}
                             onClick={() => onToggleViewMode('json')}
                         >JSON
                         </button>
                     </div>
                     <button
-                        className="text-small btn-icon"
+                        className={`text-small ${styles.btnIcon}`}
                         onClick={onNewConfig}
                     >
                         New
                     </button>
                 </div>
             </div>
-            <div className={"editor-container"} ref={editorContainerRef}>
-                <div className="editor-grid">
+            <div className={styles.editorContainer} ref={editorContainerRef}>
+                <div className={styles.editorGrid}>
                     {/* Line numbers gutter */}
                     {configText && (
-                        <div className="line-numbers">
+                        <div className={styles.lineNumbers}>
                             {configText.split('\n').map((_, index) => (
                                 <div key={index}>{index + 1}</div>
                             ))}
@@ -160,17 +161,17 @@ export const ConfigEditor = ({
                     )}
 
                     {/* Editor layers (stacked via grid-area) */}
-                    <div className="editor-layers">
+                    <div className={styles.editorLayers}>
                     {/* Hidden pre to provide dimensions */}
-                    <pre className="editor-base">
+                    <pre className={styles.editorBase}>
                         {configText + (configText.endsWith('\n') ? ' ' : '\n')}
                     </pre>
 
                     {/* Overlay for highlights and whitespace */}
-                    <div className="editor-overlay">
+                    <div className={styles.editorOverlay}>
                         {configText.split('\n').map((line, index) => {
                             const isErrorLine = errorLines.has(index + 1);
-                            const lineClass = isErrorLine ? 'error-line-bg' : '';
+                            const lineClass = isErrorLine ? styles.errorLineBg : '';
 
                             let content = '';
                             if (showWhitespace) {
@@ -189,8 +190,8 @@ export const ConfigEditor = ({
                             }
 
                             return (
-                                <div key={index} className={`line-overlay ${lineClass}`}>
-                                    <span style={{opacity: 0.5}}>{content}</span>
+                                <div key={index} className={`${styles.lineOverlay} ${lineClass}`}>
+                                    <span className={styles.overlayContent}>{content}</span>
                                 </div>
                             );
                         })}
@@ -201,12 +202,12 @@ export const ConfigEditor = ({
                         value={configText}
                         onChange={(e) => onConfigChange(e.target.value)}
                         spellCheck={false}
-                        className="editor-textarea"
+                        className={styles.editorTextarea}
                     />
                     </div>
 
                     {!configText && (
-                        <div className="flex align-center justify-center text-muted text-small editor-placeholder">
+                        <div className={`flex align-center justify-center text-muted text-small ${styles.editorPlaceholder}`}>
                             No file uploaded yet.<br/>
                         </div>
                     )}

@@ -1,6 +1,6 @@
 import React, {useState, useEffect, useMemo, useRef} from 'react';
 import yaml from 'js-yaml';
-import './configLoader.css';
+import styles from './configLoader.module.css';
 import { type ApisixConfig } from '../../actions/SchemaValidation';
 import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLogger';
 import { FileUpload } from './components/FileUpload';
@@ -126,13 +126,13 @@ export const ApisixConfigLoader = () => {
 
     return (
         <div className="container">
-            <div className="flex justify-between align-center mb-4 pb-3 loader-header">
+            <div className={`flex justify-between align-center mb-4 pb-3 ${styles.loaderHeader}`}>
                 <h2 className="mb-1">APISIX Config Validator</h2>
             </div>
 
             <FileUpload onFileUpload={handleFileUpload} />
 
-            <div className="grid grid-2 loader-grid">
+            <div className={`grid grid-2 ${styles.loaderGrid}`}>
                 <ConfigEditor
                     configText={configText}
                     viewMode={viewMode}

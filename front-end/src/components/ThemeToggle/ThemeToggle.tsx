@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import styles from './ThemeToggle.module.css';
 
 export const ThemeToggle = () => {
 
@@ -30,7 +31,7 @@ export const ThemeToggle = () => {
       aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
       title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
     >
-      <span style={{ fontSize: '18px', lineHeight: 1 }}>{icon}</span>
+      <span className={styles.icon}>{icon}</span>
     </button>
   );
 };

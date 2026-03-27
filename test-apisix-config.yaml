@@ -9,6 +9,7 @@ routes:
         count: 2
         time_window: 60
         rejected_code: 503
+        policy: local
   -
     id: 2
     uri: "/world"

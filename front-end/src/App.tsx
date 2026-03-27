@@ -1,4 +1,4 @@
-import './App.css'
+import styles from './App.module.css'
 import {Routes, Route} from 'react-router-dom';
 import {Dashboard} from "./components/Dashboard/Dashboard.tsx";
 import {Config} from "./pages/config/Config.tsx";
@@ -13,8 +13,8 @@ import { ConfigManagerProvider } from "./providers/ConfigManagerProvider.tsx";
 
 const Home = () => {
     return (
-        <div className="container" style={{ paddingTop: '24px' }}>
-            <h1 style={{ color: 'var(--accent-color)', marginBottom: '12px' }}>WeAreFrank APISIX</h1>
+        <div className={`container ${styles.homePage}`}>
+            <h1 className={styles.homeTitle}>WeAreFrank APISIX</h1>
             <p className="text-muted">Use the navigation above to explore the app.</p>
         </div>
     );

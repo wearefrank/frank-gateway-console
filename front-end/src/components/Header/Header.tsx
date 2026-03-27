@@ -2,18 +2,19 @@ import React from 'react';
 import { NavLink, Link } from 'react-router-dom';
 import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
 import { useConfigManager } from '../../hooks/useConfigManager';
+import styles from './Header.module.css';
 
 export const Header: React.FC = () => {
   const { schema, schemaLoading, fetchSchema } = useConfigManager();
 
   return (
-    <header className="app-header">
-      <div className="container header-inner">
-        <Link to="/" className="brand">
-          <span className="brand-accent">Frank<b>!</b></span>Gateway
+    <header className={styles.appHeader}>
+      <div className={`container ${styles.headerInner}`}>
+        <Link to="/" className={styles.brand}>
+          <span className={styles.brandAccent}>Frank<b>!</b></span>Gateway
         </Link>
 
-        <nav className="nav-links">
+        <nav className={styles.navLinks}>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Dashboard
           </NavLink>
@@ -30,8 +31,8 @@ export const Header: React.FC = () => {
           </NavLink>
         </nav>
 
-        <div className="header-actions">
-          <div className={schema ? "text-success text-small schema-status" : "text-muted text-small schema-status"}>
+        <div className={styles.headerActions}>
+          <div className={`${schema ? "text-success" : "text-muted"} text-small ${styles.schemaStatus}`}>
             {schema ? 'Schema Active' : 'Schema Missing'}
           </div>
           <button

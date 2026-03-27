@@ -1,0 +1,20 @@
+.fieldGroup {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 10px;
+}
+
+.fieldLabel {
+    margin-bottom: 4px;
+    font-weight: bold;
+}
+
+.required {
+    color: var(--error-color);
+    margin-left: 4px;
+}
+
+.selectDescription {
+    font-size: 0.8em;
+    color: gray;
+}
