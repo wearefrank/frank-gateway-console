@@ -1,6 +1,5 @@
 import type {JsonSchema, SchemaCatalog} from "./SchemaValidation.ts";
 
-// --- Discriminated union for field types ---
 
 interface FieldBase {
     name: string;
@@ -13,28 +12,31 @@ export interface TextField extends FieldBase { type: 'text'; pattern?: string }
 export interface NumberField extends FieldBase { type: 'number'; minimum?: number; maximum?: number }
 export interface CheckboxField extends FieldBase { type: 'checkbox' }
 export interface SelectField extends FieldBase { type: 'select'; options: string[] }
-export interface ArrayField extends FieldBase { type: 'array' }
+export interface ArrayField extends FieldBase { type: 'array'; schema: JsonSchema }
+export interface ObjectField extends FieldBase { type: 'object'; fields: SchemaField[] }
+export interface MapField extends FieldBase { type: 'map'; valueSchema?: JsonSchema }
+export interface PluginField extends FieldBase { type: 'plugin'; schema: JsonSchema }
 
-export type SchemaField = TextField | NumberField | CheckboxField | SelectField | ArrayField;
+// combination of above-defined interfaces
+export type SchemaField = TextField | NumberField | CheckboxField | SelectField | ArrayField | ObjectField | MapField | PluginField;
 
 // --- Generator ---
 
 export class SchemaFormGenerator {
-    private readonly catalog: SchemaCatalog;
+    private readonly schema: SchemaCatalog;
 
     constructor(catalog: SchemaCatalog) {
-        this.catalog = catalog;
+        this.schema = catalog;
     }
 
 
     public getCategorySchema(category: string): JsonSchema | null {
-        if (!this.catalog.main || !(category in this.catalog.main)) return null;
-        return this.catalog.main[category] as JsonSchema;
+        if (!this.schema.main || !(category in this.schema.main)) return null;
+        return this.schema.main[category] as JsonSchema;
     }
 
     public getFields(category: string, onlyKeys?: string[]): SchemaField[] {
         const categorySchema = this.getCategorySchema(category);
-        console.log(categorySchema);
         if (!categorySchema?.properties) {
             return [];
         }
@@ -56,8 +58,6 @@ export class SchemaFormGenerator {
     }
 
     private buildField(name: string, schema: Record<string, any>, required: boolean): SchemaField {
-        console.log(name,schema.type, schema);
-
         const base: FieldBase = {
             name,
             required,
@@ -65,24 +65,29 @@ export class SchemaFormGenerator {
             defaultValue: schema.default,
         };
 
+        // if enum is set with available opts
         if (Array.isArray(schema.enum)) {
             return this.buildSelectField(base, schema.enum);
         }
 
         switch (schema.type) {
+            case 'array':
+                return this.buildArrayField(base, schema);
             case 'boolean':
                 return this.buildCheckboxField(base);
             case 'integer':
             case 'number':
                 return this.buildNumberField(base, schema);
+            case 'object':
+                return this.buildObjectField(base, schema);
             default:
                 return this.buildTextField(base, schema);
         }
     }
 
-    // --- Strict Return Types Below ---
+    // --- return types ---
 
-    private buildSelectField(base: FieldBase, options: any[]): SelectField {
+    private buildSelectField(base: FieldBase, options: unknown[]): SelectField {
         return { ...base, type: 'select', options: options.map(String) };
     }
 
@@ -94,7 +99,6 @@ export class SchemaFormGenerator {
         return {
             ...base,
             type: 'number',
-            // Only NumberField allows these properties
             minimum: schema.minimum,
             maximum: schema.maximum
         };
@@ -104,8 +108,44 @@ export class SchemaFormGenerator {
         return {
             ...base,
             type: 'text',
-            // Only TextField allows this property
             pattern: schema.pattern
         };
+    }
+
+    private buildObjectField(base: FieldBase, schema: Record<string, any>): ObjectField | MapField | PluginField {
+
+        if (base.name === 'plugins') {
+            return {
+                ...base,
+                type: 'plugin',
+                schema: this.schema,
+            };
+        }
+
+        // patternProperties or additionalProperties (as a schema, not false) → free-form key→value map
+        if (schema.patternProperties || (schema.additionalProperties && schema.additionalProperties !== false)) {
+            const valueSchema = schema.patternProperties
+                ? Object.values(schema.patternProperties)[0] as JsonSchema
+                : schema.additionalProperties;
+            return { ...base, type: 'map', valueSchema };
+        }
+
+        // structured object with known properties → recurse
+        if (schema.properties) {
+            const properties = schema.properties as Record<string, Record<string, any>>;
+            const requiredFields = new Set<string>(
+                Array.isArray(schema.required) ? schema.required : []
+            );
+            const fields = Object.keys(properties).map(name =>
+                this.buildField(name, properties[name], requiredFields.has(name))
+            );
+            return { ...base, type: 'object', fields };
+        }
+
+        return { ...base, type: 'object', fields: [] };
+    }
+
+    private buildArrayField(base: FieldBase, schema: Record<string, unknown>): ArrayField {
+        return { ...base, type: 'array', schema: schema };
     }
 }

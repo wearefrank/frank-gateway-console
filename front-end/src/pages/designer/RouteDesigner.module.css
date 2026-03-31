@@ -5,9 +5,15 @@
     align-items: start;
 }
 
-.yamlPreviewCard {
+.leftColumn {
     position: sticky;
     top: 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.yamlPreviewCard {
 }
 
 .yamlPreviewContent {
@@ -47,9 +53,6 @@
     box-shadow: 0 0 0 2px rgba(253, 195, 0, 0.2);
 }
 
-.validationCard {
-    position: relative;
-}
 
 .validationBody {
     padding: 0.5rem;
@@ -68,5 +71,9 @@
 @media (max-width: 768px) {
     .layout {
         grid-template-columns: 1fr;
+        grid-template-areas:
+            "preview"
+            "form"
+            "validation";
     }
 }

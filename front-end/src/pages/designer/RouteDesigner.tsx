@@ -18,7 +18,9 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
 
         // Array fields: split comma-separated string into array
         if (field?.type === 'array') {
-            if (typeof raw === 'string' && raw.trim()) {
+            if (Array.isArray(raw) && raw.length > 0) {
+                result[key] = raw;
+            } else if (typeof raw === 'string' && raw.trim()) {
                 result[key] = raw.split(',').map(s => s.trim()).filter(Boolean);
             }
             continue;
@@ -31,8 +33,10 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
 }
 
 export const RouteDesigner = () => {
-    const {configManager, schemaLoading} = useConfigManager();
-    const schema = configManager.getSchema();
+
+    const category = 'route';
+
+    const {configManager, schema, schemaLoading} = useConfigManager();
     const [values, setValues] = useState<Record<string, unknown>>({});
 
     const handleChange = useCallback((name: string, value: unknown) => {
@@ -40,7 +44,7 @@ export const RouteDesigner = () => {
     }, []);
 
     const generator = useMemo(() => schema ? new SchemaFormGenerator(schema) : null, [schema]);
-    const fields = useMemo(() => generator?.getFields("route") ?? [], [generator]);
+    const fields = useMemo(() => generator?.getFields(category) ?? [], [generator]);
 
     const yamlPreview = useMemo(() => {
         const obj = buildYamlObject(values, fields);
@@ -51,7 +55,7 @@ export const RouteDesigner = () => {
     const validationLogs: ValidationLog[] = useMemo(() => {
         const obj = buildYamlObject(values, fields);
         if (Object.keys(obj).length === 0) return [];
-        return configManager.validator.validateCategory("route", obj);
+        return configManager.validator.validateCategory(category, obj);
     }, [values, fields, configManager]);
 
     const errors = useMemo(() => validationLogs.filter(l => l.type === 'error'), [validationLogs]);
@@ -62,13 +66,34 @@ export const RouteDesigner = () => {
 
     return (
         <div className="container">
-            <h2>Route Designer</h2>
+            <h2>{category} designer</h2>
 
             <div className={styles.layout}>
-                {/* YAML Preview */}
-                <div className={`card ${styles.yamlPreviewCard}`}>
-                    <div className="card-header">YAML Preview</div>
-                    <pre className={styles.yamlPreviewContent}>{yamlPreview}</pre>
+                <div className={styles.leftColumn}>
+                    {/* YAML Preview */}
+                    <div className={`card ${styles.yamlPreviewCard}`}>
+                        <div className="card-header">YAML Preview</div>
+                        <pre className={styles.yamlPreviewContent}>{yamlPreview}</pre>
+                    </div>
+
+                    {/* Validation Results */}
+                    <div className={`card ${styles.validationCard}`}>
+                        <div className="card-header">Validation</div>
+                        <div className={styles.validationBody}>
+                            {errors.length > 0 && errors.map((log, i) => (
+                                <div key={`err-${i}`} className={styles.errorMessage}>
+                                    {log.path && <strong>[{log.path}] </strong>}
+                                    {log.formatErrorMessage()}
+                                </div>
+                            ))}
+                            {warnings.length > 0 && warnings.map((log, i) => (
+                                <div key={`warn-${i}`} className={styles.warningMessage}>
+                                    {log.path && <strong>[{log.path}] </strong>}
+                                    {log.formatErrorMessage()}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
 
                 {/* Form Fields */}
@@ -82,27 +107,6 @@ export const RouteDesigner = () => {
                         />
                     </form>
                 </div>
-
-                {/* Validation Results */}
-                {(errors.length > 0 || warnings.length > 0) && (
-                    <div className={`card ${styles.validationCard}`}>
-                        <div className="card-header">Validation</div>
-                        <div className={styles.validationBody}>
-                            {errors.map((log, i) => (
-                                <div key={`err-${i}`} className={styles.errorMessage}>
-                                    {log.path && <strong>[{log.path}] </strong>}
-                                    {log.formatErrorMessage()}
-                                </div>
-                            ))}
-                            {warnings.map((log, i) => (
-                                <div key={`warn-${i}`} className={styles.warningMessage}>
-                                    {log.path && <strong>[{log.path}] </strong>}
-                                    {log.formatErrorMessage()}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
