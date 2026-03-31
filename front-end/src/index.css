@@ -11,7 +11,7 @@
   --bg-tertiary: light-dark(#f1f3f5, #2d2d2d);
   --text-primary: light-dark(#212529, #eeeeee);
   --text-secondary: light-dark(#495057, #aaaaaa);
-  --border-color: light-dark(#b28900, #FDC300);
+  --border-color: light-dark(#daa700, #ffc400);
   --border-dim: light-dark(rgba(255, 202, 29, 0.15), rgba(253, 195, 0, 0.3));
   --accent-color: light-dark(#FDC300, #FDC300);
   --accent-hover: light-dark(#917000, #e5b000);
@@ -21,8 +21,8 @@
   --button-bg: light-dark(#e9ecef, #333333);
   --input-bg: light-dark(#ffffff, #333333);
   /* Shadows */
-  --shadow-sm: light-dark(0 2px 4px rgba(178, 137, 0, 0.25), 0 2px 4px rgba(253, 195, 0, 0.25));
-  --shadow-md: light-dark(0 4px 12px rgba(178, 137, 0, 0.5), 0 4px 12px rgba(253, 195, 0, 0.5));
+  --shadow-sm: 0 2px 4px light-dark(rgba(178, 137, 0, 0.25), rgba(253, 195, 0, 0.25)), 0 0 8px light-dark(rgba(178, 137, 0, 0.15), rgba(253, 195, 0, 0.15));
+  --shadow-md: 0 4px 12px light-dark(rgba(178, 137, 0, 0.5), rgba(253, 195, 0, 0.5)), 0 0 16px light-dark(rgba(178, 137, 0, 0.3), rgba(253, 195, 0, 0.3));
 
   background-color: var(--bg-color);
   color: var(--text-primary);

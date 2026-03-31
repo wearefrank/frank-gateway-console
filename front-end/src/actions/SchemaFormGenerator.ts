@@ -35,6 +35,17 @@ export class SchemaFormGenerator {
         return this.schema.main[category] as JsonSchema;
     }
 
+    public getFieldsFromSchema(schema: JsonSchema): SchemaField[] {
+        if (!schema.properties) return [];
+        const properties = schema.properties as Record<string, Record<string, any>>;
+        const requiredFields = new Set<string>(
+            Array.isArray(schema.required) ? schema.required : []
+        );
+        return Object.keys(properties).map(name =>
+            this.buildField(name, properties[name], requiredFields.has(name))
+        );
+    }
+
     public getFields(category: string, onlyKeys?: string[]): SchemaField[] {
         const categorySchema = this.getCategorySchema(category);
         if (!categorySchema?.properties) {

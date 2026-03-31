@@ -1,6 +1,8 @@
-import {useState, type ComponentType, type ChangeEvent, useRef} from 'react';
-import type {SchemaField} from '../../actions/SchemaFormGenerator';
+import {useState, useMemo, type ComponentType, type ChangeEvent, useRef} from 'react';
+import {SchemaFormGenerator, type SchemaField} from '../../actions/SchemaFormGenerator';
+import type {SchemaCatalog, JsonSchema} from '../../actions/SchemaValidation';
 import styles from './SchemaFormRenderer.module.css';
+import {CollapsibleSection} from "./CollapsibleSection/CollapsibleSection.tsx";
 
 export interface FieldProps {
     field: SchemaField;
@@ -12,23 +14,62 @@ export interface FieldProps {
 
 function TextField({field, value, onChange}: FieldProps) {
     if (field.type !== 'text') return null;
-    const placeholder = field.description ?? `Enter ${field.name}`;
+    const placeholder = field.defaultValue != null
+        ? String(field.defaultValue)
+        : field.description ?? `Enter ${field.name}`;
     return (
         <input id={field.name} name={field.name} type="text" placeholder={placeholder}
                pattern={field.pattern} required={field.required}
                value={(value as string) ?? ''}
-               onChange={e => onChange?.(field.name, e.target.value)}/>
+               onChange={e => onChange?.(field.name, e.target.value || undefined)}/>
     );
 }
 
 function NumberField({field, value, onChange}: FieldProps) {
     if (field.type !== 'number') return null;
-    const placeholder = field.description ?? `Enter ${field.name}`;
+    const placeholder = field.defaultValue != null
+        ? String(field.defaultValue)
+        : field.description ?? `Enter ${field.name}`;
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = e.target.value;
+
+        // Allow clearing the field
+        if (raw === '') {
+            onChange?.(field.name, undefined);
+            return;
+        }
+
+        // Reject non-numeric input (does allow for a '.')
+        if (!/^-?\d*\.?\d*$/.test(raw)) return;
+
+        const num = Number(raw);
+        if (isNaN(num)) return;
+
+        // Clamp to min/max bounds
+        if (field.minimum != null && num < field.minimum) {
+            onChange?.(field.name, field.minimum);
+            return;
+        }
+        if (field.maximum != null && num > field.maximum) {
+            onChange?.(field.name, field.maximum);
+            return;
+        }
+
+        onChange?.(field.name, num);
+    };
+
     return (
-        <input id={field.name} name={field.name} type="number" placeholder={placeholder}
-               required={field.required} min={field.minimum} max={field.maximum}
-               value={(value as string) ?? ''}
-               onChange={e => onChange?.(field.name, e.target.value === '' ? '' : Number(e.target.value))}/>
+        <input
+            id={field.name}
+            name={field.name}
+            type="text"
+            inputMode="numeric"
+            placeholder={placeholder}
+            required={field.required}
+            value={(value as string) ?? ''}
+            onChange={handleChange}
+        />
     );
 }
 
@@ -44,13 +85,16 @@ function CheckboxField({field, value, onChange}: FieldProps) {
 function SelectField({field, value, onChange}: FieldProps) {
     if (field.type !== 'select') return null;
     const placeholder = field.description ?? `Enter ${field.name}`;
+    const defaultLabel = field.defaultValue != null
+        ? `-- select (default: ${field.defaultValue}) --`
+        : '-- select --';
     return (
         <>
             <div className={styles.selectDescription}>{placeholder}</div>
             <select id={field.name} name={field.name} required={field.required}
-                    value={(value as string) ?? field.defaultValue ?? ''}
-                    onChange={e => onChange?.(field.name, e.target.value)}>
-                <option value="">-- select --</option>
+                    value={(value as string) ?? ''}
+                    onChange={e => onChange?.(field.name, e.target.value || undefined)}>
+                <option value="">{defaultLabel}</option>
                 {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
         </>
@@ -152,7 +196,6 @@ function ArrayEnumToggle({field, value, onChange}: FieldProps) {
 function ArrayField({field, value, onChange}: FieldProps) {
     if (field.type !== 'array') return null;
 
-    console.log(field.name, field.schema);
     if (!('items' in field.schema) || field.schema.items == null) {
         return <ArrayTextInput field={field} value={value} onChange={onChange}/>;
     }
@@ -218,65 +261,130 @@ function ObjectField({field, value, onChange}: FieldProps) {
     const objValue = (value as Record<string, unknown>) ?? {};
 
     const handleNestedChange = (name: string, val: unknown) => {
-        onChange?.(field.name, { ...objValue, [name]: val });
+        if (val === undefined) {
+            const { [name]: _, ...rest } = objValue;
+            onChange?.(field.name, Object.keys(rest).length > 0 ? rest : undefined);
+        } else {
+            onChange?.(field.name, { ...objValue, [name]: val });
+        }
     };
 
     if (field.fields.length === 0) {
         return <div className={styles.selectDescription}>No properties defined</div>;
     }
 
+    const fieldNames = field.fields.map(entry => entry.name).sort();
+
     return (
-        <div className={styles.objectField}>
+        <CollapsibleSection collapsePreviewNames={fieldNames}>
             {field.description &&
                 <div className={styles.selectDescription}>{field.description}</div>
             }
             <SchemaFormRenderer fields={field.fields} values={objValue} onChange={handleNestedChange}/>
-        </div>
+        </CollapsibleSection>
     );
 }
 
 function PluginField({ field, onChange }: FieldProps) {
     const [inputValue, setInputValue] = useState('');
     const [activePlugins, setActivePlugins] = useState<string[]>([]);
+    const [pluginValues, setPluginValues] = useState<Record<string, Record<string, unknown>>>({});
 
     if (!('schema' in field) || typeof field.schema.plugins !== 'object' || !field.schema.plugins) {
         return <div>No schema</div>;
     }
 
-    const keys = Object.keys(field.schema.plugins);
+    const catalog = field.schema as unknown as SchemaCatalog;
+    const generator = useMemo(() => new SchemaFormGenerator(catalog), [catalog]);
+    const pluginDefs = catalog.plugins ?? {};
+
+    const keys = Object.keys(pluginDefs);
     const listId = `datalist-${field.name}`;
+
+    // for disabling/enabling the button
     const isValidPlugin = keys.includes(inputValue) && !activePlugins.includes(inputValue);
+
+    // update the nested values
+    function emitAll(plugins: string[], values: Record<string, Record<string, unknown>>) {
+        onChange?.(field.name, Object.fromEntries(plugins.map(name => [name, values[name] ?? {}])));
+    }
 
     function handleAddPlugin() {
         const updated = [...activePlugins, inputValue];
         setActivePlugins(updated);
-        onChange?.(field.name, Object.fromEntries(updated.map(name => [name, {}])));
+        emitAll(updated, pluginValues);
         setInputValue('');
+    }
+
+    function handleRemovePlugin(name: string) {
+        const updated = activePlugins.filter(p => p !== name);
+        const updatedValues = { ...pluginValues };
+        delete updatedValues[name];
+        setActivePlugins(updated);
+        setPluginValues(updatedValues);
+        emitAll(updated, updatedValues);
+    }
+
+    function handlePluginChange(pluginName: string, fieldName: string, value: unknown) {
+        const updatedValues = {
+            ...pluginValues,
+            [pluginName]: { ...pluginValues[pluginName], [fieldName]: value }
+        };
+        setPluginValues(updatedValues);
+        emitAll(activePlugins, updatedValues);
+    }
+
+    function getPluginFields(pluginName: string): SchemaField[] {
+        const def = pluginDefs[pluginName];
+
+        const schema = (def?.schema ?? def) as JsonSchema;
+
+        if (!schema || typeof schema !== 'object') return [];
+
+        return generator.getFieldsFromSchema(schema);
     }
 
     return (
         <div>
-            <input
-                id={field.name}
-                type="text"
-                list={listId}
-                value={inputValue}
-                placeholder={field.description ?? "Select plugin..."}
-                onChange={e => setInputValue(e.target.value)}
-            />
-            <datalist id={listId}>
-                {keys.map(key => (
-                    <option key={key} value={key} />
-                ))}
-            </datalist>
-            <button onClick={handleAddPlugin} disabled={!isValidPlugin}>
-                Add Plugin
-            </button>
-            {activePlugins.length > 0 && (
-                <ul>
-                    {activePlugins.map(name => <li key={name}>{name}</li>)}
-                </ul>
-            )}
+            <div className={styles.mapRow}>
+                <input
+                    id={field.name}
+                    type="text"
+                    list={listId}
+                    value={inputValue}
+                    placeholder={field.description ?? "Select plugin..."}
+                    onChange={e => setInputValue(e.target.value)}
+                />
+                <datalist id={listId}>
+                    {keys.map(key => (
+                        <option key={key} value={key} />
+                    ))}
+                </datalist>
+                <button type="button" onClick={handleAddPlugin} disabled={!isValidPlugin}>
+                    Add Plugin
+                </button>
+            </div>
+            {activePlugins.map(name => {
+                const fields = getPluginFields(name);
+                return (
+                    <div key={name} className={styles.pluginSection}>
+                        <div className={styles.pluginHeader}>
+                            <span className={styles.fieldLabel}>{name}</span>
+                            <button type="button" className={styles.mapDelete}
+                                    onClick={() => handleRemovePlugin(name)}>X</button>
+                        </div>
+                        {fields.length > 0 ? (
+                            <SchemaFormRenderer
+                                fields={fields}
+                                values={pluginValues[name] ?? {}}
+                                onChange={(fieldName, value) => handlePluginChange(name, fieldName, value)}
+                            />
+                        ) : (
+                            <div className={styles.selectDescription}>No configurable properties</div>
+                        )}
+                    </div>
+                );
+            })}
         </div>
     );
 }

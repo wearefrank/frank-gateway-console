@@ -94,13 +94,13 @@ class ErrorResolver {
             }
 
             if (error.params?.passingSchemas != null) {
-                // AJV already knows which branches matched — use the indices
+                // AJV already knows which branches matched — use the indices (oneOf only)
                 const passing = error.params.passingSchemas as number[];
                 const allOptions = this.gatherOneOfOptions(schema);
                 const conflicting = passing.map(i => allOptions[i] || ['(unknown variant)']);
 
                 resolvedErrors.push({
-                    message: `${entry.parent}: oneOf — matches multiple variants, pick one:\n| ${this.formatOptions(conflicting)}`,
+                    message: `${entry.parent}: ${error.keyword} — matches multiple variants, pick one:\n| ${this.formatOptions(conflicting)}`,
                     path: entry.type,
                     errorObject: entry,
                 });
@@ -110,7 +110,7 @@ class ErrorResolver {
             // No branch matched — score to find closest
             const scored = this.matchOneOfErrors(schema, data);
             resolvedErrors.push({
-                message: `${entry.parent}: oneOf — no variant matched. Closest options:\n| ${this.formatOptions(scored)}`,
+                message: `${entry.parent}: ${error.keyword} — no variant matched. Closest options:\n| ${this.formatOptions(scored)}`,
                 path: entry.type,
                 errorObject: entry,
             });
@@ -199,14 +199,14 @@ class ErrorResolver {
                 continue;
             }
 
-            if (this.isUnderIfThenPath(error)) {
-                result.ifThenLeaves.push(error)
-                continue;
-            }
-
-            if (error.keyword === 'oneOf') {
+            if (error.keyword === 'anyOf' || error.keyword === 'oneOf') {
                 result.oneOfErrors.push(error)
                 continue
+            }
+
+            if (this.isUnderBranchPath(error)) {
+                result.ifThenLeaves.push(error)
+                continue;
             }
 
             result.direct.push(error);
@@ -215,8 +215,8 @@ class ErrorResolver {
         return result;
     }
 
-    private isUnderIfThenPath(errorObj: ErrorObject): boolean {
-        return /\/(then|else)\//.test(errorObj.schemaPath);
+    private isUnderBranchPath(errorObj: ErrorObject): boolean {
+        return /\/(then|else|anyOf|oneOf)\//.test(errorObj.schemaPath);
     }
 
     private resolveBranchErrors(ifThenWrappers: ErrorObject[], ifThenLeaves: ErrorObject[], entry: AjvErrorCollection): ResolvedError[] {

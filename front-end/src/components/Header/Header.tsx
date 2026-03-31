@@ -20,7 +20,7 @@ export const Header: React.FC = () => {
           </NavLink>
 
           <NavLink to="/loadConfig" className={({ isActive }) => (isActive ? 'active' : undefined)}>
-            Schema Validation
+            Config Validation
           </NavLink>
 
           <NavLink to="/config" className={({ isActive }) => (isActive ? 'active' : undefined)}>

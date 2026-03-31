@@ -34,13 +34,19 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
 
 export const RouteDesigner = () => {
 
-    const category = 'route';
+    const category = 'upstream';
 
     const {configManager, schema, schemaLoading} = useConfigManager();
     const [values, setValues] = useState<Record<string, unknown>>({});
 
     const handleChange = useCallback((name: string, value: unknown) => {
-        setValues(prev => ({...prev, [name]: value}));
+        setValues(prev => {
+            if (value === undefined) {
+                const { [name]: _, ...rest } = prev;
+                return rest;
+            }
+            return { ...prev, [name]: value };
+        });
     }, []);
 
     const generator = useMemo(() => schema ? new SchemaFormGenerator(schema) : null, [schema]);

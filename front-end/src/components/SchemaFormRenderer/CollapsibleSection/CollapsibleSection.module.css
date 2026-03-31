@@ -1,0 +1,21 @@
+.CollapseSection {
+    display: flex;
+    flex-direction: row;
+}
+
+.indentLine {
+    min-width: 16px;
+    width: 12px;
+    flex-shrink: 0;
+    border-left: 2px solid var(--border-color, #ffc400);
+    align-self: stretch;
+    margin-left: 4px;
+}
+
+.indentLine:hover {
+    border-left: 2px solid var(--border-dim);
+}
+
+.content {
+    flex: 1;
+}

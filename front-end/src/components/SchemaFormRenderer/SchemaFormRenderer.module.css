@@ -27,7 +27,7 @@
 
 .toggle {
     padding: 4px 10px;
-    border: 1px solid var(--border-color, #ccc);
+    border: 1px solid var(--border-color, #FDC300);
     border-radius: 4px;
     background: transparent;
     cursor: pointer;
@@ -35,9 +35,9 @@
 
 .toggleActive {
     padding: 4px 10px;
-    border: 1px solid var(--border-color, #ccc);
+    border: 1px solid var(--border-color, #FDC300);
     border-radius: 4px;
-    background: var(--accent-color, #0078d4);
+    background: var(--accent-color, #FDC300);
     color: #000000;
     cursor: pointer;
 }
@@ -76,6 +76,19 @@
     cursor: pointer;
     color: var(--error-color, #c00);
     font-size: 1em;
+}
+
+.pluginSection {
+    margin-top: 10px;
+    padding-left: 16px;
+    border-left: 2px solid var(--border-color, #ccc);
+}
+
+.pluginHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
 }
 
 .addButton {
