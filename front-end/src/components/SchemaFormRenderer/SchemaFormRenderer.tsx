@@ -145,11 +145,12 @@ function ArrayTextInput({field, value, onChange}: FieldProps) {
     const placeholder = field.description ?? `Enter ${field.name} (comma-separated)`;
     return (
         <>
-        <input id={field.name} name={field.name} type="text" placeholder={placeholder}
-               required={field.required}
-               value={inputValue}
-               onChange={handleChange}
-               onKeyDown={handleKeyDown}/>
+            <div className={styles.selectDescription}>(type: ',' or press enter)</div>
+            <input id={field.name} name={field.name} type="text" placeholder={placeholder}
+                   required={field.required}
+                   value={inputValue}
+                   onChange={handleChange}
+                   onKeyDown={handleKeyDown}/>
             <div className={styles.toggleGroup}>
                 {entries.map(entry =>
                     <button key={entry.id} type="button" className={styles.toggle} onClick={() => handleDelete(entry.id)}>
