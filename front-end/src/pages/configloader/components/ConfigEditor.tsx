@@ -62,7 +62,14 @@ export const ConfigEditor = ({
                     });
 
                     // searches the path parts in the document and returns the node (node is the whole indent)
-                    const node = doc.getIn(pathParts, true) as Node;
+                    // If the node doesn't exist (field not set), keep removing the last path part until a parent is found
+                    let trimmedParts = [...pathParts];
+                    let node = doc.getIn(trimmedParts, true) as Node;
+                    while ((!node || !node.range) && trimmedParts.length > 0) {
+                        trimmedParts = trimmedParts.slice(0, -1);
+                        node = doc.getIn(trimmedParts, true) as Node;
+                    }
+
                     if (node && node.range) {
                         // Added an ofset as everything was 1 line to far as we also want the parent marked
                         const offset: number = -1;
@@ -96,7 +103,13 @@ export const ConfigEditor = ({
                 return isNaN(num) ? p : num;
             });
 
-            const node = doc.getIn(pathParts, true) as Node;
+            let trimmedParts = [...pathParts];
+            let node = doc.getIn(trimmedParts, true) as Node;
+            while ((!node || !node.range) && trimmedParts.length > 0) {
+                trimmedParts = trimmedParts.slice(0, -1);
+                node = doc.getIn(trimmedParts, true) as Node;
+            }
+
             if (node && node.range) {
                 const targetLine = lineCounter.linePos(node.range[0]).line;
                 const lineHeight = parseFloat(getComputedStyle(editorContainerRef.current).lineHeight) || 21;
@@ -106,6 +119,8 @@ export const ConfigEditor = ({
             // ignore scroll errors
         }
     }, [scrollToTarget, configText]);
+
+
 
     return (
         <div
