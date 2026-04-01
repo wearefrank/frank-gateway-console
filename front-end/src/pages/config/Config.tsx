@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useFetch } from "../../hooks/useFetch";
 import {ApisixSettings} from "../../components/Config/ApisixConnectionSettings.tsx";
 import {Link} from "react-router-dom";
+import styles from './Config.module.css';
 
 interface ApisixConfigData {
     key: string;
@@ -55,10 +56,10 @@ export const Config = () => {
     };
 
     if (configFetch.loading) return <p>Loading configuration...</p>;
-    if (configFetch.error) return <p style={{color: 'red'}}>Error: {configFetch.error}</p>;
+    if (configFetch.error) return <p className={styles.errorText}>Error: {configFetch.error}</p>;
 
     return (
-        <div className="container" style={{ maxWidth: '800px' }}>
+        <div className={`container ${styles.page}`}>
             <Link to="/"><button className="mb-4">back</button></Link>
 
             <h1>Config</h1>

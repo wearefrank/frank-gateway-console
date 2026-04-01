@@ -1,0 +1,104 @@
+.fieldGroup {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 10px;
+}
+
+.fieldLabel {
+    margin-bottom: 4px;
+    font-weight: bold;
+}
+
+.required {
+    color: var(--error-color);
+    margin-left: 4px;
+}
+
+.selectDescription {
+    font-size: 0.8em;
+    color: gray;
+}
+
+.toggleGroup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.toggle {
+    padding: 4px 10px;
+    border: 1px solid var(--border-color, #FDC300);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.toggleActive {
+    padding: 4px 10px;
+    border: 1px solid var(--border-color, #FDC300);
+    border-radius: 4px;
+    background: var(--accent-color, #FDC300);
+    color: #000000;
+    cursor: pointer;
+}
+
+.objectField {
+    padding-left: 16px;
+    border-left: 2px solid var(--border-color, #ccc);
+}
+
+.mapField {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mapRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mapRow input {
+    flex: 1;
+}
+
+.mapSeparator {
+    color: var(--border-color, #ccc);
+    font-weight: bold;
+}
+
+.mapDelete {
+    padding: 2px 8px;
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    color: var(--error-color, #c00);
+    font-size: 1em;
+}
+
+.pluginSection {
+    margin-top: 10px;
+    padding-left: 16px;
+    border-left: 2px solid var(--border-color, #ccc);
+}
+
+.pluginHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.addButton {
+    align-self: flex-start;
+    padding: 4px 10px;
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+

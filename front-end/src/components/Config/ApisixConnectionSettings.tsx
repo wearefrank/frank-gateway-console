@@ -1,4 +1,5 @@
 import { useState } from "react";
+import styles from './ApisixConnectionSettings.module.css';
 
 interface Props {
     url: string;
@@ -42,7 +43,7 @@ export const ApisixSettings = ({ url, apiKey, onUrlChange, onKeyChange, onTestCo
                 </div>
             </div>
 
-            <div className="flex align-center gap-md mt-4" style={{ marginTop: 20 }}>
+            <div className={`flex align-center gap-md mt-4 ${styles.actions}`}>
                 <button onClick={handleTestClick} disabled={testStatus === "testing"}>
                     Test Connection
                 </button>
@@ -54,8 +55,8 @@ export const ApisixSettings = ({ url, apiKey, onUrlChange, onKeyChange, onTestCo
                 {/* Status Indicator */}
                 <div className="text-small">
                     {testStatus === "testing" && <span>Connecting...</span>}
-                    {testStatus === "success" && <span className="text-success" style={{ fontWeight: 'bold' }}>Connected</span>}
-                    {testStatus === "fail" && <span className="text-error" style={{ fontWeight: 'bold' }}>Failed</span>}
+                    {testStatus === "success" && <span className={`text-success ${styles.statusBold}`}>Connected</span>}
+                    {testStatus === "fail" && <span className={`text-error ${styles.statusBold}`}>Failed</span>}
                 </div>
             </div>
         </div>

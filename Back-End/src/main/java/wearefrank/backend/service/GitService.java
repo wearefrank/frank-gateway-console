@@ -23,10 +23,12 @@ import java.util.stream.Collectors;
 public class GitService {
 
     private static final String REPOS_BASE_DIR = "git-repositories";
+    private final HttpClient httpClient;
     private String activeRepoName = null;
     private GitDto.GitCredentials gitCredentials = null;
 
-    public GitService() {
+    public GitService(HttpClient httpClient) {
+        this.httpClient = httpClient;
         File base = new File(REPOS_BASE_DIR);
         if (!base.exists()) {
             base.mkdirs();
@@ -214,7 +216,6 @@ public class GitService {
 
     public String createGitHubRepository(String name, String token, boolean isPrivate) {
         try {
-            HttpClient client = HttpClient.newHttpClient();
             ObjectMapper mapper = new ObjectMapper();
             
             Map<String, Object> body = new HashMap<>();
@@ -230,10 +231,11 @@ public class GitService {
                     .header("Accept", "application/vnd.github+json")
                     .header("Content-Type", "application/json")
                     .header("X-GitHub-Api-Version", "2022-11-28")
+                    .timeout(java.time.Duration.ofSeconds(30))
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                     .build();
 
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 JsonNode node = mapper.readTree(response.body());

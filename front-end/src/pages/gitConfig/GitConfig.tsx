@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import styles from './GitConfig.module.css';
 
 interface GitCredentials {
     gitUsername: string;
@@ -268,8 +269,10 @@ export const GitConfig = () => {
         }
     }
 
+    const isError = message.startsWith("Failed") || message.startsWith("Error");
+
     return (
-        <div className="container" style={{ maxWidth: "800px" }}>
+        <div className={`container ${styles.page}`}>
             <h3 className="card-title">Git Repository Management</h3>
 
             <div className="grid grid-2">
@@ -292,14 +295,14 @@ export const GitConfig = () => {
                             placeholder="https://github.com/user/repo.git"
                             className="mb-2"
                         />
-                        <button onClick={handleLoad} disabled={loading || !repoName} style={{ width: "100%" }}>
+                        <button onClick={handleLoad} disabled={loading || !repoName} className={styles.fullWidth}>
                             Clone & Load
                         </button>
                     </div>
 
-                    <div className="card mb-4" style={{ borderStyle: "dashed", borderColor: "var(--border-dim)" }}>
+                    <div className={`card mb-4 ${styles.dashedCard}`}>
                         <label className="form-label">Or Initialize New Local '{repoName || "..."}':</label>
-                        <button onClick={handleInit} disabled={loading || !repoName} style={{ width: "100%" }}>
+                        <button onClick={handleInit} disabled={loading || !repoName} className={styles.fullWidth}>
                             Initialize Empty
                         </button>
                     </div>
@@ -309,20 +312,19 @@ export const GitConfig = () => {
                         <div className="text-small text-muted mb-2">
                             Requires GitHub Token (below)
                         </div>
-                        <label className="flex align-center mb-3 text-small" style={{ cursor: "pointer" }}>
-                            <input 
-                                type="checkbox" 
-                                checked={isPrivate} 
+                        <label className={`flex align-center mb-3 text-small ${styles.cursorPointer}`}>
+                            <input
+                                type="checkbox"
+                                checked={isPrivate}
                                 onChange={(e) => setIsPrivate(e.target.checked)}
-                                style={{ width: "auto", marginRight: 8 }}
+                                className={styles.checkboxAuto}
                             />
                             Private Repository
                         </label>
-                        <button 
-                            onClick={handleCreateRemote} 
-                            disabled={loading || !repoName || !githubToken} 
-                            className="btn-outline-success"
-                            style={{ width: "100%" }}
+                        <button
+                            onClick={handleCreateRemote}
+                            disabled={loading || !repoName || !githubToken}
+                            className={`btn-outline-success ${styles.fullWidth}`}
                         >
                             Create on GitHub
                         </button>
@@ -333,20 +335,13 @@ export const GitConfig = () => {
                     {/* Local Repositories List */}
                     <div className="card mb-3">
                         <strong className="text-small">Switch to Local Repo:</strong>
-                        <div className="flex gap-sm" style={{ marginTop: 10, flexWrap: "wrap" }}>
+                        <div className={`flex gap-sm ${styles.repoList}`}>
                             {localRepos.length > 0 ? localRepos.map(name => (
-                                <button 
-                                    key={name} 
+                                <button
+                                    key={name}
                                     onClick={() => handleSwitch(name)}
                                     disabled={loading || status?.activeRepo === name}
-                                    className="text-small"
-                                    style={{ 
-                                        padding: "4px 10px", 
-                                        backgroundColor: status?.activeRepo === name ? "var(--bg-tertiary)" : "var(--button-bg)",
-                                        borderColor: status?.activeRepo === name ? "var(--accent-color)" : "var(--border-dim)",
-                                        color: status?.activeRepo === name ? "var(--accent-color)" : "var(--text-secondary)",
-                                        boxShadow: status?.activeRepo === name ? "var(--shadow-sm)" : "none"
-                                    }}
+                                    className={`text-small ${status?.activeRepo === name ? styles.repoBtnActive : styles.repoBtnInactive}`}
                                 >
                                     {name}
                                 </button>
@@ -357,10 +352,10 @@ export const GitConfig = () => {
                     {/* Current Status Section */}
                     <div className="card mb-3 text-small">
                         <strong>Current Status:</strong>
-                        <div style={{ marginTop: 5, color: status?.status === 'error' ? 'var(--error-color)' : 'var(--success-color)' }}>
+                        <div className={status?.status === 'error' ? styles.statusError : styles.statusSuccess}>
                             {status ? status.message : "Loading status..."}
                         </div>
-                        {status?.branch && <div className="text-muted" style={{ fontSize: 12 }}>Branch: {status.branch}</div>}
+                        {status?.branch && <div className={`text-muted ${styles.branchInfo}`}>Branch: {status.branch}</div>}
                     </div>
 
                     <div className="mb-4">
@@ -379,13 +374,13 @@ export const GitConfig = () => {
 
                     <div className="card mb-2">
                         <strong className="text-small">Folders in Active Repo:</strong>
-                        <ul className="scroll-y text-small mb-0" style={{ marginTop: 8, maxHeight: "120px" }}>
+                        <ul className={`scroll-y text-small mb-0 ${styles.folderList}`}>
                             {folders.length > 0 ? folders.map(f => <li key={f}>{f}</li>) : <li className="text-muted">No folders found</li>}
                         </ul>
                     </div>
 
                     <div className="card">
-                        <strong className="text-small mb-2" style={{ display: "block" }}>Push to GitHub:</strong>
+                        <strong className={`text-small mb-2 ${styles.pushLabel}`}>Push to GitHub:</strong>
                         <input
                             type="password"
                             value={githubToken}
@@ -402,11 +397,10 @@ export const GitConfig = () => {
                                 className="mb-2"
                             />
                         )}
-                        <button 
-                            onClick={handlePush} 
-                            disabled={loading || status?.status === 'none'} 
-                            className="btn-success"
-                            style={{ width: "100%", border: "none" }}
+                        <button
+                            onClick={handlePush}
+                            disabled={loading || status?.status === 'none'}
+                            className={`btn-success ${styles.fullWidth} ${styles.noBorder}`}
                         >
                             {loading ? "Pushing..." : "Push to Remote"}
                         </button>
@@ -414,21 +408,21 @@ export const GitConfig = () => {
                 </div>
             </div>
 
-            <div className="justify-between align-center card mt-4" style={{ marginTop: 20 }}>Git Credentials
+            <div className={`justify-between align-center card mt-4 ${styles.credentialsCard}`}>Git Credentials
                 <div className="flex gap-sm">
                     <input
                         type="text"
                         value={gitCredentials.gitUsername}
                         onChange={(e) => setGitCredentials({ ...gitCredentials, gitUsername: e.target.value })}
                         placeholder="GitHub Username"
-                        style={{ width: "auto" }}
+                        className={styles.inputAuto}
                     />
                     <input
                         type="password"
                         value={gitCredentials.gitToken}
                         onChange={(e) => setGitCredentials({ ...gitCredentials, gitToken: e.target.value })}
                         placeholder="GitHub Personal Access Token"
-                        style={{ width: "auto" }}
+                        className={styles.inputAuto}
                     />
                 </div>
                 <br/>
@@ -441,13 +435,7 @@ export const GitConfig = () => {
             </div>
 
             {message && (
-                <div className="text-small mb-3" style={{ 
-                    color: message.startsWith("Failed") || message.startsWith("Error") ? "var(--error-color)" : "var(--success-color)", 
-                    marginTop: 10, 
-                    borderTop: "1px solid var(--border-color)", 
-                    paddingTop: 10,
-                    wordBreak: "break-all"
-                }}>
+                <div className={`text-small mb-3 ${isError ? styles.logError : styles.logSuccess}`}>
                     <strong>LOG:</strong> {message}
                 </div>
             )}

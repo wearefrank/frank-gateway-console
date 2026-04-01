@@ -1,0 +1,81 @@
+.routeName {
+    font-size: 16px;
+}
+
+.statusBadge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: bold;
+}
+
+.statusLive {
+    composes: statusBadge;
+    background: rgba(99, 230, 190, 0.1);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+.statusDisabled {
+    composes: statusBadge;
+    background: rgba(255, 107, 107, 0.1);
+    color: var(--error-color);
+    border: 1px solid var(--error-color);
+}
+
+.uriCode {
+    background: var(--bg-tertiary);
+    padding: 2px 5px;
+    border-radius: 3px;
+    color: var(--text-primary);
+}
+
+.tagsRow {
+    flex-wrap: wrap;
+}
+
+.tag {
+    border: 1px solid var(--border-color);
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+
+.tagFilled {
+    composes: tag;
+    background: var(--bg-tertiary);
+}
+
+.loadingPage {
+    text-align: center;
+    padding: 40px;
+}
+
+.backLink {
+    text-decoration: none;
+}
+
+.spacer {
+    width: 100px;
+}
+
+.routesGrid {
+    margin-top: 30px;
+}
+
+.sectionTitle {
+    font-size: 20px;
+}
+
+.errorBanner {
+    background: rgba(255, 107, 107, 0.1);
+}
+
+.emptyState {
+    padding: 30px;
+    text-align: center;
+    border-style: dashed;
+}
+
+.createCard {
+    border-style: dashed;
+    text-align: center;
+}

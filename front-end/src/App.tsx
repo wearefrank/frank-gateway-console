@@ -1,4 +1,4 @@
-import './App.css'
+import styles from './App.module.css'
 import {Routes, Route} from 'react-router-dom';
 import {Dashboard} from "./components/Dashboard/Dashboard.tsx";
 import {Config} from "./pages/config/Config.tsx";
@@ -9,11 +9,12 @@ import {GitConfig} from "./pages/gitConfig/GitConfig.tsx";
 import RouteFlow from "./pages/graphflow/RouteFlow.tsx";
 import {ApisixConfigLoader} from "./pages/configloader/configLoader.tsx";
 import { Header } from "./components/Header/Header.tsx";
+import { ConfigManagerProvider } from "./providers/ConfigManagerProvider.tsx";
 
 const Home = () => {
     return (
-        <div className="container" style={{ paddingTop: '24px' }}>
-            <h1 style={{ color: 'var(--accent-color)', marginBottom: '12px' }}>WeAreFrank APISIX</h1>
+        <div className={`container ${styles.homePage}`}>
+            <h1 className={styles.homeTitle}>WeAreFrank APISIX</h1>
             <p className="text-muted">Use the navigation above to explore the app.</p>
         </div>
     );
@@ -21,20 +22,22 @@ const Home = () => {
 
 function App() {
     return (
-        <>
-            <Header />
-            <Routes>
-                <Route path="/" element={<Home/>} />
-                <Route path="/dashboard" element={<Dashboard/>} />
-                <Route path="/config" element={<Config/>} />
-                <Route path="/routes" element={<RouteOverview/>} />
-                <Route path="/schema" element={<SchemaPage/>} />
-                <Route path="/designer" element={<RouteDesigner/>} />
-                <Route path="/gitConfig" element={<GitConfig/>} />
-                <Route path="/flow" element={<RouteFlow/>} />
-                <Route path="/loadConfig" element={<ApisixConfigLoader/>} />
-            </Routes>
-        </>
+        <ConfigManagerProvider>
+            <>
+                <Header />
+                <Routes>
+                    <Route path="/" element={<Home/>} />
+                    <Route path="/dashboard" element={<Dashboard/>} />
+                    <Route path="/config" element={<Config/>} />
+                    <Route path="/routes" element={<RouteOverview/>} />
+                    <Route path="/schema" element={<SchemaPage/>} />
+                    <Route path="/designer" element={<RouteDesigner/>} />
+                    <Route path="/gitConfig" element={<GitConfig/>} />
+                    <Route path="/flow" element={<RouteFlow/>} />
+                    <Route path="/loadConfig" element={<ApisixConfigLoader/>} />
+                </Routes>
+            </>
+        </ConfigManagerProvider>
     )
 }
 

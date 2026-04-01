@@ -1,0 +1,222 @@
+.loaderHeader {
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.bold {
+    font-weight: 600;
+}
+
+.configCard {
+    padding: 0 !important;
+    overflow: hidden;
+    position: relative;
+}
+
+.btnIcon {
+    padding: 2px 8px !important;
+}
+
+.toggleGroup {
+    font-size: 11px;
+    border: 1px solid var(--border-dim);
+}
+
+.toggleBtn {
+    padding: 2px 8px;
+    border-radius: 0;
+    border: none;
+    cursor: pointer;
+    background-color: transparent;
+    color: inherit;
+}
+
+.toggleBtnActive {
+    composes: toggleBtn;
+    background-color: var(--accent-color);
+    color: #1a1a1a;
+}
+
+.toggleBtn + .toggleBtn,
+.toggleBtn + .toggleBtnActive,
+.toggleBtnActive + .toggleBtn,
+.toggleBtnActive + .toggleBtnActive {
+    border-left: 1px solid var(--border-dim);
+}
+
+.editorContainer {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+    font-family: monospace;
+    font-size: 14px;
+    position: relative;
+    border: 1px solid transparent;
+}
+
+.editorContainerInvalid {
+    composes: editorContainer;
+    border: 1px solid var(--error-color);
+    box-shadow: inset 0 0 0 1px var(--error-color);
+}
+
+.editorGrid {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    min-height: 100%;
+}
+
+.lineNumbers {
+    padding-right: 12px;
+    text-align: right;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    user-select: none;
+    pointer-events: none;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: 1.5;
+    white-space: pre;
+}
+
+.editorLayers {
+    position: relative;
+    display: grid;
+    min-height: 100%;
+}
+
+.editorBase, .editorOverlay, .editorTextarea {
+    grid-area: 1/1;
+    margin: 0;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: 1.5;
+    tab-size: 2;
+    white-space: pre;
+}
+
+.editorBase {
+    visibility: hidden;
+}
+
+.editorOverlay {
+    color: var(--text-secondary);
+    opacity: 1;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.editorTextarea {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    resize: none;
+    background-color: transparent;
+    color: inherit;
+    position: relative;
+    z-index: 2;
+    overflow: hidden;
+}
+
+.editorPlaceholder {
+    grid-column: 1 / -1;
+    pointer-events: none;
+    z-index: 3;
+    font-style: italic;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.loaderGrid {
+    height: 80vh;
+}
+
+.logContainer {
+    flex: 1;
+    padding: 16px;
+}
+
+.logItem {
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    border-left: 4px solid var(--text-secondary);
+    background-color: var(--bg-tertiary);
+}
+
+.logItemError {
+    composes: logItem;
+    background-color: rgba(255, 107, 107, 0.1);
+    border-left-color: var(--error-color);
+}
+
+.logItemSuccess {
+    composes: logItem;
+    background-color: rgba(99, 230, 190, 0.1);
+    border-left-color: var(--success-color);
+}
+
+.logItemWarning {
+    composes: logItem;
+    background-color: rgba(253, 195, 0, 0.1);
+    border-left-color: var(--accent-color);
+}
+
+.logItemClickable {
+    transition: filter 0.15s;
+    cursor: pointer;
+}
+
+.logItemClickable:hover {
+    filter: brightness(1.2);
+}
+
+.logHeader {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.logFooter {
+    white-space: pre-line;
+}
+
+.logType {
+    text-transform: uppercase;
+}
+
+.logMessage {
+    word-break: break-word;
+}
+
+.schemaPre {
+    margin: 0;
+    font-size: 12px;
+}
+
+.schemaContainer {
+    max-height: 400px;
+    padding: 16px;
+}
+
+.lineOverlay {
+    min-height: 1.5em;
+}
+
+.errorLineBg {
+    background-color: rgba(255, 107, 107, 0.2);
+    width: 100%;
+    display: block;
+}
+
+.overlayContent {
+    opacity: 0.5;
+}
+
+.schemaStatus {
+    font-weight: 600;
+}
