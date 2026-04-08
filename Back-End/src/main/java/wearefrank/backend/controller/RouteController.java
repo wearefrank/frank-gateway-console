@@ -2,12 +2,9 @@ package wearefrank.backend.controller;
 
 import org.springframework.web.bind.annotation.*;
 import wearefrank.backend.dto.RouteDto;
+import wearefrank.backend.service.ApisixClient;
 import wearefrank.backend.service.YamlStoreService;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.UUID;
 
@@ -17,11 +14,11 @@ import java.util.UUID;
 public class RouteController {
 
     private final YamlStoreService yamlStoreService;
-    private final HttpClient httpClient;
+    private final ApisixClient apisixClient;
 
-    public RouteController(YamlStoreService yamlStoreService, HttpClient httpClient) {
+    public RouteController(YamlStoreService yamlStoreService, ApisixClient apisixClient) {
         this.yamlStoreService = yamlStoreService;
-        this.httpClient = httpClient;
+        this.apisixClient = apisixClient;
     }
 
     @GetMapping("/saved")
@@ -31,38 +28,13 @@ public class RouteController {
 
     @GetMapping("/live")
     public String getLiveRoutes() {
-        String apiKey = yamlStoreService.getApiSixKey();
-        String baseUrl = yamlStoreService.getApiSixUrl();
-
-        if (baseUrl == null || baseUrl.isEmpty()) {
-            baseUrl = "http://127.0.0.1:9180";
-        }
-
-        if (baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-        }
-
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/apisix/admin/routes"))
-                    .header("X-API-KEY", apiKey)
-                    .timeout(java.time.Duration.ofSeconds(10))
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = httpClient
-                    .send(request, HttpResponse.BodyHandlers.ofString());
-
-            return response.body();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to connect to APISIX: " + e.getMessage());
-        }
+        return apisixClient.adminGet("/apisix/admin/routes");
     }
 
     @PostMapping
     public RouteDto createRoute(@RequestBody RouteDto incomingData) {
         String id = incomingData.id() != null ? incomingData.id() : UUID.randomUUID().toString();
-        
+
         RouteDto newRoute = new RouteDto(
                 id,
                 incomingData.uri(),

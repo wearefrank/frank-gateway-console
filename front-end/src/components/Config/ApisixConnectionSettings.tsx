@@ -1,22 +1,37 @@
 import { useState } from "react";
 import styles from './ApisixConnectionSettings.module.css';
 
+type TestStatus = "idle" | "testing" | "success" | "fail";
+
 interface Props {
-    url: string;
+    host: string;
+    adminPort: number;
+    controlPort: number;
+    metricsPort: number;
     apiKey: string;
-    onUrlChange: (val: string) => void;
+    onHostChange: (val: string) => void;
+    onAdminPortChange: (val: number) => void;
+    onControlPortChange: (val: number) => void;
+    onMetricsPortChange: (val: number) => void;
     onKeyChange: (val: string) => void;
-    onTestConnection: () => Promise<boolean>;
-    onSave: () => void; // Added onSave prop
+    onTestConnection: (api: "admin" | "control") => Promise<boolean>;
+    onSave: () => void;
 }
 
-export const ApisixSettings = ({ url, apiKey, onUrlChange, onKeyChange, onTestConnection, onSave }: Props) => {
-    const [testStatus, setTestStatus] = useState<"idle" | "testing" | "success" | "fail">("idle");
+export const ApisixSettings = ({ host, adminPort, controlPort, metricsPort, apiKey, onHostChange, onAdminPortChange, onControlPortChange, onMetricsPortChange, onKeyChange, onTestConnection, onSave }: Props) => {
+    const [adminStatus, setAdminStatus] = useState<TestStatus>("idle");
+    const [controlStatus, setControlStatus] = useState<TestStatus>("idle");
 
-    const handleTestClick = async () => {
-        setTestStatus("testing");
-        const isValid = await onTestConnection();
-        setTestStatus(isValid ? "success" : "fail");
+    const handleTestControl = async () => {
+        setControlStatus("testing");
+        const result = await onTestConnection("control");
+        setControlStatus(result ? "success" : "fail");
+    };
+
+    const handleTestAdmin = async () => {
+        setAdminStatus("testing");
+        const result = await onTestConnection("admin");
+        setAdminStatus(result ? "success" : "fail");
     };
 
     return (
@@ -24,12 +39,39 @@ export const ApisixSettings = ({ url, apiKey, onUrlChange, onKeyChange, onTestCo
             <h3 className="card-title">APISIX Configuration</h3>
             <div className="grid gap-md">
                 <div className="form-group mb-0">
-                    <label className="form-label">Base URL:</label>
+                    <label className="form-label">Host:</label>
                     <input
                         type="text"
-                        value={url}
-                        onChange={(e) => onUrlChange(e.target.value)}
-                        placeholder="http://127.0.0.1:9180"
+                        value={host}
+                        onChange={(e) => onHostChange(e.target.value)}
+                        placeholder="http://127.0.0.1"
+                    />
+                </div>
+                <div className="form-group mb-0">
+                    <label className="form-label">Admin API Port:</label>
+                    <input
+                        type="number"
+                        value={adminPort}
+                        onChange={(e) => onAdminPortChange(Number(e.target.value))}
+                        placeholder="9180"
+                    />
+                </div>
+                <div className="form-group mb-0">
+                    <label className="form-label">Control API Port:</label>
+                    <input
+                        type="number"
+                        value={controlPort}
+                        onChange={(e) => onControlPortChange(Number(e.target.value))}
+                        placeholder="9092"
+                    />
+                </div>
+                <div className="form-group mb-0">
+                    <label className="form-label">Metrics Port:</label>
+                    <input
+                        type="number"
+                        value={metricsPort}
+                        onChange={(e) => onMetricsPortChange(Number(e.target.value))}
+                        placeholder="9091"
                     />
                 </div>
                 <div className="form-group mb-0">
@@ -44,20 +86,27 @@ export const ApisixSettings = ({ url, apiKey, onUrlChange, onKeyChange, onTestCo
             </div>
 
             <div className={`flex align-center gap-md mt-4 ${styles.actions}`}>
-                <button onClick={handleTestClick} disabled={testStatus === "testing"}>
-                    Test Connection
+                <button onClick={handleTestControl} disabled={controlStatus === "testing"}>
+                    Test Control API
                 </button>
+                <div className="text-small">
+                    {controlStatus === "testing" && <span>Testing...</span>}
+                    {controlStatus === "success" && <span className={`text-success ${styles.statusBold}`}>Connected</span>}
+                    {controlStatus === "fail" && <span className={`text-error ${styles.statusBold}`}>Failed</span>}
+                </div>
+
+                <button onClick={handleTestAdmin} disabled={adminStatus === "testing"}>
+                    Test Admin API
+                </button>
+                <div className="text-small">
+                    {adminStatus === "testing" && <span>Testing...</span>}
+                    {adminStatus === "success" && <span className={`text-success ${styles.statusBold}`}>Connected</span>}
+                    {adminStatus === "fail" && <span className={`text-error ${styles.statusBold}`}>Failed</span>}
+                </div>
 
                 <button onClick={onSave} className="btn-primary">
                     Save Settings
                 </button>
-
-                {/* Status Indicator */}
-                <div className="text-small">
-                    {testStatus === "testing" && <span>Connecting...</span>}
-                    {testStatus === "success" && <span className={`text-success ${styles.statusBold}`}>Connected</span>}
-                    {testStatus === "fail" && <span className={`text-error ${styles.statusBold}`}>Failed</span>}
-                </div>
             </div>
         </div>
     );
