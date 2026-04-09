@@ -72,7 +72,7 @@ export const ConfigEditor = ({
 
                     if (node && node.range) {
                         // Added an ofset as everything was 1 line to far as we also want the parent marked
-                        const offset: number = -1;
+                        const offset: number = 0;
 
                         const startLine = lineCounter.linePos(node.range[0]).line + offset;
                         const endLine = lineCounter.linePos(node.range[1]).line + offset;
