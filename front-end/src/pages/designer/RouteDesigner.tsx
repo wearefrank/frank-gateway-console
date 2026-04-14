@@ -34,10 +34,19 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
 
 export const RouteDesigner = () => {
 
-    const category = 'route';
+    const [category, setCategory] = useState<string>('route');
+    const [added, setAdded] = useState<boolean>(false);
 
-    const {configManager, schema, schemaLoading} = useConfigManager();
+    const {configManager, schema, schemaLoading, config, setConfig} = useConfigManager();
     const [values, setValues] = useState<Record<string, unknown>>({});
+
+    const [catagoryValMap, setCatagoryVal] = useState<Record<string, Record<string, unknown>>>({});
+
+    const handleCategorySwitch = useCallback((newCategory: string) => {
+        setCatagoryVal(prev => ({ ...prev, [category]: values }));
+        setValues(catagoryValMap[newCategory] ?? {});
+        setCategory(newCategory);
+    }, [category, values, catagoryValMap]);
 
     const handleChange = useCallback((name: string, value: unknown) => {
         setValues(prev => {
@@ -50,11 +59,18 @@ export const RouteDesigner = () => {
     }, []);
 
     const generator = useMemo(() => schema ? new SchemaFormGenerator(schema) : null, [schema]);
-    const fields = useMemo(() => generator?.getFields(category) ?? [], [generator]);
+    const fields = useMemo(() => generator?.getFields(category) ?? [], [generator, category]);
+
+    // search
+    const [search, setSearch] = useState('');
+
 
     const yamlPreview = useMemo(() => {
         const obj = buildYamlObject(values, fields);
+
+        // if nothign is set
         if (Object.keys(obj).length === 0) return '# Fill in a field...';
+
         return dump(obj, {indent: 2, noRefs: true, sortKeys: true});
     }, [values, fields]);
 
@@ -62,17 +78,54 @@ export const RouteDesigner = () => {
         const obj = buildYamlObject(values, fields);
         if (Object.keys(obj).length === 0) return [];
         return configManager.validator.validateCategory(category, obj);
-    }, [values, fields, configManager]);
+    }, [values, fields, configManager, category]);
 
     const errors = useMemo(() => validationLogs.filter(l => l.type === 'error'), [validationLogs]);
     const warnings = useMemo(() => validationLogs.filter(l => l.type === 'warning'), [validationLogs]);
+
+    const handleAddToConfig = useCallback(() => {
+        const obj = buildYamlObject(values, fields);
+        if (Object.keys(obj).length === 0) return;
+
+        const key = category + 's';
+        let newConfig: Record<string, unknown> = config ? { ...config } : {};
+
+        let existing: unknown[] = [];
+        if (Array.isArray(newConfig[key])) {
+            existing = [...newConfig[key]];
+        }
+
+        newConfig = {
+            ...newConfig,
+            [key]: [...existing, obj]
+        };
+
+        setConfig(newConfig, dump(newConfig, { indent: 2, noRefs: true }));
+
+        setAdded(true);
+        setTimeout(() => setAdded(false), 2000);
+    }, [values, fields, category, config, setConfig]);
 
     if (schemaLoading) return <div>Loading....</div>;
     if (!configManager || !schema) return <div>Config manager not available</div>;
 
     return (
         <div className="container">
-            <h2>{category} designer</h2>
+            <div className={styles.pageHeader}>
+                <h2>{category} designer</h2>
+                <div className={styles.categoryRow}>
+                    <label htmlFor="category-input">Category</label>
+                    <select name="category-input" id="category-input"
+                            onChange={e => handleCategorySwitch(e.target.value)}
+                            className={styles.categoryInput}  >
+                        <option value="route">Routes</option>
+                        <option value="upstream">Upstreams</option>
+                        <option value="service">Services</option>
+                        <option value="consumer">Consumers</option>
+                        <option value="global_rule">global rules</option>
+                    </select>
+                </div>
+            </div>
 
             <div className={styles.layout}>
                 <div className={styles.leftColumn}>
@@ -104,12 +157,29 @@ export const RouteDesigner = () => {
 
                 {/* Form Fields */}
                 <div className="card">
-                    <div className="card-header">Route Configuration</div>
+                    <div className="card-header">{category} Configuration
+                        <div className={styles.addToConfigRow}>
+                            <button
+                                className={styles.addButton}
+                                onClick={handleAddToConfig}
+                                disabled={errors.length > 0 || Object.keys(buildYamlObject(values, fields)).length === 0}
+                            >
+                                Add to Config
+                            </button>
+                            {added && <span className={styles.addedConfirmation}>Added!</span>}
+                        </div>
+                        <input type={"search"}
+                               placeholder="search for a field"
+                               onChange={e => setSearch(e.target.value)}
+                               value={search}
+                        />
+                    </div>
                     <form className={styles.routeForm} onSubmit={e => e.preventDefault()}>
                         <SchemaFormRenderer
                             fields={fields}
                             values={values}
                             onChange={handleChange}
+                            searchTerm={search}
                         />
                     </form>
                 </div>

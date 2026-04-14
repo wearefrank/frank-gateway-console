@@ -1,13 +1,15 @@
-import {useState, useMemo, type ComponentType, type ChangeEvent, useRef} from 'react';
-import {SchemaFormGenerator, type SchemaField} from '../../actions/SchemaFormGenerator';
-import type {SchemaCatalog, JsonSchema} from '../../actions/SchemaValidation';
+import {type ChangeEvent, type ComponentType, useMemo, useRef, useState} from 'react';
+import {type SchemaField, SchemaFormGenerator} from '../../actions/SchemaFormGenerator';
+import type {JsonSchema, SchemaCatalog} from '../../actions/SchemaValidation';
 import styles from './SchemaFormRenderer.module.css';
 import {CollapsibleSection} from "./CollapsibleSection/CollapsibleSection.tsx";
+import {fieldMatchesSearch} from "./FieldMatchesSearch.tsx";
 
 export interface FieldProps {
     field: SchemaField;
     value?: unknown;
     onChange?: (name: string, value: unknown) => void;
+    searchTerm?: string;
 }
 
 // --- field components ---
@@ -256,13 +258,14 @@ function MapField({field, onChange}: FieldProps) {
     );
 }
 
-function ObjectField({field, value, onChange}: FieldProps) {
+function ObjectField({field, value, onChange, searchTerm}: FieldProps) {
     if (field.type !== 'object') return null;
 
     const objValue = (value as Record<string, unknown>) ?? {};
 
     const handleNestedChange = (name: string, val: unknown) => {
         if (val === undefined) {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const { [name]: _, ...rest } = objValue;
             onChange?.(field.name, Object.keys(rest).length > 0 ? rest : undefined);
         } else {
@@ -277,16 +280,16 @@ function ObjectField({field, value, onChange}: FieldProps) {
     const fieldNames = field.fields.map(entry => entry.name).sort();
 
     return (
-        <CollapsibleSection collapsePreviewNames={fieldNames}>
+        <CollapsibleSection collapsePreviewNames={fieldNames} forceOpen={!!searchTerm}>
             {field.description &&
                 <div className={styles.selectDescription}>{field.description}</div>
             }
-            <SchemaFormRenderer fields={field.fields} values={objValue} onChange={handleNestedChange}/>
+            <SchemaFormRenderer fields={field.fields} values={objValue} onChange={handleNestedChange} searchTerm={searchTerm}/>
         </CollapsibleSection>
     );
 }
 
-function PluginField({ field, value, onChange }: FieldProps) {
+function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
     const [inputValue, setInputValue] = useState('');
 
     const objValue = (value as Record<string, unknown>) ?? {};
@@ -304,6 +307,7 @@ function PluginField({ field, value, onChange }: FieldProps) {
     }
 
     const catalog = field.schema as unknown as SchemaCatalog;
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const generator = useMemo(() => new SchemaFormGenerator(catalog), [catalog]);
     const pluginDefs = catalog.plugins ?? {};
 
@@ -387,6 +391,7 @@ function PluginField({ field, value, onChange }: FieldProps) {
                                 fields={fields}
                                 values={pluginValues[name] ?? {}}
                                 onChange={(fieldName, value) => handlePluginChange(name, fieldName, value)}
+                                searchTerm={searchTerm}
                             />
                         ) : (
                             <div className={styles.selectDescription}>No configurable properties</div>
@@ -418,10 +423,14 @@ interface SchemaFormRendererProps {
     values?: Record<string, unknown>;
     onChange?: (name: string, value: unknown) => void;
     overrides?: Record<string, ComponentType<FieldProps>>;
+    searchTerm?: string;
 }
 
-export function SchemaFormRenderer({fields, values, onChange, overrides}: SchemaFormRendererProps) {
-    const sortedFields = fields.sort((a, b) => a.name.localeCompare(b.name));
+export function SchemaFormRenderer({fields, values, onChange, overrides, searchTerm}: SchemaFormRendererProps) {
+    const visibleFields = searchTerm
+        ? fields.filter(f => fieldMatchesSearch(f, searchTerm, values[f.name]))
+        : fields;
+    const sortedFields = visibleFields.sort((a, b) => a.name.localeCompare(b.name));
 
     return (
         <>
@@ -433,7 +442,7 @@ export function SchemaFormRenderer({fields, values, onChange, overrides}: Schema
                             {field.name}
                             {field.required && <span className={styles.required}>*</span>}
                         </label>
-                        <Component field={field} value={values?.[field.name]} onChange={onChange}/>
+                        <Component field={field} value={values?.[field.name]} onChange={onChange} searchTerm={searchTerm}/>
                     </div>
                 );
             })}

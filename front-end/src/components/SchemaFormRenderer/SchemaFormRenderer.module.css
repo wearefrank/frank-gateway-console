@@ -28,7 +28,7 @@
 
 .toggle {
     padding: 4px 10px;
-    border: 1px solid var(--border-color, #FDC300);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     background: transparent;
     cursor: pointer;
@@ -36,16 +36,16 @@
 
 .toggleActive {
     padding: 4px 10px;
-    border: 1px solid var(--border-color, #FDC300);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
-    background: var(--accent-color, #FDC300);
+    background: var(--accent-color);
     color: #000000;
     cursor: pointer;
 }
 
 .objectField {
     padding-left: 16px;
-    border-left: 2px solid var(--border-color, #ccc);
+    border-left: 2px solid var(--border-color);
 }
 
 .mapField {

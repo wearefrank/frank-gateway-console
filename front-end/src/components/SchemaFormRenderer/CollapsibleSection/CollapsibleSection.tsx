@@ -4,11 +4,13 @@ import styles from './CollapsibleSection.module.css';
 interface CollapsibleSectionProps {
     children: ReactNode;
     collapsePreviewNames: string[];
+    forceOpen?: boolean;
 }
 
-export function CollapsibleSection({ children, collapsePreviewNames }: CollapsibleSectionProps) {
+export function CollapsibleSection({ children, collapsePreviewNames, forceOpen }: CollapsibleSectionProps) {
     const [hidden, setHidden] = useState(false);
 
+    const isHidden = forceOpen ? false : hidden;
     const collapsePreview = collapsePreviewNames.join(', ')
     const expand = <div onClick={() => setHidden(false)}>...{collapsePreview}</div>;
 
@@ -16,8 +18,8 @@ export function CollapsibleSection({ children, collapsePreviewNames }: Collapsib
         <div className={styles.CollapseSection}>
             <div className={styles.indentLine} onClick={() => setHidden(!hidden)}></div>
             <div className={styles.content}>
-                {hidden && expand}
-                <div style={{ display: hidden ? 'none' : undefined }}>
+                {isHidden && expand}
+                <div style={{ display: isHidden ? 'none' : undefined }}>
                     {children}
                 </div>
             </div>
