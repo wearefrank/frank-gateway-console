@@ -59,7 +59,6 @@ public class MetricsService {
 
     public MetricsDto getPrometheusMetrics() {
         String raw = apisixClient.metricsGet("/apisix/prometheus/metrics");
-        System.out.println(raw);
         return parseMetrics(raw);
     }
 
