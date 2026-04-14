@@ -286,10 +286,18 @@ function ObjectField({field, value, onChange}: FieldProps) {
     );
 }
 
-function PluginField({ field, onChange }: FieldProps) {
+function PluginField({ field, value, onChange }: FieldProps) {
     const [inputValue, setInputValue] = useState('');
-    const [activePlugins, setActivePlugins] = useState<string[]>([]);
-    const [pluginValues, setPluginValues] = useState<Record<string, Record<string, unknown>>>({});
+
+    const objValue = (value as Record<string, unknown>) ?? {};
+
+    const [activePlugins, setActivePlugins] = useState<string[]>(
+        () => Object.keys(objValue)
+    );
+
+    const [pluginValues, setPluginValues] = useState<Record<string, Record<string, unknown>>>(
+        () => objValue as Record<string, Record<string, unknown>>
+    );
 
     if (!('schema' in field) || typeof field.schema.plugins !== 'object' || !field.schema.plugins) {
         return <div>No schema</div>;
