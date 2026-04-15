@@ -122,6 +122,12 @@
     margin-bottom: 0.25rem;
 }
 
+.errorHint {
+    font-size: 0.8rem;
+    color: var(--text-muted, #888);
+    margin-top: 0.2rem;
+}
+
 .warningMessage {
     color: var(--warning-color, #f39c12);
     margin-bottom: 0.25rem;
