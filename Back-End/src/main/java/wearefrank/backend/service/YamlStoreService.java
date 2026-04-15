@@ -1,5 +1,6 @@
 package wearefrank.backend.service;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.springframework.stereotype.Service;
@@ -17,7 +18,8 @@ public class YamlStoreService {
     private static final String REMOTE_PATH = "/tmp/";
 
     private final File file = new File("apisix_config.yaml");
-    private final ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
+    private final ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public YamlStoreService() {
         ensureConfigExist();
@@ -44,7 +46,7 @@ public class YamlStoreService {
             try {
                 boolean created = file.createNewFile();
                 if (created) {
-                    YamlApisixConfig initial = new YamlApisixConfig("", "", new ArrayList<>());
+                    YamlApisixConfig initial = new YamlApisixConfig("", "http://127.0.0.1", 9180, 9092, 9091, new ArrayList<>());
                     writeConfig(initial);
                 }
             } catch (IOException e) {
@@ -53,11 +55,14 @@ public class YamlStoreService {
         }
     }
 
-    public void saveApisixConfig(String newKey, String newUrl) {
+    public void saveApisixConfig(String newKey, String host, int adminPort, int controlPort, int metricsPort) {
         YamlApisixConfig current = readConfig();
         YamlApisixConfig updated = new YamlApisixConfig(
                 newKey,
-                newUrl,
+                host,
+                adminPort,
+                controlPort,
+                metricsPort,
                 current.routes() != null ? current.routes() : new ArrayList<>()
         );
         writeConfig(updated);
@@ -71,8 +76,25 @@ public class YamlStoreService {
         return getFullConfig().adminKey();
     }
 
-    public String getApiSixUrl() {
-        return getFullConfig().adminUrl();
+    public String getAdminUrl() {
+        YamlApisixConfig config = getFullConfig();
+        String host = config.host() != null ? config.host() : "http://127.0.0.1";
+        int port = config.adminPort() != null ? config.adminPort() : 9180;
+        return host + ":" + port;
+    }
+
+    public String getControlUrl() {
+        YamlApisixConfig config = getFullConfig();
+        String host = config.host() != null ? config.host() : "http://127.0.0.1";
+        int port = config.controlPort() != null ? config.controlPort() : 9092;
+        return host + ":" + port;
+    }
+
+    public String getMetricsUrl() {
+        YamlApisixConfig config = getFullConfig();
+        String host = config.host() != null ? config.host() : "http://127.0.0.1";
+        int port = config.metricsPort() != null ? config.metricsPort() : 9091;
+        return host + ":" + port;
     }
 
     public List<RouteDto> getRoutes() {
@@ -87,7 +109,10 @@ public class YamlStoreService {
 
         YamlApisixConfig updated = new YamlApisixConfig(
                 current.adminKey(),
-                current.adminUrl(),
+                current.host(),
+                current.adminPort(),
+                current.controlPort(),
+                current.metricsPort(),
                 routes
         );
         writeConfig(updated);
@@ -101,7 +126,10 @@ public class YamlStoreService {
 
         YamlApisixConfig updated = new YamlApisixConfig(
                 current.adminKey(),
-                current.adminUrl(),
+                current.host(),
+                current.adminPort(),
+                current.controlPort(),
+                current.metricsPort(),
                 routes
         );
         writeConfig(updated);

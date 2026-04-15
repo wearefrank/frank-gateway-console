@@ -6,26 +6,32 @@ import styles from './Config.module.css';
 
 interface ApisixConfigData {
     key: string;
-    url: string;
+    host: string;
+    adminPort: number;
+    controlPort: number;
+    metricsPort: number;
 }
 
 export const Config = () => {
     const configFetch = useFetch<ApisixConfigData>('/config');
 
-    const [configState, setConfigState] = useState<ApisixConfigData>({ key: "", url: "" });
+    const [configState, setConfigState] = useState<ApisixConfigData>({ key: "", host: "http://127.0.0.1", adminPort: 9180, controlPort: 9092, metricsPort: 9091 });
 
     useEffect(() => {
         if (configFetch.data) {
             setConfigState({
                 key: configFetch.data.key || "",
-                url: configFetch.data.url || ""
+                host: configFetch.data.host || "http://127.0.0.1",
+                adminPort: configFetch.data.adminPort ?? 9180,
+                controlPort: configFetch.data.controlPort ?? 9092,
+                metricsPort: configFetch.data.metricsPort ?? 9091,
             });
         }
     }, [configFetch.data]);
 
     const handleSaveApisix = async () => {
         try {
-            const response = await fetch('api/config', {
+            const response = await fetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(configState),
@@ -41,13 +47,14 @@ export const Config = () => {
         }
     };
 
-    const handleTest = async (): Promise<boolean> => {
+    const handleTest = async (api: "admin" | "control"): Promise<boolean> => {
         try {
-            const response = await fetch('api/config/check', {
+            const response = await fetch(`/api/config/check?api=${api}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(configState),
             });
+            if (!response.ok) return false;
             return await response.json();
         } catch (e) {
             console.error("Test failed", e);
@@ -65,9 +72,15 @@ export const Config = () => {
             <h1>Config</h1>
 
             <ApisixSettings
-                url={configState.url}
+                host={configState.host}
+                adminPort={configState.adminPort}
+                controlPort={configState.controlPort}
+                metricsPort={configState.metricsPort}
                 apiKey={configState.key}
-                onUrlChange={(val: string) => setConfigState(prev => ({ ...prev, url: val }))}
+                onHostChange={(val: string) => setConfigState(prev => ({ ...prev, host: val }))}
+                onAdminPortChange={(val: number) => setConfigState(prev => ({ ...prev, adminPort: val }))}
+                onControlPortChange={(val: number) => setConfigState(prev => ({ ...prev, controlPort: val }))}
+                onMetricsPortChange={(val: number) => setConfigState(prev => ({ ...prev, metricsPort: val }))}
                 onKeyChange={(val: string) => setConfigState(prev => ({ ...prev, key: val }))}
                 onTestConnection={handleTest}
                 onSave={handleSaveApisix}

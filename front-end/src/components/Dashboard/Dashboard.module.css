@@ -1,0 +1,75 @@
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.statusDot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+}
+
+.statusDotOnline   { background-color: #22c55e; }
+.statusDotOffline  { background-color: #ef4444; }
+.statusDotChecking { background-color: #94a3b8; }
+
+.statusRow {
+    display: flex;
+    align-items: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0.5rem 0;
+}
+
+.endpoint {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    margin-top: 0.25rem;
+}
+
+.cardLink {
+    display: inline-block;
+    margin-top: 1rem;
+    font-size: 0.85rem;
+}
+
+.statsList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0.75rem 0;
+}
+
+.statRow {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+}
+
+.tagList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.75rem 0;
+}
+
+.tag {
+    background: var(--color-surface-2, #e2e8f0);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-family: monospace;
+}
+
+.emptyHint {
+    margin: 0.75rem 0;
+}
+
+.fullWidthCard {
+    grid-column: 1 / -1;
+}

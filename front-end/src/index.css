@@ -135,6 +135,7 @@ h1, h2, h3, h4 {
 input[type="text"],
 input[type="password"],
 input[type="number"],
+input[type="search"],
 textarea {
   width: 100%;
   padding: 8px 12px;

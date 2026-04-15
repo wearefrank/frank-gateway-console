@@ -1,0 +1,77 @@
+@startuml SchemaFormGenerator
+
+title SchemaFormGenerator — Design
+
+class SchemaCatalog <<input>> {
+    + main: Map<category, JsonSchema>
+    + plugins: Map<name, JsonSchema>
+}
+
+class SchemaFormGenerator {
+    + getFields(category, keys?): SchemaField[]
+    + getFieldsFromSchema(schema): SchemaField[]
+    - buildField(name, schema): SchemaField
+}
+
+note right of SchemaFormGenerator
+    Dispatches to the correct
+    field builder based on
+    schema type / enum / name
+end note
+
+abstract class SchemaField <<output>> {
+    + name: string
+    + required: boolean
+    + description?: string
+    + defaultValue?: unknown
+}
+
+class TextField
+class NumberField
+class CheckboxField
+class SelectField
+class ArrayField
+class ObjectField
+class MapField
+class PluginField
+
+SchemaField <-- TextField
+SchemaField <-- NumberField
+SchemaField <-- CheckboxField
+SchemaField <-- SelectField
+SchemaField <-- ArrayField
+SchemaField <-- ObjectField
+SchemaField <-- MapField
+SchemaField <-- PluginField
+
+note bottom of SelectField
+    when schema has <b>enum</b>
+end note
+
+note bottom of CheckboxField
+    when type = <b>boolean</b>
+end note
+
+note bottom of NumberField
+    when type = <b>integer</b> or <b>number</b>
+end note
+
+note bottom of ObjectField
+    when type = <b>object</b>
+    with known properties
+end note
+
+note bottom of MapField
+    when type = <b>object</b>
+    with patternProperties
+    or additionalProperties
+end note
+
+note bottom of PluginField
+    when name = <b>"plugins"</b>
+end note
+
+SchemaFormGenerator --> SchemaCatalog : reads from
+SchemaFormGenerator ..> SchemaField : produces
+
+@enduml

@@ -8,7 +8,7 @@ export interface ResolvedError {
     hint?: FieldHint;
 }
 
-interface FieldHint {
+export interface FieldHint {
     field: string;
     type?: string;
     possibleOptions?: string[];
@@ -17,7 +17,7 @@ interface FieldHint {
     maximum?: number;
 }
 
-interface AjvErrorCollection {
+export interface AjvErrorCollection {
     parent: string,
     type: string,
     sourceErrors: ErrorObject[]
@@ -39,24 +39,12 @@ interface IfConditionProperties {
 type MatchResult = 'match' | 'vacuous' | 'no-match' | 'unknown';
 
 class ErrorResolver {
-    private errors: AjvErrorCollection[] = [];
-    private resolvedErrors: ResolvedError[] = [];
-
-    public clear() {
-        this.errors = [];
-        this.resolvedErrors = [];
-    }
-
-    public addErrors(type: string, parent: string, errors: ErrorObject[]) {
-        this.errors.push({type, parent, sourceErrors: errors});
-    }
-
     private skippedKeywords = ['detectPlugins'];
 
-    public handleErrors(): ResolvedError[] {
-        this.resolvedErrors = [];
+    public resolve(collections: AjvErrorCollection[]): ResolvedError[] {
+        const resolvedErrors: ResolvedError[] = [];
 
-        for (const ajvErrors of this.errors) {
+        for (const ajvErrors of collections) {
 
             const filteredErrors = ajvErrors.sourceErrors.filter(
                 e => !this.skippedKeywords.includes(e.keyword)
@@ -64,23 +52,23 @@ class ErrorResolver {
 
             if (filteredErrors.length == 0) continue;
 
-            const resolvedErrors = this.classifyErrors(filteredErrors);
+            const classified = this.classifyErrors(filteredErrors);
             const messages: ResolvedError[] = [];
 
-            if (resolvedErrors.direct.length > 0) {
-                messages.push(...this.resolveDirectErrors(resolvedErrors.direct, ajvErrors))
+            if (classified.direct.length > 0) {
+                messages.push(...this.resolveDirectErrors(classified.direct, ajvErrors))
             }
-            if (resolvedErrors.ifThenWrappers.length > 0) {
-                messages.push(...this.resolveBranchErrors(resolvedErrors.ifThenWrappers, resolvedErrors.ifThenLeaves, ajvErrors))
+            if (classified.ifThenWrappers.length > 0) {
+                messages.push(...this.resolveBranchErrors(classified.ifThenWrappers, classified.ifThenLeaves, ajvErrors))
             }
-            if (resolvedErrors.oneOfErrors.length > 0) {
-                messages.push(...this.resolveOneOfErrors(resolvedErrors.oneOfErrors, ajvErrors))
+            if (classified.oneOfErrors.length > 0) {
+                messages.push(...this.resolveOneOfErrors(classified.oneOfErrors, ajvErrors))
             }
 
-            this.resolvedErrors.push(...messages)
+            resolvedErrors.push(...messages)
         }
 
-        return this.resolvedErrors;
+        return resolvedErrors;
     }
 
     private resolveOneOfErrors(errors: ErrorObject[], entry: AjvErrorCollection): ResolvedError[] {
@@ -266,8 +254,6 @@ class ErrorResolver {
                 });
             } else if (matchResult === 'vacuous') {
                 resolvedErrors.push(...this.handleVacuousErrors(wrapper, parsed, entry))
-            } else {
-                console.log('Unhandled match result:', wrapper);
             }
         });
 

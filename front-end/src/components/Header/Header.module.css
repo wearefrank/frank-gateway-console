@@ -57,6 +57,17 @@
     gap: 8px;
 }
 
-.schemaStatus {
+.statusIndicators {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.indicator {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
     font-weight: 600;
 }
+

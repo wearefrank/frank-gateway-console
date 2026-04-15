@@ -1,10 +1,61 @@
 routes:
-  - id: "route_1_basic_crud"
-    name: "User API Route"
-    uri: "/api/v1/users/*"
-    methods: ["GET", "POST", "PUT", "DELETE"]
-    host: "api.example.com"
-    service_id: "service_1"
+  - id: error-test-route
+    uri: /test-error-handling
+    name: Plugin Error Traps Validation
+    desc: A route designed to trigger multiple complex Ajv validation errors.
+    methods:
+      - GET
+      - POST
+    upstream:
+      type: roundrobin
+      nodes:
+        127.0.0.1:8080: 1
+    plugins:
+      smart-forwarder:
+        target_url: "http://backend.internal:8080"
+        #auth_token: "supersecrettoken123"
+        #service_name: "yeet"
+        #discovery_dns: "123.123.123.123"
+        use_https: true
+        rate_limit: 150
+      limit-count:
+        count: 2
+        time_window: 60
+      ip-restriction:
+        message: Your IP is blocked
+        response_code: 403
+      fault-injection:
+        abort:
+          percentage: 50
+      response-rewrite:
+        status_code: 200
+        body: '{"error": "overwritten"}'
+      kafka-logger:
+        kafka_topic: my-audit-topic
+        broker_list:
+          127.0.0.1: 9092
+        name: audit-logger kafka_topic
+        brokers:
+          - host: 127.0.0.1
+            port: 9092
+  - id: test-then-error-route
+    uri: /api/test
+    plugins:
+      limit-count:
+        count: 10
+        time_window: 60
+        rejected_code: 503
+        key_type: var
+  - id: route_1_basic_crud
+    name: User API Route
+    uri: /api/v1/users/*
+    methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    host: api.example.com
+    service_id: service_1
     plugins:
       limit-count:
         count: 100
@@ -16,54 +67,54 @@ routes:
       send: 3
       read: 3
     status: 1
-
-  - id: "route_2_auth"
-    name: "Authentication Route"
+  - id: route_2_auth
+    name: Authentication Route
     uris:
-      - "/api/v2/auth"
-      - "/api/v2/login"
-    methods: ["POST"]
-    upstream_id: "upstream_1"
+      - /api/v2/auth
+      - /api/v2/login
+    methods:
+      - POST
+    upstream_id: upstream_1
     plugins:
       jwt-auth: {}
       proxy-rewrite:
-        uri: "/internal/auth"
-        host: "internal.example.com"
-
-  - id: "route_3_inline_upstream"
-    name: "GraphQL Gateway"
-    uri: "/graphql"
+        uri: /internal/auth
+        host: internal.example.com
+  - id: route_3_inline_upstream
+    name: GraphQL Gateway
+    uri: /graphql
     upstream:
       nodes:
-        "127.0.0.1:8080": 1
-        "127.0.0.2:8080": 2
+        127.0.0.1:8080: 1
+        127.0.0.2:8080: 2
       type: roundrobin
     plugins:
+      limit-count:
+        policy: redis
+        redis_host: x
       cors:
-        allow_origins: "*"
-        allow_methods: "**"
-        allow_headers: "**"
-        expose_headers: "*"
+        allow_origins: '*'
+        allow_methods: '**'
+        allow_headers: '**'
+        expose_headers: '*'
         max_age: 3600
-
 services:
-  - id: "service_1"
-    name: "user_service"
-    upstream_id: "upstream_1"
+  - id: service_1
+    name: user_service
+    upstream_id: upstream_1
     plugins:
       zipkin:
-        endpoint: "http://127.0.0.1:9411/api/v2/spans"
-        sample_ratio: 1.0
-
+        endpoint: http://127.0.0.1:9411/api/v2/spans
+        sample_ratio: 1
 upstreams:
-  - id: "upstream_1"
-    name: "backend_nodes"
-    type: "chash"
-    key: "remote_addr"
+  - id: upstream_1
+    name: backend_nodes
+    type: chash
+    key: remote_addr
     nodes:
-      "10.0.0.1:80": 10
-      "10.0.0.2:80": 10
-      "10.0.0.3:80": 5
+      10.0.0.1:80: 10
+      10.0.0.2:80: 10
+      10.0.0.3:80: 5
     timeout:
       connect: 5
       send: 5
@@ -71,8 +122,8 @@ upstreams:
     checks:
       active:
         type: http
-        http_path: "/healthz"
-        host: "backend.example.local"
+        http_path: /healthz
+        host: backend.example.local
         healthy:
           interval: 2
           successes: 2
@@ -82,27 +133,32 @@ upstreams:
           timeouts: 3
       passive:
         healthy:
-          http_statuses: [200, 201]
+          http_statuses:
+            - 200
+            - 201
           successes: 3
         unhealthy:
           http_failures: 3
-          http_statuses: [500, 502, 503, 504]
+          http_statuses:
+            - 500
+            - 502
+            - 503
+            - 504
           timeouts: 3
-
 consumers:
-  - username: "test_consumer"
+  - username: test_consumer
     plugins:
       jwt-auth:
-        key: "user-key"
-        secret: "my-secret-key"
+        key: user-key
+        secret: my-secret-key
       limit-req:
+        key: yeet
         rate: 10
         burst: 5
         rejected_code: 429
-
 global_rules:
-  - id: "rule_1_global_tracing"
+  - id: rule_1_global_tracing
     plugins:
       request-id:
-        header_name: "X-Request-Id"
-        algorithm: "uuid"
+        header_name: X-Request-Id
+        algorithm: uuid

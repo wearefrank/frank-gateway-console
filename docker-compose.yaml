@@ -1,0 +1,33 @@
+services:
+  apisix:
+    image: ghcr.io/wearefrank/frank-gateway:master
+    restart: always
+    volumes:
+      - ./frank-gateway/src:/usr/local/apisix/custom-plugins
+      - ./test-apisix-config.yaml:/usr/local/apisix/conf/apisix.yaml
+      - ./frank-gateway/conf/config.yaml:/usr/local/apisix/conf/config.yaml
+    ports:
+      - "9180:9180"   # Admin API
+      - "9080:9080"   # HTTP proxy
+      - "9091:9091"   # Prometheus metrics
+      - "9092:9092"   # Control API (/v1/schema)
+      - "9443:9443"   # HTTPS proxy
+    env_file: ./frank-gateway/.env
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    volumes:
+      - ./frank-gateway/conf/prometheus_conf/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  httpbin:
+    image: kong/httpbin:latest
+    restart: always
+    ports:
+      - "80:80"
+
+networks:
+  default:
+    driver: bridge

@@ -3,12 +3,8 @@ package wearefrank.backend.controller;
 import org.springframework.web.bind.annotation.*;
 import wearefrank.backend.dto.ConfigDto;
 import wearefrank.backend.dto.YamlApisixConfig;
+import wearefrank.backend.service.ApisixClient;
 import wearefrank.backend.service.YamlStoreService;
-
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 
 @RestController
 @RequestMapping("/api/config")
@@ -16,11 +12,11 @@ import java.net.http.HttpResponse;
 public class ConfigController {
 
     private final YamlStoreService yamlStoreService;
-    private final HttpClient httpClient;
+    private final ApisixClient apisixClient;
 
-    public ConfigController(YamlStoreService yamlStoreService, HttpClient httpClient) {
+    public ConfigController(YamlStoreService yamlStoreService, ApisixClient apisixClient) {
         this.yamlStoreService = yamlStoreService;
-        this.httpClient = httpClient;
+        this.apisixClient = apisixClient;
     }
 
     @GetMapping
@@ -28,37 +24,36 @@ public class ConfigController {
         YamlApisixConfig config = yamlStoreService.getFullConfig();
         return new ConfigDto.ApisixConfig(
                 config.adminKey() != null ? config.adminKey() : "",
-                config.adminUrl() != null ? config.adminUrl() : ""
+                config.host() != null ? config.host() : "http://127.0.0.1",
+                config.adminPort() != null ? config.adminPort() : 9180,
+                config.controlPort() != null ? config.controlPort() : 9092,
+                config.metricsPort() != null ? config.metricsPort() : 9091
         );
     }
 
     @PostMapping
     public void saveConfig(@RequestBody ConfigDto.ApisixConfig config) {
-        yamlStoreService.saveApisixConfig(config.key(), config.url());
+        yamlStoreService.saveApisixConfig(config.key(), config.host(), config.adminPort(), config.controlPort(), config.metricsPort());
     }
 
     @PostMapping("/check")
-    public boolean checkConnection(@RequestBody ConfigDto.ApisixConfig payload) {
-        String key = payload.key();
-        String url = payload.url();
-
-        if (url == null || url.isBlank()) return false;
-
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url + "/apisix/admin/routes"))
-                    .header("X-API-KEY", key)
-                    .timeout(java.time.Duration.ofSeconds(10))
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = httpClient
-                    .send(request, HttpResponse.BodyHandlers.ofString());
-
-            return response.statusCode() == 200;
-        } catch (Exception e) {
-            System.err.println("Connection check failed: " + e.getMessage());
-            return false;
+    public boolean checkConnection(@RequestBody ConfigDto.ApisixConfig payload,
+                                   @RequestParam(defaultValue = "admin") String api) {
+        if ("control".equals(api)) {
+            return apisixClient.checkControl(payload.host(), payload.controlPort());
         }
+        return apisixClient.checkAdmin(payload.host(), payload.adminPort(), payload.key());
+    }
+
+    @GetMapping("/check")
+    public boolean checkStoredConnection(@RequestParam(defaultValue = "control") String api) {
+        YamlApisixConfig config = yamlStoreService.getFullConfig();
+        String host = config.host() != null ? config.host() : "http://127.0.0.1";
+        if ("metrics".equals(api)) {
+            int port = config.metricsPort() != null ? config.metricsPort() : 9091;
+            return apisixClient.checkMetrics(host, port);
+        }
+        int port = config.controlPort() != null ? config.controlPort() : 9092;
+        return apisixClient.checkControl(host, port);
     }
 }

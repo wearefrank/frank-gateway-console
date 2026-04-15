@@ -4,7 +4,10 @@ public record ConfigDto() {
 
     public record ApisixConfig(
             String key,
-            String url
+            String host,
+            int adminPort,
+            int controlPort,
+            int metricsPort
     ) {}
 
     public record KeyDto(String key) {}
