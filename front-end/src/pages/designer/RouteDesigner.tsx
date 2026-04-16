@@ -103,6 +103,11 @@ export const RouteDesigner = () => {
         setTimeout(() => setAdded(false), 2000);
     }, [values, fields, category, config, setConfig]);
 
+    const handleErrorAction = useCallback((action: DesignerAction) => {
+        if (action.type === 'set-field') handleChange(action.field, action.value);
+        if (action.type === 'set-search') setSearch(action.term);
+    }, [handleChange]);
+
     if (schemaLoading) return <div>Loading....</div>;
     if (!configManager || !schema) return <div>Config manager not available</div>;
 
@@ -135,27 +140,7 @@ export const RouteDesigner = () => {
                     </div>
 
                     {/* Validation Results */}
-                    <div className={`card ${styles.validationCard}`}>
-                        <div className="card-header">Validation</div>
-                        <div className={styles.validationBody}>
-                            {resolvedErrors.map((err, i) => (
-                                <div key={`err-${i}`} className={styles.errorMessage}>
-                                    {err.path && <strong>[{err.path}] </strong>}
-                                    {err.message}
-                                    {err.hint && (
-                                        <div className={styles.errorHint}>
-                                            <span>Field: {err.hint.field}</span>
-                                            {err.hint.type && <span> · Type: {err.hint.type}</span>}
-                                            {err.hint.possibleOptions && <span> · Options: {err.hint.possibleOptions.join(', ')}</span>}
-                                            {err.hint.default !== undefined && <span> · Default: {String(err.hint.default)}</span>}
-                                            {err.hint.minimum !== undefined && <span> · Min: {err.hint.minimum}</span>}
-                                            {err.hint.maximum !== undefined && <span> · Max: {err.hint.maximum}</span>}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    <DesignerErrorLogs resolvedErrors={resolvedErrors} onAction={handleErrorAction} />
                 </div>
 
                 {/* Form Fields */}
@@ -187,6 +172,71 @@ export const RouteDesigner = () => {
                     </form>
                 </div>
             </div>
+        </div>
+    );
+};
+
+type DesignerAction =
+    | { type: 'set-field'; field: string; value: unknown }
+    | { type: 'set-search'; term: string };
+
+interface DesignerErrorLogProps {
+    resolvedErrors: ResolvedError[];
+    onAction: (action: DesignerAction) => void;
+}
+
+export const DesignerErrorLogs = ({resolvedErrors, onAction} : DesignerErrorLogProps) => {
+    return (
+        <div className={`card ${styles.validationCard}`}>
+            <div className="card-header">Validation</div>
+            <div className={styles.validationBody}>
+                {resolvedErrors.map((err, i) => (
+                    <div key={`err-${i}`} className={styles.errorMessage}>
+                        {err.path && <strong>[{err.path}] </strong>}
+                        {err.message}
+                        <ErrorActions error={err} onAction={onAction} />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+interface ErrorActionsProps {
+    error: ResolvedError;
+    onAction: (action: DesignerAction) => void;
+}
+
+const ErrorActions = ({ error, onAction }: ErrorActionsProps) => {
+    const { hint } = error;
+    if (!hint) return null;
+
+    if (hint.type === 'anyof' && Array.isArray(hint.possibleOptions)) {
+        return (
+            <div className={styles.errorActions}>
+                {hint.possibleOptions.map((variant: string[], i) => (
+                    <button
+                        key={i}
+                        className={styles.actionButton}
+                        onClick={() => onAction({ type: 'set-search', term: variant.join(" ") })}
+                    >
+                        Use: {variant.join(', ')}
+                    </button>
+                ))}
+            </div>
+        );
+    }
+
+    return (
+        <div className={styles.errorActions}>
+            {hint.default !== undefined && (
+                <button
+                    className={styles.actionButton}
+                    onClick={() => onAction({ type: 'set-field', field: hint.field, value: hint.default })}
+                >
+                    Apply default: {String(hint.default)}
+                </button>
+            )}
         </div>
     );
 };

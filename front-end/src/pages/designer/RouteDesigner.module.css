@@ -122,6 +122,28 @@
     margin-bottom: 0.25rem;
 }
 
+.errorActions {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.actionButton {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px solid var(--accent-color);
+    color: var(--accent-color);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.actionButton:hover {
+    background: var(--accent-color);
+    color: #000;
+}
+
 .errorHint {
     font-size: 0.8rem;
     color: var(--text-muted, #888);

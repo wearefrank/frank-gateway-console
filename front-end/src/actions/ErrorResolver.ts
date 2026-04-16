@@ -10,8 +10,8 @@ export interface ResolvedError {
 
 export interface FieldHint {
     field: string;
-    type?: string;
-    possibleOptions?: string[];
+    type: errorType;
+    possibleOptions?: unknown;
     default?: unknown;
     minimum?: number;
     maximum?: number;
@@ -37,6 +37,8 @@ interface IfConditionProperties {
 }
 
 type MatchResult = 'match' | 'vacuous' | 'no-match' | 'unknown';
+
+type errorType = 'anyof' | 'direct';
 
 class ErrorResolver {
     private skippedKeywords = ['detectPlugins'];
@@ -97,13 +99,23 @@ class ErrorResolver {
                 continue;
             }
 
+
+
             // No branch matched — score to find closest
             const scored = this.matchOneOfErrors(schema, data);
+
+            const fieldHint: FieldHint = {
+                field: entry.parent,
+                type: 'anyof',
+                possibleOptions: scored
+            }
+
             resolvedErrors.push({
                 message: `${entry.parent}: ${error.keyword} — no variant matched. Closest options:\n| ${this.formatOptions(scored)}`,
                 path: this.buildResolvedPath(entry, this.getExactPath(error)),
                 errorObject: entry,
                 sourceError: error,
+                hint: fieldHint
             });
         }
 
@@ -310,6 +322,7 @@ class ErrorResolver {
                 path: exactPath,
                 errorObject: entry,
                 sourceError: wrapper,
+                hint: defaultValue !== undefined ? { field, type: 'direct', default: propDef.default } : undefined,
             }];
         }
         return [];
