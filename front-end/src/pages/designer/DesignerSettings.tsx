@@ -1,21 +1,21 @@
 import {useState} from 'react';
 import type {SchemaField} from '../../actions/SchemaFormGenerator';
-import type {IdFieldSettings} from '../../components/SchemaFormRenderer/IdField/IdField'; // used by IdDesigner export
-import {type DesignerSettingsManager} from '../../hooks/useDesignerSettings';
+import type {IdFieldSettings} from '../../components/SchemaFormRenderer/IdField/IdField';
+import {type DesignerSettings, parsePlaceholders} from '../../hooks/useDesignerSettings';
 import styles from './DesignerSettings.module.css';
 
 interface DesignerSettingsProps {
     category: string;
     fields: SchemaField[];
-    settings: DesignerSettingsManager;
-    onSettingsChange: (settings: DesignerSettingsManager) => void;
+    settings: DesignerSettings;
+    onSettingsChange: (settings: DesignerSettings) => void;
 }
 
 export function DesignerSettings({category, fields, settings, onSettingsChange}: DesignerSettingsProps) {
     const [collapsed, setCollapsed] = useState(true);
     const [inputValue, setInputValue] = useState('');
 
-    const priorityMap = settings.getPriorityMap();
+    const priorityMap = settings.priorityMap;
     const currentList = priorityMap[category] ?? [];
     const availableFields = fields.map(f => f.name).filter(n => !currentList.includes(n));
     const listId = 'settings-priority-datalist';
@@ -24,8 +24,7 @@ export function DesignerSettings({category, fields, settings, onSettingsChange}:
     const isValidInput = trimmedInput.length > 0 && !currentList.includes(trimmedInput);
 
     function applyPriorityList(newList: string[]) {
-        const newMap = { ...priorityMap, [category]: newList };
-        onSettingsChange(settings.withPriorityMap(newMap));
+        onSettingsChange({...settings, priorityMap: {...priorityMap, [category]: newList}});
     }
 
     function handleAdd() {
@@ -41,18 +40,14 @@ export function DesignerSettings({category, fields, settings, onSettingsChange}:
     function handleMoveUp(i: number) {
         if (i === 0) return;
         const newList = currentList.slice();
-        const temp = newList[i - 1];
-        newList[i - 1] = newList[i];
-        newList[i] = temp;
+        [newList[i - 1], newList[i]] = [newList[i], newList[i - 1]];
         applyPriorityList(newList);
     }
 
     function handleMoveDown(i: number) {
         if (i === currentList.length - 1) return;
         const newList = currentList.slice();
-        const temp = newList[i + 1];
-        newList[i + 1] = newList[i];
-        newList[i] = temp;
+        [newList[i], newList[i + 1]] = [newList[i + 1], newList[i]];
         applyPriorityList(newList);
     }
 
@@ -117,8 +112,7 @@ export function IdDesigner({ category, idSettings, onIdSettingsChange }: IdDesig
     const template = idSettings.template ?? '';
     const placeHolderOptions = idSettings.placeHolderOptions ?? {};
 
-    const placeholders = [...template.matchAll(/\{([^}]+)}/g)].map(m => m[1]);
-    const uniquePlaceholders = [...new Set(placeholders)];
+    const uniquePlaceholders = parsePlaceholders(template);
 
     function addOption(name: string) {
         const value = (optionInput[name] ?? '').trim();
@@ -128,7 +122,7 @@ export function IdDesigner({ category, idSettings, onIdSettingsChange }: IdDesig
             ...idSettings,
             placeHolderOptions: { ...placeHolderOptions, [name]: [...currentOptions, value] }
         });
-        setOptionInput(prev => ({ ...prev, [name]: '' }));
+        setOptionInput({...optionInput, [name]: ''});
     }
 
     function removeOption(name: string, val: string) {

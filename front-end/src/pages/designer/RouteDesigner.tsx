@@ -4,12 +4,19 @@ import {useConfigManager} from '../../hooks/useConfigManager';
 import {SchemaFormGenerator, type SchemaField} from '../../actions/SchemaFormGenerator';
 import {SchemaFormRenderer} from '../../components/SchemaFormRenderer/SchemaFormRenderer';
 import {IdField} from '../../components/SchemaFormRenderer/IdField/IdField';
-import {useDesignerSettings} from '../../hooks/useDesignerSettings';
+import {useDesignerSettings, getMergedOverrides} from '../../hooks/useDesignerSettings';
+import {useFormByCategory} from '../../hooks/useFormByCategory';
 import {DesignerSettings} from './DesignerSettings';
+import {DesignerErrorLogs, type DesignerAction} from './DesignerErrorLogs';
+import {PillSelect} from '../../components/PillSelect/PillSelect';
 import {dump} from 'js-yaml';
-import type {ResolvedError} from '../../actions/ErrorResolver';
 import styles from './RouteDesigner.module.css';
 
+export const DESIGNER_CATEGORIES = [
+    'route', 'upstream', 'service', 'consumer', 'global_rule', 'ssl', 'plugin_config'
+] as const;
+
+export type DesignerCategory = typeof DESIGNER_CATEGORIES[number];
 
 function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[]): Record<string, unknown> {
     const result: Record<string, unknown> = {};
@@ -36,80 +43,43 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
     return result;
 }
 
-const CATEGORIES = ['route', 'upstream', 'service', 'consumer', 'global_rule', 'ssl', 'plugin_config'] as const;
-
 export const RouteDesigner = () => {
-
-    const [category, setCategory] = useState<string>('route');
+    const {category, values, handleChange, handleCategorySwitch} = useFormByCategory('route');
     const [domain, setDomain] = useState<string>('');
     const [added, setAdded] = useState<boolean>(false);
+    const [search, setSearch] = useState<string>('');
     const [designerSettings, setDesignerSettings] = useDesignerSettings();
 
     const {configManager, schema, schemaLoading, config, setConfig} = useConfigManager();
-    const [values, setValues] = useState<Record<string, unknown>>({});
-
-    const [categoryValMap, setCategoryValMap] = useState<Record<string, Record<string, unknown>>>({});
-
-    const handleCategorySwitch = useCallback((newCategory: string) => {
-        setCategoryValMap(prev => ({ ...prev, [category]: values }));
-        setValues(categoryValMap[newCategory] ?? {});
-        setCategory(newCategory);
-    }, [category, values, categoryValMap]);
-
-    const handleChange = useCallback((name: string, value: unknown) => {
-        setValues(prev => {
-            if (value === undefined) {
-                const { [name]: _, ...rest } = prev;
-                return rest;
-            }
-            return { ...prev, [name]: value };
-        });
-    }, []);
 
     const generator = useMemo(() => schema ? new SchemaFormGenerator(schema) : null, [schema]);
     const fields = useMemo(() => generator?.getFields(category) ?? [], [generator, category]);
-
-    // search
-    const [search, setSearch] = useState('');
-
+    const builtObject = useMemo(() => buildYamlObject(values, fields), [values, fields]);
 
     const yamlPreview = useMemo(() => {
-        const obj = buildYamlObject(values, fields);
+        if (Object.keys(builtObject).length === 0) return '# Fill in a field...';
+        return dump(builtObject, {indent: 2, noRefs: true, sortKeys: true});
+    }, [builtObject]);
 
-        // if nothing is set
-        if (Object.keys(obj).length === 0) return '# Fill in a field...';
-
-        return dump(obj, {indent: 2, noRefs: true, sortKeys: true});
-    }, [values, fields]);
-
-    const resolvedErrors: ResolvedError[] = useMemo(() => {
-        const obj = buildYamlObject(values, fields);
-        if (Object.keys(obj).length === 0) return [];
-        return configManager.validateCategory(category, obj);
-    }, [values, fields, configManager, category]);
+    const resolvedErrors = useMemo(() => {
+        if (Object.keys(builtObject).length === 0) return [];
+        return configManager.validateCategory(category, builtObject);
+    }, [builtObject, configManager, category]);
 
     const handleAddToConfig = useCallback(() => {
-        const obj = buildYamlObject(values, fields);
-        if (Object.keys(obj).length === 0) return;
+        if (Object.keys(builtObject).length === 0) return;
 
         const key = category + 's';
-        let newConfig: Record<string, unknown> = config ? { ...config } : {};
+        const existing = Array.isArray(config?.[key as keyof typeof config])
+            ? [...(config[key as keyof typeof config] as unknown[])]
+            : [];
 
-        let existing: unknown[] = [];
-        if (Array.isArray(newConfig[key])) {
-            existing = [...newConfig[key]];
-        }
-
-        newConfig = {
-            ...newConfig,
-            [key]: [...existing, obj]
-        };
-
-        setConfig(newConfig, dump(newConfig, { indent: 2, noRefs: true }));
+        const newConfig = {...(config ?? {}), [key]: [...existing, builtObject]};
+        setConfig(newConfig, dump(newConfig, {indent: 2, noRefs: true}));
 
         setAdded(true);
         setTimeout(() => setAdded(false), 2000);
-    }, [values, fields, category, config, setConfig]);
+    }, [builtObject, category, config, setConfig]);
 
     const handleErrorAction = useCallback((action: DesignerAction) => {
         if (action.type === 'set-field') handleChange(action.field, action.value);
@@ -119,18 +89,14 @@ export const RouteDesigner = () => {
     if (schemaLoading) return <div>Loading....</div>;
     if (!configManager || !schema) return <div>Config manager not available</div>;
 
-
-    const priorityList = designerSettings.getPriorityList(category);
-    const baseOverrides = designerSettings.getMergedOverrides(category);
-    const selectedDomainConfig = designerSettings.getDomains().find(d => d.name === domain);
+    const priorityList = designerSettings.priorityMap[category] ?? [];
+    const baseOverrides = getMergedOverrides(designerSettings, category);
+    const selectedDomainConfig = designerSettings.domains.find(d => d.name === domain);
     const overrideSettings = selectedDomainConfig
-        ? {
-            ...baseOverrides,
-            id: { ...(baseOverrides['id'] as object ?? {}), placeHolderOptions: selectedDomainConfig.placeholders },
-          }
+        ? {...baseOverrides, id: {...(baseOverrides.id as object ?? {}), placeHolderOptions: selectedDomainConfig.placeholders}}
         : baseOverrides;
 
-    const domains = designerSettings.getDomains();
+    const domains = designerSettings.domains;
 
     return (
         <div className="container">
@@ -139,36 +105,19 @@ export const RouteDesigner = () => {
                     <h2>{category} designer</h2>
                     <Link to="/designer/settings" className={styles.settingsLink}>Settings</Link>
                 </div>
-                <div className={styles.selectorGroup}>
-                    <span className={styles.selectorLabel}>Category</span>
-                    <div className={styles.pillBar}>
-                        {CATEGORIES.map(c => (
-                            <button key={c} type="button"
-                                    className={`${styles.pill} ${category === c ? styles.pillActive : ''}`}
-                                    onClick={() => handleCategorySwitch(c)}>
-                                {c.replace(/_/g, ' ')}
-                            </button>
-                        ))}
-                    </div>
-                </div>
+                <PillSelect
+                    label="Category"
+                    options={DESIGNER_CATEGORIES.map(c => ({value: c, label: c.replace(/_/g, ' ')}))}
+                    value={category}
+                    onChange={c => handleCategorySwitch(c as DesignerCategory)}
+                />
                 {domains.length > 0 && (
-                    <div className={styles.selectorGroup}>
-                        <span className={styles.selectorLabel}>Domain</span>
-                        <div className={styles.pillBar}>
-                            <button type="button"
-                                    className={`${styles.pill} ${domain === '' ? styles.pillActive : ''}`}
-                                    onClick={() => setDomain('')}>
-                                none
-                            </button>
-                            {domains.map(d => (
-                                <button key={d.name} type="button"
-                                        className={`${styles.pill} ${domain === d.name ? styles.pillActive : ''}`}
-                                        onClick={() => setDomain(d.name)}>
-                                    {d.name}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                    <PillSelect
+                        label="Domain"
+                        options={[{value: '', label: 'none'}, ...domains.map(d => ({value: d.name, label: d.name}))]}
+                        value={domain}
+                        onChange={setDomain}
+                    />
                 )}
             </div>
 
@@ -199,13 +148,13 @@ export const RouteDesigner = () => {
                             <button
                                 className={styles.addButton}
                                 onClick={handleAddToConfig}
-                                disabled={resolvedErrors.length > 0 || Object.keys(buildYamlObject(values, fields)).length === 0}
+                                disabled={resolvedErrors.length > 0 || Object.keys(builtObject).length === 0}
                             >
                                 Add to Config
                             </button>
                             {added && <span className={styles.addedConfirmation}>Added!</span>}
                         </div>
-                        <input type={"search"}
+                        <input type="search"
                                placeholder="search for a field"
                                onChange={e => setSearch(e.target.value)}
                                value={search}
@@ -218,77 +167,12 @@ export const RouteDesigner = () => {
                             onChange={handleChange}
                             searchTerm={search}
                             priorityList={priorityList}
-                            overrides={{ id: IdField }}
+                            overrides={{id: IdField}}
                             overrideSettings={overrideSettings}
                         />
                     </form>
                 </div>
             </div>
-        </div>
-    );
-};
-
-type DesignerAction =
-    | { type: 'set-field'; field: string; value: unknown }
-    | { type: 'set-search'; term: string };
-
-interface DesignerErrorLogProps {
-    resolvedErrors: ResolvedError[];
-    onAction: (action: DesignerAction) => void;
-}
-
-export const DesignerErrorLogs = ({resolvedErrors, onAction} : DesignerErrorLogProps) => {
-    return (
-        <div className={`card ${styles.validationCard}`}>
-            <div className="card-header">Validation</div>
-            <div className={styles.validationBody}>
-                {resolvedErrors.map((err, i) => (
-                    <div key={`err-${i}`} className={styles.errorMessage}>
-                        {err.path && <strong>[{err.path}] </strong>}
-                        {err.message}
-                        <ErrorActions error={err} onAction={onAction} />
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-interface ErrorActionsProps {
-    error: ResolvedError;
-    onAction: (action: DesignerAction) => void;
-}
-
-const ErrorActions = ({ error, onAction }: ErrorActionsProps) => {
-    const { hint } = error;
-    if (!hint) return null;
-
-    if (hint.type === 'anyof' && Array.isArray(hint.possibleOptions)) {
-        return (
-            <div className={styles.errorActions}>
-                {hint.possibleOptions.map((variant: string[], i) => (
-                    <button
-                        key={i}
-                        className={styles.actionButton}
-                        onClick={() => onAction({ type: 'set-search', term: variant.join(" ") })}
-                    >
-                        Use: {variant.join(', ')}
-                    </button>
-                ))}
-            </div>
-        );
-    }
-
-    return (
-        <div className={styles.errorActions}>
-            {hint.default !== undefined && (
-                <button
-                    className={styles.actionButton}
-                    onClick={() => onAction({ type: 'set-field', field: hint.field, value: hint.default })}
-                >
-                    Apply default: {String(hint.default)}
-                </button>
-            )}
         </div>
     );
 };

@@ -10,7 +10,7 @@ export interface DomainConfig {
     placeholders: Record<string, string[]>;
 }
 
-interface DesignerSettingsData {
+export interface DesignerSettings {
     priorityMap: Record<string, string[]>;
     overrideSettings: DesignerOverrideSettings;
     domains: DomainConfig[];
@@ -18,151 +18,90 @@ interface DesignerSettingsData {
 
 const STORAGE_KEY = 'designer-settings';
 
-const DEFAULT_PRIORITY_MAP: Record<string, string[]> = {
-    route:       ['id', 'uri', 'upstream_id'],
-    upstream:    ['id', 'name', 'nodes'],
-    service:     ['id', 'name'],
-    consumer:    ['username', 'plugins'],
-    global_rule: ['id', 'plugins'],
+const DEFAULT_SETTINGS: DesignerSettings = {
+    priorityMap: {
+        route: ['id', 'uri', 'upstream_id'],
+        upstream: ['id', 'name', 'nodes'],
+        service: ['id', 'name'],
+        consumer: ['username', 'plugins'],
+        global_rule: ['id', 'plugins'],
+    },
+    overrideSettings: {global: {}, perCategory: {}},
+    domains: [],
 };
 
-const DEFAULT_OVERRIDE_SETTINGS: DesignerOverrideSettings = {
-    global: {},
-    perCategory: {},
-};
-
-export class DesignerSettingsManager {
-
-    private readonly priorityMap: Record<string, string[]>;
-    private readonly overrideSettings: DesignerOverrideSettings;
-
-    private readonly domains: DomainConfig[];
-
-    constructor(data: DesignerSettingsData = { priorityMap: DEFAULT_PRIORITY_MAP, overrideSettings: DEFAULT_OVERRIDE_SETTINGS, domains: [] }) {
-        this.priorityMap = data.priorityMap;
-        this.overrideSettings = data.overrideSettings;
-        this.domains = data.domains ?? [];
-    }
-
-
-    public getDomains(): DomainConfig[] {
-        return this.domains;
-    }
-
-    public withDomains(domains: DomainConfig[]): DesignerSettingsManager {
-        return new DesignerSettingsManager({ ...this.toData(), domains });
-    }
-
-    public getPriorityMap(): Record<string, string[]> {
-        return this.priorityMap;
-    }
-
-    public getPriorityList(category: string): string[] {
-        return this.priorityMap[category] ?? [];
-    }
-
-    public withPriorityMap(priorityMap: Record<string, string[]>): DesignerSettingsManager {
-        return new DesignerSettingsManager({ ...this.toData(), priorityMap });
-    }
-
-    public getMergedOverrides(category: string): Record<string, unknown> {
-        const { global, perCategory } = this.overrideSettings;
-        const categoryOverrides = perCategory[category] ?? {};
-
-        const fieldNames = new Set([
-            ...Object.keys(global),
-            ...Object.keys(categoryOverrides),
-        ]);
-
-        const merged: Record<string, unknown> = {};
-        for (const fieldName of fieldNames) {
-            merged[fieldName] = {
-                ...(global[fieldName] as object ?? {}),
-                ...(categoryOverrides[fieldName] as object ?? {}),
-            };
-        }
-
-        return merged;
-    }
-
-    public withGlobalOverride(fieldName: string, settings: unknown): DesignerSettingsManager {
-        return new DesignerSettingsManager({
-            ...this.toData(),
-            overrideSettings: {
-                ...this.overrideSettings,
-                global: { ...this.overrideSettings.global, [fieldName]: settings },
-            },
-        });
-    }
-
-    public withCategoryOverride(category: string, fieldName: string, settings: unknown): DesignerSettingsManager {
-        const existing = this.overrideSettings.perCategory[category] ?? {};
-        return new DesignerSettingsManager({
-            ...this.toData(),
-            overrideSettings: {
-                ...this.overrideSettings,
-                perCategory: {
-                    ...this.overrideSettings.perCategory,
-                    [category]: { ...existing, [fieldName]: settings },
-                },
-            },
-        });
-    }
-
-    public serialize(): string {
-        return JSON.stringify(this.toData());
-    }
-
-    public toData(): DesignerSettingsData {
-        return {
-            priorityMap: this.priorityMap,
-            overrideSettings: this.overrideSettings,
-            domains: this.domains,
+export function getMergedOverrides(settings: DesignerSettings, category: string): Record<string, unknown> {
+    const {global, perCategory} = settings.overrideSettings;
+    const categoryOverrides = perCategory[category] ?? {};
+    const fieldNames = new Set([...Object.keys(global), ...Object.keys(categoryOverrides)]);
+    const merged: Record<string, unknown> = {};
+    for (const fieldName of fieldNames) {
+        merged[fieldName] = {
+            ...(global[fieldName] as object ?? {}),
+            ...(categoryOverrides[fieldName] as object ?? {}),
         };
     }
+    return merged;
+}
 
-    public static deserialize(json: string): DesignerSettingsManager {
-        const parsed = JSON.parse(json) as Partial<DesignerSettingsData>;
-        return new DesignerSettingsManager({
-            priorityMap: parsed.priorityMap ?? DEFAULT_PRIORITY_MAP,
-            overrideSettings: {
-                global: parsed.overrideSettings?.global ?? {},
-                perCategory: parsed.overrideSettings?.perCategory ?? {},
+export function withCategoryOverride(settings: DesignerSettings, category: string, fieldName: string, value: unknown): DesignerSettings {
+    const existing = settings.overrideSettings.perCategory[category] ?? {};
+    return {
+        ...settings,
+        overrideSettings: {
+            ...settings.overrideSettings,
+            perCategory: {
+                ...settings.overrideSettings.perCategory,
+                [category]: {...existing, [fieldName]: value},
             },
-            domains: (parsed.domains ?? []).map((d: unknown): DomainConfig => {
-                if (typeof d === 'string') return { name: d, placeholders: {} };
-                const dc = d as DomainConfig;
-                // migrate old string values to string[]
-                const placeholders: Record<string, string[]> = {};
-                for (const [k, v] of Object.entries(dc.placeholders ?? {})) {
-                    placeholders[k] = Array.isArray(v) ? v : [v as unknown as string];
-                }
-                return { name: dc.name, placeholders };
-            }),
-        });
-    }
+        },
+    };
+}
 
-    public static fromStorage(): DesignerSettingsManager {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            return raw ? DesignerSettingsManager.deserialize(raw) : new DesignerSettingsManager();
-        } catch {
-            return new DesignerSettingsManager();
-        }
+export function parsePlaceholders(template: string): string[] {
+    return [...new Set([...template.matchAll(/\{([^}]+)}/g)].map(m => m[1]))];
+}
+
+function deserialize(json: string): DesignerSettings {
+    const p = JSON.parse(json) as Partial<DesignerSettings>;
+
+    const domains = (Array.isArray(p.domains) ? p.domains : []).map((d: unknown): DomainConfig => {
+        if (typeof d === 'string') return { name: d, placeholders: {} };
+        const name = (d as DomainConfig)?.name || 'unknown';
+        const placeholders = Object.fromEntries(
+            Object.entries((d as DomainConfig)?.placeholders ?? {}).map(
+                ([k, v]) => [k, Array.isArray(v) ? v : [v as string]]
+            )
+        );
+        return { name, placeholders };
+    });
+
+    return {
+        priorityMap: p.priorityMap ?? DEFAULT_SETTINGS.priorityMap,
+        overrideSettings: {
+            global: p.overrideSettings?.global ?? {},
+            perCategory: p.overrideSettings?.perCategory ?? {},
+        },
+        domains,
+    };
+}
+
+function fromStorage(): DesignerSettings {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? deserialize(raw) : DEFAULT_SETTINGS;
+    } catch {
+        return DEFAULT_SETTINGS;
     }
 }
 
+export function useDesignerSettings(): [DesignerSettings, (next: DesignerSettings) => void] {
+    const [settings, setSettingsState] = useState<DesignerSettings>(fromStorage);
 
-// Hook function
-export function useDesignerSettings(): [DesignerSettingsManager, (next: DesignerSettingsManager) => void] {
-    const [manager, setManagerState] = useState<DesignerSettingsManager>(
-        () => DesignerSettingsManager.fromStorage()
-    );
-
-    function setManager(next: DesignerSettingsManager) {
-        localStorage.setItem(STORAGE_KEY, next.serialize());
-        setManagerState(next);
+    function setSettings(next: DesignerSettings) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        setSettingsState(next);
     }
 
-    return [manager, setManager];
+    return [settings, setSettings];
 }
