@@ -36,6 +36,8 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
     return result;
 }
 
+const CATEGORIES = ['route', 'upstream', 'service', 'consumer', 'global_rule', 'ssl', 'plugin_config'] as const;
+
 export const RouteDesigner = () => {
 
     const [category, setCategory] = useState<string>('route');
@@ -128,37 +130,46 @@ export const RouteDesigner = () => {
           }
         : baseOverrides;
 
+    const domains = designerSettings.getDomains();
+
     return (
         <div className="container">
             <div className={styles.pageHeader}>
-                <h2>{category} designer</h2>
-                <div className={styles.categoryRow}>
-                    <label htmlFor="category-input">Category</label>
-                    <select name="category-input" id="category-input"
-                            onChange={e => handleCategorySwitch(e.target.value)}
-                            className={styles.categoryInput}>
-                        <option value="route">Routes</option>
-                        <option value="upstream">Upstreams</option>
-                        <option value="service">Services</option>
-                        <option value="consumer">Consumers</option>
-                        <option value="global_rule">global rules</option>
-                        <option value="ssl">ssl</option>
-                        <option value="plugin_config">plugin config</option>
-                    </select>
+                <div className={styles.pageHeaderTop}>
+                    <h2>{category} designer</h2>
+                    <Link to="/designer/settings" className={styles.settingsLink}>Settings</Link>
                 </div>
-                <div className={styles.categoryRow}>
-                    <label htmlFor="domain-input">Domain</label>
-                    <select name="domain-input" id="domain-input"
-                            value={domain}
-                            onChange={e => setDomain(e.target.value)}
-                            className={styles.categoryInput}>
-                        <option value="">— none —</option>
-                        {designerSettings.getDomains().map(d => (
-                            <option key={d.name} value={d.name}>{d.name}</option>
+                <div className={styles.selectorGroup}>
+                    <span className={styles.selectorLabel}>Category</span>
+                    <div className={styles.pillBar}>
+                        {CATEGORIES.map(c => (
+                            <button key={c} type="button"
+                                    className={`${styles.pill} ${category === c ? styles.pillActive : ''}`}
+                                    onClick={() => handleCategorySwitch(c)}>
+                                {c.replace(/_/g, ' ')}
+                            </button>
                         ))}
-                    </select>
+                    </div>
                 </div>
-                <Link to="/designer/settings" className={styles.settingsLink}>Settings</Link>
+                {domains.length > 0 && (
+                    <div className={styles.selectorGroup}>
+                        <span className={styles.selectorLabel}>Domain</span>
+                        <div className={styles.pillBar}>
+                            <button type="button"
+                                    className={`${styles.pill} ${domain === '' ? styles.pillActive : ''}`}
+                                    onClick={() => setDomain('')}>
+                                none
+                            </button>
+                            {domains.map(d => (
+                                <button key={d.name} type="button"
+                                        className={`${styles.pill} ${domain === d.name ? styles.pillActive : ''}`}
+                                        onClick={() => setDomain(d.name)}>
+                                    {d.name}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className={styles.layout}>

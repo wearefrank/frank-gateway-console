@@ -29,7 +29,8 @@ export function DesignerSettingsPage() {
                 <div className={styles.sectionBody}>
                     {placeholderNames.length === 0 && (
                         <p className={dsStyles.sectionLabel}>
-                            Set an ID template below first, placeholders like <code>{'{subdomain}'}</code> will appear here.
+                            Set an ID template below first, placeholders like <code>{'{subdomain}'}</code> will appear
+                            here.
                         </p>
                     )}
                     <DomainManager
@@ -42,11 +43,16 @@ export function DesignerSettingsPage() {
 
             {/* Per-category settings */}
             <div className={`card ${styles.section}`}>
-                <div className="card-header">
-                    <span>Category Settings</span>
-                    <select value={category} onChange={e => setCategory(e.target.value)} className={styles.categorySelect}>
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                <div className="card-header">Category Settings</div>
+                <div className={styles.categoryPillBar}>
+                    {CATEGORIES.map(c => (
+                        <button key={c} type="button"
+                                className={`${styles.pill} ${category === c ? styles.pillActive : ''}`}
+                                onClick={() => setCategory(c)}>
+                            {/* replace underscore with spaces */}
+                            {c.replace(/_/g, ' ')}
+                        </button>
+                    ))}
                 </div>
                 <div className={styles.sectionBody}>
                     <IdDesigner
@@ -66,16 +72,27 @@ interface DomainManagerProps {
     onDomainsChange: (domains: DomainConfig[]) => void;
 }
 
-function DomainManager({ domains, placeholderNames, onDomainsChange }: DomainManagerProps) {
+function DomainManager({domains, placeholderNames, onDomainsChange}: DomainManagerProps) {
     const [nameInput, setNameInput] = useState('');
     const [valueInputs, setValueInputs] = useState<Record<string, Record<string, string>>>({});
+    const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+    function toggleExpanded(name: string) {
+        setExpanded(prev => {
+            const next = new Set(prev);
+            next.has(name) ? next.delete(name) : next.add(name);
+            return next;
+        });
+    }
 
     const isDuplicate = domains.some(d => d.name === nameInput.trim());
     const canAdd = nameInput.trim().length > 0 && !isDuplicate;
 
     function addDomain() {
         if (!canAdd) return;
-        onDomainsChange([...domains, { name: nameInput.trim(), placeholders: {} }]);
+        const name = nameInput.trim();
+        onDomainsChange([...domains, {name, placeholders: {}}]);
+        setExpanded(prev => new Set([...prev, name]));
         setNameInput('');
     }
 
@@ -88,17 +105,18 @@ function DomainManager({ domains, placeholderNames, onDomainsChange }: DomainMan
         if (!newValue) return;
 
         onDomainsChange(domains.map(domain => {
+            // don't add double's (same for check below)
             if (domain.name !== domainName) return domain;
 
             const currentValues = domain.placeholders[placeholder] ?? [];
             if (currentValues.includes(newValue)) return domain;
 
-            return { ...domain, placeholders: { ...domain.placeholders, [placeholder]: [...currentValues, newValue] } };
+            return {...domain, placeholders: {...domain.placeholders, [placeholder]: [...currentValues, newValue]}};
         }));
 
         setValueInputs(prev => ({
             ...prev,
-            [domainName]: { ...(prev[domainName] ?? {}), [placeholder]: '' }
+            [domainName]: {...(prev[domainName] ?? {}), [placeholder]: ''}
         }));
     }
 
@@ -129,15 +147,20 @@ function DomainManager({ domains, placeholderNames, onDomainsChange }: DomainMan
                 {domains.length === 0 && (
                     <li className={`${dsStyles.emptyState} ${styles.domainListEmpty}`}>No domains - add one above</li>
                 )}
-                {domains.map(domain => (
+                {domains.map(domain => {
+                    const isExpanded = expanded.has(domain.name);
+                    return (
                     <li key={domain.name} className={styles.domainCard}>
-                        <div className={styles.domainCardHeader}>
+                        <div className={styles.domainCardHeader} onClick={() => toggleExpanded(domain.name)}>
                             <span className={dsStyles.fieldName}>{domain.name}</span>
-                            <button type="button" className={dsStyles.removeButton}
-                                    onClick={() => removeDomain(domain.name)}>x</button>
+                            <div className={styles.domainCardHeaderActions}>
+                                <span className={styles.chevron}>{isExpanded ? '▲' : '▼'}</span>
+                                <button type="button" className={dsStyles.removeButton}
+                                        onClick={e => { e.stopPropagation(); removeDomain(domain.name); }}>x
+                                </button>
+                            </div>
                         </div>
-
-                        {placeholderNames.length > 0 && (
+                        {isExpanded && placeholderNames.length > 0 && (
                             <div className={styles.placeholderSections}>
                                 {/* Generate the placeholder cards */}
                                 {placeholderNames.map(placeholder => {
@@ -155,7 +178,8 @@ function DomainManager({ domains, placeholderNames, onDomainsChange }: DomainMan
                                                 {values.map(v => (
                                                     <span key={v} className={styles.chip}>
                                                         {v}
-                                                        <button type="button" onClick={() => removeValue(domain.name, placeholder, v)}>x</button>
+                                                        <button type="button"
+                                                                onClick={() => removeValue(domain.name, placeholder, v)}>x</button>
                                                     </span>
                                                 ))}
                                             </div>
@@ -167,12 +191,16 @@ function DomainManager({ domains, placeholderNames, onDomainsChange }: DomainMan
                                                     value={inputVal}
                                                     onChange={e => setValueInputs(prev => ({
                                                         ...prev,
-                                                        [domain.name]: { ...(prev[domain.name] ?? {}), [placeholder]: e.target.value }
+                                                        [domain.name]: {
+                                                            ...(prev[domain.name] ?? {}),
+                                                            [placeholder]: e.target.value
+                                                        }
                                                     }))}
                                                     onKeyDown={e => e.key === 'Enter' && addValue(domain.name, placeholder)}
                                                 />
                                                 <button type="button" disabled={!canAddVal}
-                                                        onClick={() => addValue(domain.name, placeholder)}>Add</button>
+                                                        onClick={() => addValue(domain.name, placeholder)}>Add
+                                                </button>
                                             </div>
                                         </div>
                                     );
@@ -180,7 +208,8 @@ function DomainManager({ domains, placeholderNames, onDomainsChange }: DomainMan
                             </div>
                         )}
                     </li>
-                ))}
+                    );
+                })}
             </ul>
         </div>
     );

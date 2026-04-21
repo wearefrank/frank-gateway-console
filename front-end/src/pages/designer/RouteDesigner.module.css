@@ -1,7 +1,8 @@
 .pageHeader {
     display: flex;
-    align-items: center;
-    gap: 24px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
     margin-bottom: 20px;
 }
 
@@ -9,24 +10,53 @@
     margin: 0;
 }
 
-.categoryRow {
+.pageHeaderTop {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 16px;
+    width: 100%;
 }
 
-.categoryRow label {
+.selectorGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.selectorLabel {
+    font-size: 0.75rem;
     color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.pillBar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pill {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    border: 1px solid var(--border-dim);
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
     white-space: nowrap;
 }
 
-.categoryInput {
-    padding: 6px 10px;
-    border: 1px solid var(--border-dim);
-    border-radius: 4px;
-    background-color: var(--input-bg);
-    color: var(--text-primary);
-    width: 140px;
+.pill:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.pillActive {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #000;
 }
 
 .settingsLink {

@@ -28,8 +28,35 @@
     padding: 16px;
 }
 
-.categorySelect {
-    font-size: 0.875rem;
+.categoryPillBar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.pill {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    border: 1px solid var(--border-dim);
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.pill:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.pillActive {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #000;
 }
 
 .domainList {
@@ -39,6 +66,7 @@
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
+    align-items: start;
 }
 
 .domainListEmpty {
@@ -58,6 +86,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+}
+
+.domainCardHeaderActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chevron {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
 }
 
 .placeholderSections {
