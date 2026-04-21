@@ -1,4 +1,5 @@
 import {useCallback, useMemo, useState} from 'react';
+import {Link} from 'react-router-dom';
 import {useConfigManager} from '../../hooks/useConfigManager';
 import {SchemaFormGenerator, type SchemaField} from '../../actions/SchemaFormGenerator';
 import {SchemaFormRenderer} from '../../components/SchemaFormRenderer/SchemaFormRenderer';
@@ -38,6 +39,7 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
 export const RouteDesigner = () => {
 
     const [category, setCategory] = useState<string>('route');
+    const [domain, setDomain] = useState<string>('');
     const [added, setAdded] = useState<boolean>(false);
     const [designerSettings, setDesignerSettings] = useDesignerSettings();
 
@@ -117,7 +119,14 @@ export const RouteDesigner = () => {
 
 
     const priorityList = designerSettings.getPriorityList(category);
-    const overrideSettings = designerSettings.getMergedOverrides(category);
+    const baseOverrides = designerSettings.getMergedOverrides(category);
+    const selectedDomainConfig = designerSettings.getDomains().find(d => d.name === domain);
+    const overrideSettings = selectedDomainConfig
+        ? {
+            ...baseOverrides,
+            id: { ...(baseOverrides['id'] as object ?? {}), placeHolderOptions: selectedDomainConfig.placeholders },
+          }
+        : baseOverrides;
 
     return (
         <div className="container">
@@ -127,7 +136,7 @@ export const RouteDesigner = () => {
                     <label htmlFor="category-input">Category</label>
                     <select name="category-input" id="category-input"
                             onChange={e => handleCategorySwitch(e.target.value)}
-                            className={styles.categoryInput}  >
+                            className={styles.categoryInput}>
                         <option value="route">Routes</option>
                         <option value="upstream">Upstreams</option>
                         <option value="service">Services</option>
@@ -135,9 +144,21 @@ export const RouteDesigner = () => {
                         <option value="global_rule">global rules</option>
                         <option value="ssl">ssl</option>
                         <option value="plugin_config">plugin config</option>
-
                     </select>
                 </div>
+                <div className={styles.categoryRow}>
+                    <label htmlFor="domain-input">Domain</label>
+                    <select name="domain-input" id="domain-input"
+                            value={domain}
+                            onChange={e => setDomain(e.target.value)}
+                            className={styles.categoryInput}>
+                        <option value="">— none —</option>
+                        {designerSettings.getDomains().map(d => (
+                            <option key={d.name} value={d.name}>{d.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <Link to="/designer/settings" className={styles.settingsLink}>Settings</Link>
             </div>
 
             <div className={styles.layout}>
@@ -161,7 +182,7 @@ export const RouteDesigner = () => {
                 </div>
 
                 {/* Form Fields */}
-                <div className="card">
+                <div className={`card ${styles.formCard}`}>
                     <div className="card-header">{category} Configuration
                         <div className={styles.addToConfigRow}>
                             <button

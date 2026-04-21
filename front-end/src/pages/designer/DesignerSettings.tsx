@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import type {SchemaField} from '../../actions/SchemaFormGenerator';
-import type {IdFieldSettings} from '../../components/SchemaFormRenderer/IdField/IdField';
+import type {IdFieldSettings} from '../../components/SchemaFormRenderer/IdField/IdField'; // used by IdDesigner export
 import {type DesignerSettingsManager} from '../../hooks/useDesignerSettings';
 import styles from './DesignerSettings.module.css';
 
@@ -17,7 +17,6 @@ export function DesignerSettings({category, fields, settings, onSettingsChange}:
 
     const priorityMap = settings.getPriorityMap();
     const currentList = priorityMap[category] ?? [];
-    const idSettings = (settings.getMergedOverrides(category)['id'] ?? {}) as IdFieldSettings;
     const availableFields = fields.map(f => f.name).filter(n => !currentList.includes(n));
     const listId = 'settings-priority-datalist';
 
@@ -100,125 +99,84 @@ export function DesignerSettings({category, fields, settings, onSettingsChange}:
                             Add
                         </button>
                     </div>
-
-                    <p className={styles.sectionLabel} style={{marginTop: '16px'}}>
-                        ID field settings for <strong>{category}</strong>
-                    </p>
-                    <div className={styles.addRow}>
-                        <label htmlFor="id-suffix-input">Suffix</label>
-                        <input
-                            id="id-suffix-input"
-                            type="text"
-                            placeholder="e.g. -dev"
-                            value={idSettings.suffix ?? ''}
-                            onChange={e => onSettingsChange(settings.withCategoryOverride(category, 'id', { ...idSettings, suffix: e.target.value || undefined }))}
-                        />
-                    </div>
-                    <DomainDesigner
-                        category={category}
-                        domains={settings.getDomains()}
-                        subDomains={settings.getSubDomains()}
-                        onDomainsChange={d => onSettingsChange(settings.withDomains(d))}
-                        onSubDomainsChange={s => onSettingsChange(settings.withSubDomains(s))}
-                    />
                 </div>
             )}
         </div>
     );
 }
 
-interface DomainDesignerProps {
+interface IdDesignerProps {
     category: string;
-    domains: string[];
-    subDomains: Record<string, string[]>;
-    onDomainsChange: (domains: string[]) => void;
-    onSubDomainsChange: (subDomains: Record<string, string[]>) => void;
+    idSettings: IdFieldSettings;
+    onIdSettingsChange: (settings: IdFieldSettings) => void;
 }
 
-function DomainDesigner({category, domains, subDomains, onDomainsChange, onSubDomainsChange}: DomainDesignerProps)  {
+export function IdDesigner({ category, idSettings, onIdSettingsChange }: IdDesignerProps) {
+    const [optionInput, setOptionInput] = useState<Record<string, string>>({});
 
-    const [domainInput, setDomainInput] = useState<string>('')
-    const [subDomainInput, setSubDomainInput] = useState<string>('')
-    const [selectedDomain, setSelectedDomain] = useState<string>('')
+    const template = idSettings.template ?? '';
+    const placeHolderOptions = idSettings.placeHolderOptions ?? {};
 
-    const trimmedInput = domainInput.trim();
-    const isValidInput = trimmedInput !== '' && !domains.includes(trimmedInput);
+    const placeholders = [...template.matchAll(/\{([^}]+)}/g)].map(m => m[1]);
+    const uniquePlaceholders = [...new Set(placeholders)];
 
-    function addDomain() {
-        if (!isValidInput) return;
-        onDomainsChange([...domains, trimmedInput]);
-        setDomainInput('');
-    }
-
-    function addSubDomain() {
-        const trimmedSubDomain = subDomainInput.trim();
-        if (selectedDomain === '' || trimmedSubDomain === '') return;
-
-        onSubDomainsChange({
-            ...subDomains,
-            [selectedDomain]: [...(subDomains[selectedDomain] || []), trimmedSubDomain]
+    function addOption(name: string) {
+        const value = (optionInput[name] ?? '').trim();
+        const currentOptions = placeHolderOptions[name] ?? [];
+        if (!value || currentOptions.includes(value)) return;
+        onIdSettingsChange({
+            ...idSettings,
+            placeHolderOptions: { ...placeHolderOptions, [name]: [...currentOptions, value] }
         });
-        setSubDomainInput('');
+        setOptionInput(prev => ({ ...prev, [name]: '' }));
     }
 
+    function removeOption(name: string, val: string) {
+        const newOptions = { ...placeHolderOptions, [name]: (placeHolderOptions[name] ?? []).filter((o: string) => o !== val) };
+        onIdSettingsChange({ ...idSettings, placeHolderOptions: newOptions });
+    }
 
     return (
         <div>
-            <p className={styles.sectionLabel} style={{marginTop: '16px'}}>
-                ID domain settings for <strong>{category}</strong>
+            <p className={styles.sectionLabel} style={{ marginTop: '16px' }}>
+                ID template for <strong>{category}</strong> - These settings only apply when domain is set to <strong>none</strong>
             </p>
             <div className={styles.addRow}>
-                <label htmlFor={"domain-input"}>new Domain</label>
+                <label htmlFor="id-template-input">Template</label>
                 <input
-                    id={"domain-input"}
-                    type={"text"}
-                    value={domainInput}
-                    onChange={e => setDomainInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && addDomain()}
+                    id="id-template-input"
+                    type="text"
+                    placeholder="e.g. {subdomain}-{service}-upstream"
+                    value={template}
+                    onChange={e => onIdSettingsChange({ ...idSettings, template: e.target.value })}
                 />
-                <button type="button"  onClick={addDomain} disabled={!isValidInput}>add</button>
             </div>
 
-            {domains.map((domain) => (
-                <div key={domain}>
-                    {domain}
-
-                    {selectedDomain !== domain &&
-                        <button onClick={() => setSelectedDomain(domain)}>Select</button>
-                    }
+            {uniquePlaceholders.map(name => (
+                <div key={name}>
+                    <p className={styles.sectionLabel} style={{ marginTop: '12px' }}>
+                        Options for <strong>{'{' + name + '}'}</strong>
+                    </p>
+                    <ul className={styles.priorityList}>
+                        {(placeHolderOptions[name] ?? []).map((opt: string) => (
+                            <li key={opt} className={styles.priorityItem}>
+                                <span className={styles.fieldName}>{opt}</span>
+                                <button type="button" className={styles.removeButton} onClick={() => removeOption(name, opt)}>x</button>
+                            </li>
+                        ))}
+                    </ul>
+                    <div className={styles.addRow}>
+                        <input
+                            type="text"
+                            placeholder={`Add ${name} option...`}
+                            value={optionInput[name] ?? ''}
+                            onChange={e => setOptionInput(prev => ({ ...prev, [name]: e.target.value }))}
+                            onKeyDown={e => e.key === 'Enter' && addOption(name)}
+                        />
+                        <button type="button" onClick={() => addOption(name)} disabled={!(optionInput[name] ?? '').trim()}>Add</button>
+                    </div>
                 </div>
             ))}
-
-            {selectedDomain &&
-                <div>
-                    <p className={styles.sectionLabel} style={{marginTop: '16px'}}>
-                        Subdomains for <strong>{selectedDomain}</strong>
-                    </p>
-                    <div className={styles.priorityList}>
-                        {subDomains[selectedDomain]?.map((sub) => (
-                            <div key={sub} className={styles.priorityItem}>
-                                <span className={styles.fieldName}>{sub}</span>
-                            </div>
-                        ))}
-                    </div>
-                    <div className={styles.addRow}>
-                        <label htmlFor={"subdomain-input"}>new SubDomain</label>
-                        <input
-                            id={"subdomain-input"}
-                            type={"text"}
-                            value={subDomainInput}
-                            onChange={e => setSubDomainInput(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && addSubDomain()}
-                        />
-                        <button type="button" onClick={addSubDomain} disabled={subDomainInput.trim() === ''}>add</button>
-                    </div>
-                    {subDomains[selectedDomain]?.map((subDomain) => (
-                        <div key={subDomain}>
-                            {subDomain}
-                        </div>
-                    ))}
-                </div>
-            }
         </div>
-    )
+    );
 }

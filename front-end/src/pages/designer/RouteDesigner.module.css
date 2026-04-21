@@ -29,6 +29,17 @@
     width: 140px;
 }
 
+.settingsLink {
+    margin-left: auto;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+
+.settingsLink:hover {
+    color: var(--accent-color);
+}
+
 .addToConfigRow {
     display: flex;
     align-items: center;
@@ -90,8 +101,19 @@
     border-radius: 0 0 8px 8px;
 }
 
+.formCard {
+    position: sticky;
+    top: 80px;
+    max-height: calc(100vh - 100px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
 .routeForm {
     padding: 16px;
+    overflow-y: auto;
+    flex: 1;
 }
 
 .routeForm select {

@@ -5,11 +5,15 @@ export interface DesignerOverrideSettings {
     perCategory: Record<string, Record<string, unknown>>;
 }
 
+export interface DomainConfig {
+    name: string;
+    placeholders: Record<string, string[]>;
+}
+
 interface DesignerSettingsData {
     priorityMap: Record<string, string[]>;
     overrideSettings: DesignerOverrideSettings;
-    domains: string[];
-    subDomains: Record<string, string[]>;
+    domains: DomainConfig[];
 }
 
 const STORAGE_KEY = 'designer-settings';
@@ -31,16 +35,23 @@ export class DesignerSettingsManager {
 
     private readonly priorityMap: Record<string, string[]>;
     private readonly overrideSettings: DesignerOverrideSettings;
-    private readonly domains: string[];
-    private readonly subDomains: Record<string, string[]>;
 
-    constructor(data: DesignerSettingsData = { priorityMap: DEFAULT_PRIORITY_MAP, overrideSettings: DEFAULT_OVERRIDE_SETTINGS, domains: [], subDomains: {} }) {
+    private readonly domains: DomainConfig[];
+
+    constructor(data: DesignerSettingsData = { priorityMap: DEFAULT_PRIORITY_MAP, overrideSettings: DEFAULT_OVERRIDE_SETTINGS, domains: [] }) {
         this.priorityMap = data.priorityMap;
         this.overrideSettings = data.overrideSettings;
-        this.domains = data.domains;
-        this.subDomains = data.subDomains;
+        this.domains = data.domains ?? [];
     }
 
+
+    public getDomains(): DomainConfig[] {
+        return this.domains;
+    }
+
+    public withDomains(domains: DomainConfig[]): DesignerSettingsManager {
+        return new DesignerSettingsManager({ ...this.toData(), domains });
+    }
 
     public getPriorityMap(): Record<string, string[]> {
         return this.priorityMap;
@@ -98,22 +109,6 @@ export class DesignerSettingsManager {
         });
     }
 
-    public getDomains(): string[] {
-        return this.domains;
-    }
-
-    public getSubDomains(): Record<string, string[]> {
-        return this.subDomains;
-    }
-
-    public withDomains(domains: string[]): DesignerSettingsManager {
-        return new DesignerSettingsManager({ ...this.toData(), domains });
-    }
-
-    public withSubDomains(subDomains: Record<string, string[]>): DesignerSettingsManager {
-        return new DesignerSettingsManager({ ...this.toData(), subDomains });
-    }
-
     public serialize(): string {
         return JSON.stringify(this.toData());
     }
@@ -123,7 +118,6 @@ export class DesignerSettingsManager {
             priorityMap: this.priorityMap,
             overrideSettings: this.overrideSettings,
             domains: this.domains,
-            subDomains: this.subDomains,
         };
     }
 
@@ -135,8 +129,16 @@ export class DesignerSettingsManager {
                 global: parsed.overrideSettings?.global ?? {},
                 perCategory: parsed.overrideSettings?.perCategory ?? {},
             },
-            domains: parsed.domains ?? [],
-            subDomains: parsed.subDomains ?? {},
+            domains: (parsed.domains ?? []).map((d: unknown): DomainConfig => {
+                if (typeof d === 'string') return { name: d, placeholders: {} };
+                const dc = d as DomainConfig;
+                // migrate old string values to string[]
+                const placeholders: Record<string, string[]> = {};
+                for (const [k, v] of Object.entries(dc.placeholders ?? {})) {
+                    placeholders[k] = Array.isArray(v) ? v : [v as unknown as string];
+                }
+                return { name: dc.name, placeholders };
+            }),
         });
     }
 
