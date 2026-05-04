@@ -161,6 +161,52 @@
     margin-top: 0.2rem;
 }
 
+.pillList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 16px;
+}
+
+.pill {
+    font-size: 0.78rem;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-dim);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.pill:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.pillActive {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background-color: rgba(253, 195, 0, 0.08);
+}
+
+.newButton {
+    padding: 6px 14px;
+    background: transparent;
+    border: 1px solid var(--border-dim);
+    color: var(--text-secondary);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.875rem;
+}
+
+.newButton:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+}
+
 .warningMessage {
     color: var(--warning-color, #f39c12);
     margin-bottom: 0.25rem;

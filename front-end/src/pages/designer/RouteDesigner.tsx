@@ -1,4 +1,4 @@
-import {useCallback, useMemo, useState} from 'react';
+import {useCallback, useMemo, useState, Fragment} from 'react';
 import {Link} from 'react-router-dom';
 import {useConfigManager} from '../../hooks/useConfigManager';
 import {SchemaFormGenerator, type SchemaField} from '../../actions/SchemaFormGenerator';
@@ -44,10 +44,11 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
 }
 
 export const RouteDesigner = () => {
-    const {category, values, handleChange, handleCategorySwitch} = useFormByCategory('route');
+    const {category, values, handleChange, handleCategorySwitch, loadValues} = useFormByCategory('route');
     const [domain, setDomain] = useState<string>('');
-    const [added, setAdded] = useState<boolean>(false);
+    const [confirmation, setConfirmation] = useState<string>('');
     const [search, setSearch] = useState<string>('');
+    const [editingEntry, setEditingEntry] = useState<{category: string; id: string} | null>(null);
     const [designerSettings, setDesignerSettings] = useDesignerSettings();
 
     const {configManager, schema, schemaLoading, config, setConfig} = useConfigManager();
@@ -74,12 +75,54 @@ export const RouteDesigner = () => {
             ? [...(config[key as keyof typeof config] as unknown[])]
             : [];
 
+        // bunch of fallbacks in case there is no config
         const newConfig = {...(config ?? {}), [key]: [...existing, builtObject]};
         setConfig(newConfig, dump(newConfig, {indent: 2, noRefs: true}));
 
-        setAdded(true);
-        setTimeout(() => setAdded(false), 2000);
+        setConfirmation('Added!');
+        setTimeout(() => setConfirmation(''), 2000);
     }, [builtObject, category, config, setConfig]);
+
+    const handleSaveEdit = useCallback(() => {
+        if (!editingEntry || Object.keys(builtObject).length === 0) return;
+
+        const categoryKey = (editingEntry.category + 's') as keyof typeof config;
+        const idKey = editingEntry.category === 'consumer' ? 'username' : 'id';
+
+        // we just update over the key
+        const currentList = (config?.[categoryKey] as Record<string, unknown>[]) || [];
+        const updatedList = currentList.map(item =>
+            item[idKey] === editingEntry.id ? builtObject : item
+        );
+
+        const newConfig = { ...config, [categoryKey]: updatedList };
+        setConfig(newConfig, dump(newConfig, { indent: 2, noRefs: true }));
+
+        setEditingEntry(null);
+        setConfirmation('Saved!');
+        setTimeout(() => setConfirmation(''), 2000);
+    }, [editingEntry, builtObject, config, setConfig]);
+
+    const handleLoadEntry = useCallback((cat: string, id: string) => {
+        const entry = configManager.getCategoryEntry(cat, id);
+        if (!entry) return;
+
+        if (cat !== category) handleCategorySwitch(cat);
+
+        loadValues(entry);
+        setEditingEntry({category: cat, id});
+    }, [category, configManager, handleCategorySwitch, loadValues]);
+
+    const handleNewEntry = useCallback(() => {
+        setEditingEntry(null);
+        loadValues({});
+    }, [loadValues]);
+
+    const handleManualCategorySwitch = useCallback((newCat: string) => {
+        setEditingEntry(null);
+        handleCategorySwitch(newCat);
+        loadValues({});
+    }, [handleCategorySwitch, loadValues]);
 
     const handleErrorAction = useCallback((action: DesignerAction) => {
         if (action.type === 'set-field') handleChange(action.field, action.value);
@@ -98,6 +141,7 @@ export const RouteDesigner = () => {
 
     const domains = designerSettings.domains;
 
+
     return (
         <div className="container">
             <div className={styles.pageHeader}>
@@ -109,7 +153,7 @@ export const RouteDesigner = () => {
                     label="Category"
                     options={DESIGNER_CATEGORIES.map(c => ({value: c, label: c.replace(/_/g, ' ')}))}
                     value={category}
-                    onChange={c => handleCategorySwitch(c as DesignerCategory)}
+                    onChange={c => handleManualCategorySwitch(c as DesignerCategory)}
                 />
                 {domains.length > 0 && (
                     <PillSelect
@@ -139,20 +183,64 @@ export const RouteDesigner = () => {
                         settings={designerSettings}
                         onSettingsChange={setDesignerSettings}
                     />
-                </div>
 
+                    <div className={`card`}>
+                        <div className={`card-title`}>
+                            Entries per category
+                        </div>
+                        {DESIGNER_CATEGORIES.map((cat) => {
+                            const entries = configManager.getCategoryEntries(cat);
+                            if (entries.length === 0) return null;
+                            return (
+                                <Fragment key={cat}>
+                                    <div className={'card-header'}>{cat}</div>
+                                    <div className={styles.pillList}>
+                                        {entries.map((entry) => {
+                                            const isActive = editingEntry?.category === cat && editingEntry?.id === entry;
+                                            return (
+                                                <button
+                                                    key={entry}
+                                                    className={`${styles.pill}${isActive ? ` ${styles.pillActive}` : ''}`}
+                                                    onClick={() => handleLoadEntry(cat, entry)}
+                                                    type="button"
+                                                >
+                                                    {entry}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </Fragment>
+                            );
+                        })}
+                    </div>
+                </div>
                 {/* Form Fields */}
                 <div className={`card ${styles.formCard}`}>
                     <div className="card-header">{category} Configuration
                         <div className={styles.addToConfigRow}>
-                            <button
-                                className={styles.addButton}
-                                onClick={handleAddToConfig}
-                                disabled={resolvedErrors.length > 0 || Object.keys(builtObject).length === 0}
-                            >
-                                Add to Config
-                            </button>
-                            {added && <span className={styles.addedConfirmation}>Added!</span>}
+                            {editingEntry ? (
+                                <>
+                                    <button
+                                        className={styles.addButton}
+                                        onClick={handleSaveEdit}
+                                        disabled={resolvedErrors.length > 0 || Object.keys(builtObject).length === 0}
+                                    >
+                                        Save Changes
+                                    </button>
+                                    <button className={styles.newButton} onClick={handleNewEntry} type="button">
+                                        New
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    className={styles.addButton}
+                                    onClick={handleAddToConfig}
+                                    disabled={resolvedErrors.length > 0 || Object.keys(builtObject).length === 0}
+                                >
+                                    Add to Config
+                                </button>
+                            )}
+                            {confirmation && <span className={styles.addedConfirmation}>{confirmation}</span>}
                         </div>
                         <input type="search"
                                placeholder="search for a field"

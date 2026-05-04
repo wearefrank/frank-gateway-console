@@ -1,6 +1,6 @@
 import {type ApisixConfig, type RawConfigValidation, type SchemaCatalog, SchemaValidator} from './SchemaValidation';
-import { ValidationLog } from './ValidationLogger';
-import ErrorResolver, { type ResolvedError } from './ErrorResolver';
+import {ValidationLog} from './ValidationLogger';
+import ErrorResolver, {type ResolvedError} from './ErrorResolver';
 
 export class ConfigManager {
     private validator: SchemaValidator;
@@ -72,5 +72,30 @@ export class ConfigManager {
 
     public setFillInDefaults(fillInDefaults: boolean) {
         this.validator.setFillInDefaults(fillInDefaults);
+    }
+
+    public getCategoryEntry(categoryName: string, id: string): Record<string, unknown> | null {
+        if (!this.config) return null;
+        let categoryData = (this.config as Record<string, unknown>)[categoryName + 's'];
+        if (!Array.isArray(categoryData))
+            categoryData = (this.config as Record<string, unknown>)[categoryName];
+        if (!Array.isArray(categoryData)) return null;
+        const idField = categoryName === 'consumer' ? 'username' : 'id';
+        return categoryData.find((e: Record<string, unknown>) => e[idField] === id) ?? null;
+    }
+
+    public getCategoryEntries(categoryName: string): string[] {
+        if (!this.config) return [];
+
+        let categoryData = (this.config as Record<string, unknown>)[categoryName+'s'];
+
+        if (!Array.isArray(categoryData)) {
+            categoryData = (this.config as Record<string, unknown>)[categoryName];
+            if (!Array.isArray(categoryData)) {
+                return []
+            }
+        }
+
+        return categoryData.map(cat => cat['id'] ?? cat['username'])
     }
 }

@@ -1,5 +1,5 @@
 import type {FieldProps} from '../SchemaFormRenderer';
-import {useState} from "react";
+import {useMemo, useState} from "react";
 
 export interface IdFieldSettings {
     prefix?: string;
@@ -11,7 +11,7 @@ type TemplatePart = { kind: 'static'; text: string } | { kind: 'dynamic'; name: 
 
 function parseTemplate(template: string): TemplatePart[] {
     const parts: TemplatePart[] = [];
-    const placeholderRegex = /\{([^}]+)\}/g;
+    const placeholderRegex = /{([^}]+)}/g;
 
     let lastIndex = 0;
     let match = placeholderRegex.exec(template);
@@ -60,6 +60,32 @@ export function IdField({field, value, onChange, settings}: FieldProps) {
     );
 }
 
+function parseIdValue(existing: unknown, parts: TemplatePart[]): Record<string, string> {
+    const empty: Record<string, string> = Object.fromEntries(
+        parts.filter((p): p is Extract<TemplatePart, { kind: 'dynamic' }> => p.kind === 'dynamic')
+             .map(p => [p.name, ''])
+    );
+    if (!existing || typeof existing !== 'string') return empty;
+
+    const result = {...empty};
+    let rem = existing;
+    parts.forEach((part, i) => {
+        if (part.kind === 'static') {
+            if (rem.startsWith(part.text)) rem = rem.slice(part.text.length);
+        } else {
+            const nextStatic = parts.slice(i + 1).find(p => p.kind === 'static') as Extract<TemplatePart, { kind: 'static' }> | undefined;
+            const endIdx = nextStatic ? rem.indexOf(nextStatic.text) : rem.length;
+            if (endIdx !== -1) {
+                result[part.name] = rem.slice(0, endIdx);
+                rem = rem.slice(endIdx);
+            }
+        }
+    });
+
+    const reassembled = parts.map(p => p.kind === 'static' ? p.text : result[p.name] ?? '').join('');
+    return reassembled === existing ? result : empty;
+}
+
 function TemplatedIdField({ field, value, onChange, template, placeHolderOptions }: {
     field: FieldProps['field'];
     value: unknown;
@@ -67,49 +93,21 @@ function TemplatedIdField({ field, value, onChange, template, placeHolderOptions
     template: string;
     placeHolderOptions: Record<string, string[]>;
 }) {
-    const parts = parseTemplate(template);
+    const parts = useMemo(() => parseTemplate(template), [template]);
 
+    const [segments, setSegments] = useState<Record<string, string>>(() => parseIdValue(value, parts));
+    const [syncedValue, setSyncedValue] = useState<unknown>(value);
 
-    // function to deconstruct existing id string to fill in the form
-    function initSegments(): Record<string, string> {
-        // Initialize dynamic segments with empty strings
-        const init: Record<string, string> = Object.fromEntries(
-            parts.filter((p): p is Extract<TemplatePart, { kind: 'dynamic' }> => p.kind === 'dynamic')
-                 .map(p => [p.name, ''])
-        );
-
-        const existing = (value as string) ?? '';
-        if (!existing) return init;
-
-        // attempt to parse the existing value back into segments based on the template
-        let rem = existing;
-        parts.forEach((part, i) => {
-            if (part.kind === 'static') {
-                // skip over static text if it matches the current position
-                if (rem.startsWith(part.text)) {
-                    rem = rem.slice(part.text.length);
-                }
-            } else {
-                // find the next static part to determine where this dynamic segment ends
-                const nextStatic = parts.slice(i + 1).find(p => p.kind === 'static') as Extract<TemplatePart, { kind: 'static' }>;
-                const endIdx = nextStatic ? rem.indexOf(nextStatic.text) : rem.length;
-
-                // extract the value for this placeholder
-                if (endIdx !== -1) {
-                    init[part.name] = rem.slice(0, endIdx);
-                    rem = rem.slice(endIdx);
-                }
-            }
-        });
-        return init;
+    if (value !== syncedValue) {
+        setSyncedValue(value);
+        setSegments(parseIdValue(value, parts));
     }
-
-    const [segments, setSegments] = useState<Record<string, string>>(initSegments);
 
     function handleSegmentChange(name: string, val: string) {
         const next = { ...segments, [name]: val };
         setSegments(next);
         const joined = parts.map(p => p.kind === 'static' ? p.text : next[(p as {kind:'dynamic';name:string}).name] ?? '').join('');
+        setSyncedValue(joined);
         onChange?.(field.name, joined || undefined);
     }
 

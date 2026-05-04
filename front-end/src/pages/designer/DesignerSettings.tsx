@@ -59,10 +59,10 @@ export function DesignerSettings({category, fields, settings, onSettingsChange}:
             </div>
             {!collapsed && (
                 <div className={styles.body}>
-                    <p className={styles.sectionLabel}>Priority fields for <strong>{category}</strong></p>
+                    <p className={styles.sectionLabel}>Pinned fields for <strong>{category}</strong></p>
                     <ul className={styles.priorityList}>
                         {currentList.length === 0 && (
-                            <li className={styles.emptyState}>No priority fields — add one below</li>
+                            <li className={styles.emptyState}>No pinned fields — add one below</li>
                         )}
                         {currentList.map((name, i) => (
                             <li key={name} className={styles.priorityItem}>

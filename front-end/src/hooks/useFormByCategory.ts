@@ -21,5 +21,9 @@ export function useFormByCategory(initialCategory: string) {
         setCategory(newCategory);
     }, [category, values, categoryValMap]);
 
-    return {category, values, handleChange, handleCategorySwitch};
+    const loadValues = useCallback((newValues: Record<string, unknown>) => {
+        setValues(newValues);
+    }, []);
+
+    return {category, values, handleChange, handleCategorySwitch, loadValues};
 }

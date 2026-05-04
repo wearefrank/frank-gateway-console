@@ -8,19 +8,19 @@ interface FieldBase {
     defaultValue?: unknown;
 }
 
+// each field type carries only the extra data that its renderer actually needs —
+// e.g. a select needs options, a number needs min/max, a map doesn't need either
 export interface TextField extends FieldBase { type: 'text'; pattern?: string }
 export interface NumberField extends FieldBase { type: 'number'; minimum?: number; maximum?: number }
 export interface CheckboxField extends FieldBase { type: 'checkbox' }
 export interface SelectField extends FieldBase { type: 'select'; options: string[] }
 export interface ArrayField extends FieldBase { type: 'array'; schema: JsonSchema }
+export interface ObjectArrayField extends FieldBase { type: 'object-array'; itemFields: SchemaField[] }
 export interface ObjectField extends FieldBase { type: 'object'; fields: SchemaField[] }
 export interface MapField extends FieldBase { type: 'map'; valueSchema?: JsonSchema }
 export interface PluginField extends FieldBase { type: 'plugin'; schema: JsonSchema }
 
-// combination of above-defined interfaces
-export type SchemaField = TextField | NumberField | CheckboxField | SelectField | ArrayField | ObjectField | MapField | PluginField;
-
-// --- Generator ---
+export type SchemaField = TextField | NumberField | CheckboxField | SelectField | ArrayField | ObjectArrayField | ObjectField | MapField | PluginField;
 
 export class SchemaFormGenerator {
     private readonly schema: SchemaCatalog;
@@ -59,6 +59,8 @@ export class SchemaFormGenerator {
             Array.isArray(categorySchema.required) ? categorySchema.required : []
         );
 
+        // onlyKeys lets callers request a subset (e.g. for the settings priority list preview)
+        // we filter instead of just mapping so missing keys don't produce undefined entries
         const keysToMap = onlyKeys
             ? onlyKeys.filter(key => key in properties)
             : Object.keys(properties);
@@ -81,6 +83,12 @@ export class SchemaFormGenerator {
             return this.buildSelectField(base, schema.enum);
         }
 
+        if (Array.isArray(schema.anyOf) || Array.isArray(schema.oneOf)) {
+            const variants = (schema.anyOf ?? schema.oneOf) as Record<string, any>[];
+            const chosen = this.pickBestVariant(variants);
+            return this.buildField(name, { ...schema, ...chosen, anyOf: undefined, oneOf: undefined }, required);
+        }
+
         switch (schema.type) {
             case 'array':
                 return this.buildArrayField(base, schema);
@@ -95,8 +103,6 @@ export class SchemaFormGenerator {
                 return this.buildTextField(base, schema);
         }
     }
-
-    // --- return types ---
 
     private buildSelectField(base: FieldBase, options: unknown[]): SelectField {
         return { ...base, type: 'select', options: options.map(String) };
@@ -125,6 +131,7 @@ export class SchemaFormGenerator {
 
     private buildObjectField(base: FieldBase, schema: Record<string, any>): ObjectField | MapField | PluginField {
 
+        // plugins is a special case the renderer needs the full catalog to look up each plugin's
         if (base.name === 'plugins') {
             return {
                 ...base,
@@ -153,10 +160,27 @@ export class SchemaFormGenerator {
             return { ...base, type: 'object', fields };
         }
 
+        // no properties defined, we still return an object type so the renderer can show something
         return { ...base, type: 'object', fields: [] };
     }
 
-    private buildArrayField(base: FieldBase, schema: Record<string, unknown>): ArrayField {
-        return { ...base, type: 'array', schema: schema };
+    private pickBestVariant(variants: Record<string, any>[]): Record<string, any> {
+
+
+        const arrayVariant = variants.find(v => v.type === 'array');
+        if (arrayVariant) return arrayVariant;
+
+        const objectWithProps = variants.find(v => v.type === 'object' && v.properties);
+        if (objectWithProps) return objectWithProps;
+        return variants[0];
+    }
+
+    private buildArrayField(base: FieldBase, schema: Record<string, unknown>): ArrayField | ObjectArrayField {
+        const items = schema.items as Record<string, any> | undefined;
+
+        if (items?.type === 'object') {
+            return { ...base, type: 'object-array', itemFields: this.getFieldsFromSchema(items) };
+        }
+        return { ...base, type: 'array', schema };
     }
 }

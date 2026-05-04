@@ -162,11 +162,11 @@ export class SchemaValidator {
                 }
             });
 
-            // Fulfill the AJV custom keyword contract
+            // fulfill the AJV custom keyword contract
             if (!allPluginsValid) {
                 validatePlugins.errors = customAjvErrors;
             } else {
-                validatePlugins.errors = undefined; // Must be explicitly cleared on success
+                validatePlugins.errors = undefined;
             }
 
             return allPluginsValid;
@@ -287,7 +287,6 @@ export class SchemaValidator {
         if (!this.isJsonSchema(schema)) return;
 
         const numericKeys = ['minLength'];
-        // const numericKeys = [];
 
         for (const key in schema) {
             if (numericKeys.includes(key) && typeof schema[key] === 'string') {
@@ -333,16 +332,16 @@ export class SchemaValidator {
         }
     }
 
-    public setSchema(schema: SchemaCatalog | null) {
-        this.schema = schema;
-    }
-
     public setConfig(config: ApisixConfig) {
         this.config = config;
     }
 
     public getConfig(): ApisixConfig | null {
         return this.config;
+    }
+
+    public setSchema(schema: SchemaCatalog | null) {
+        this.schema = schema;
     }
 
     public getSchema(): SchemaCatalog | null {
