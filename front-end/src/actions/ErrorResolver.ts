@@ -350,7 +350,7 @@ class ErrorResolver {
                 path: exactPath,
                 errorObject: entry,
                 sourceError: wrapper,
-                hint: defaultValue !== undefined ? { field, type: 'direct', default: propDef.default } : undefined,
+                hint: defaultValue !== undefined ? { field: exactPath, type: 'direct', default: propDef.default } : undefined,
             }];
         }
         return [];

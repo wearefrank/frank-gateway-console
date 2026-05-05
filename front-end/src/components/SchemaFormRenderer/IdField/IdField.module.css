@@ -1,0 +1,124 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.pillRow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    row-gap: 6px;
+}
+
+.staticPart {
+    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+input.pill,
+select.pill {
+    border-radius: 20px;
+    border: 1.5px solid var(--border-dim);
+    background: var(--input-bg);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: width 0.1s, border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    outline: none;
+    overflow: hidden;
+}
+
+input.pillFilled,
+select.pillFilled {
+    border-color: var(--border-color);
+}
+
+input.pillInput {
+    padding: 3px 10px;
+    color: var(--text-primary);
+}
+
+input.pillInput:focus {
+    border-color: var(--accent-color);
+    background: rgba(253, 195, 0, 0.06);
+    box-shadow: 0 0 0 2px rgba(253, 195, 0, 0.2);
+}
+
+.pillSelectWrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.pillSelectWrapper .pillArrow {
+    position: absolute;
+    right: 4px;
+    pointer-events: none;
+    font-size: 18px;
+    color: var(--text-secondary);
+    line-height: 1;
+}
+
+select.pillSelect {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 3px 24px 3px 10px;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+select.pillSelectFilled {
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+select.pillSelectFilled option {
+    background-color: var(--input-bg);
+}
+
+.preview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-dim);
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.previewLabel {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.previewValue {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    letter-spacing: 0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.previewValueFilled {
+    color: var(--accent-color);
+}
+
+.legacyWrapper {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+}

@@ -7,13 +7,13 @@
 }
 
 .configCard {
-    padding: 0 !important;
+    padding: 0;
     overflow: hidden;
     position: relative;
 }
 
 .btnIcon {
-    padding: 2px 8px !important;
+    padding: 2px 8px;
 }
 
 .toggleGroup {

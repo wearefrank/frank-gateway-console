@@ -75,14 +75,14 @@
     cursor: default;
 }
 
-.removeButton {
-    border-color: var(--error-color, #e74c3c) !important;
-    color: var(--error-color, #e74c3c) !important;
+.itemActions .removeButton {
+    border-color: var(--error-color);
+    color: var(--error-color);
 }
 
-.removeButton:hover:not(:disabled) {
-    background: var(--error-color, #e74c3c) !important;
-    color: #fff !important;
+.itemActions .removeButton:hover:not(:disabled) {
+    background: var(--error-color);
+    color: #fff;
 }
 
 .addRow {

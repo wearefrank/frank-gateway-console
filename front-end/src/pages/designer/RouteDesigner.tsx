@@ -18,6 +18,14 @@ export const DESIGNER_CATEGORIES = [
 
 export type DesignerCategory = typeof DESIGNER_CATEGORIES[number];
 
+function deepSet(obj: Record<string, unknown>, path: string[], value: unknown): Record<string, unknown> {
+    const [head, ...rest] = path;
+    if (rest.length === 0) {
+        return {...obj, [head]: value};
+    }
+    return {...obj, [head]: deepSet((obj[head] as Record<string, unknown>) ?? {}, rest, value)};
+}
+
 function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[]): Record<string, unknown> {
     const result: Record<string, unknown> = {};
     const fieldMap = new Map(fields.map(f => [f.name, f]));
@@ -125,9 +133,18 @@ export const RouteDesigner = () => {
     }, [handleCategorySwitch, loadValues]);
 
     const handleErrorAction = useCallback((action: DesignerAction) => {
-        if (action.type === 'set-field') handleChange(action.field, action.value);
+        if (action.type === 'set-field') {
+            const segments = action.field.replace(/^\//, '').split('/').filter(Boolean);
+            if (segments.length <= 1) {
+                handleChange(segments[0] ?? action.field, action.value);
+            } else {
+                const [topKey, ...rest] = segments;
+                const updated = deepSet((values[topKey] as Record<string, unknown>) ?? {}, rest, action.value);
+                handleChange(topKey, updated);
+            }
+        }
         if (action.type === 'set-search') setSearch(action.term);
-    }, [handleChange]);
+    }, [handleChange, values]);
 
     if (schemaLoading) return <div>Loading....</div>;
     if (!configManager || !schema) return <div>Config manager not available</div>;
@@ -217,7 +234,7 @@ export const RouteDesigner = () => {
                 {/* Form Fields */}
                 <div className={`card ${styles.formCard}`}>
                     <div className="card-header">{category} Configuration
-                        <div className={styles.addToConfigRow}>
+                        <div className={styles.headerActionRow}>
                             {editingEntry ? (
                                 <>
                                     <button

@@ -396,6 +396,14 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
         () => objValue as Record<string, Record<string, unknown>>
     );
 
+    const [syncedValue, setSyncedValue] = useState<unknown>(value);
+    if (value !== syncedValue) {
+        setSyncedValue(value);
+        const newObjValue = (value as Record<string, unknown>) ?? {};
+        setActivePlugins(Object.keys(newObjValue));
+        setPluginValues(newObjValue as Record<string, Record<string, unknown>>);
+    }
+
     if (!('schema' in field) || typeof field.schema.plugins !== 'object' || !field.schema.plugins) {
         return <div>No schema</div>;
     }
@@ -480,11 +488,11 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
             {activePlugins.map(name => {
                 const fields = getPluginFields(name);
                 return (
-                    <div key={name} className={styles.pluginSection}>
+                    <CollapsibleSection key={name} collapsePreviewNames={[name]}>
                         <div className={styles.pluginHeader}>
                             <span className={styles.fieldLabel}>{name}</span>
                             <button type="button" className={styles.mapDelete}
-                                    onClick={() => handleRemovePlugin(name)}>X</button>
+                                    onClick={() => handleRemovePlugin(name)}>×</button>
                         </div>
                         {fields.length > 0 ? (
                             <SchemaFormRenderer
@@ -496,7 +504,7 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
                         ) : (
                             <div className={styles.selectDescription}>No configurable properties</div>
                         )}
-                    </div>
+                    </CollapsibleSection>
                 );
             })}
         </div>

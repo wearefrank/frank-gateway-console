@@ -14,9 +14,9 @@
     flex-shrink: 0;
 }
 
-.statusDotOnline   { background-color: #22c55e; }
-.statusDotOffline  { background-color: #ef4444; }
-.statusDotChecking { background-color: #94a3b8; }
+.statusDotOnline   { background-color: var(--success-color); }
+.statusDotOffline  { background-color: var(--error-color); }
+.statusDotChecking { background-color: var(--text-secondary); }
 
 .statusRow {
     display: flex;
@@ -59,7 +59,7 @@
 }
 
 .tag {
-    background: var(--color-surface-2, #e2e8f0);
+    background: var(--bg-tertiary);
     border-radius: 4px;
     padding: 2px 8px;
     font-size: 0.75rem;

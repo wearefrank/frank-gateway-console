@@ -39,7 +39,7 @@
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--accent-color);
-    color: #000000;
+    color: #000;
     cursor: pointer;
 }
 
@@ -65,24 +65,24 @@
 }
 
 .mapSeparator {
-    color: var(--border-color, #ccc);
+    color: var(--border-color);
     font-weight: bold;
 }
 
 .mapDelete {
     padding: 2px 8px;
-    border: 1px solid var(--border-color, #ccc);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     background: transparent;
     cursor: pointer;
-    color: var(--error-color, #c00);
+    color: var(--error-color);
     font-size: 1em;
 }
 
 .pluginSection {
     margin-top: 10px;
     padding-left: 16px;
-    border-left: 2px solid var(--border-color, #ccc);
+    border-left: 2px solid var(--border-color);
 }
 
 .pluginHeader {
@@ -95,7 +95,7 @@
 .addButton {
     align-self: flex-start;
     padding: 4px 10px;
-    border: 1px solid var(--border-color, #ccc);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     background: transparent;
     cursor: pointer;
