@@ -1,5 +1,6 @@
 import type {JsonSchema, SchemaCatalog} from "./SchemaValidation.ts";
 
+type SchemaNode = Record<string, unknown>;
 
 interface FieldBase {
     name: string;
@@ -38,7 +39,7 @@ export class SchemaFormGenerator {
 
     public getFieldsFromSchema(schema: JsonSchema): SchemaField[] {
         if (!schema.properties) return [];
-        const properties = schema.properties as Record<string, Record<string, any>>;
+        const properties = schema.properties as Record<string, SchemaNode>;
         const requiredFields = new Set<string>(
             Array.isArray(schema.required) ? schema.required : []
         );
@@ -53,7 +54,7 @@ export class SchemaFormGenerator {
             return [];
         }
 
-        const properties = categorySchema.properties as Record<string, Record<string, any>>;
+        const properties = categorySchema.properties as Record<string, SchemaNode>;
 
         // get required fields
         const requiredFields = new Set<string>(
@@ -71,11 +72,11 @@ export class SchemaFormGenerator {
         );
     }
 
-    private buildField(name: string, schema: Record<string, any>, required: boolean): SchemaField {
+    private buildField(name: string, schema: SchemaNode, required: boolean): SchemaField {
         const base: FieldBase = {
             name,
             required,
-            description: schema.description,
+            description: typeof schema.description === 'string' ? schema.description : undefined,
             defaultValue: schema.default,
         };
 
@@ -85,7 +86,7 @@ export class SchemaFormGenerator {
         }
 
         if (Array.isArray(schema.anyOf) || Array.isArray(schema.oneOf)) {
-            const variants = (schema.anyOf ?? schema.oneOf) as Record<string, any>[];
+            const variants = (schema.anyOf ?? schema.oneOf) as SchemaNode[];
             const chosen = this.pickBestVariant(variants);
             return this.buildField(name, { ...schema, ...chosen, anyOf: undefined, oneOf: undefined }, required);
         }
@@ -113,24 +114,24 @@ export class SchemaFormGenerator {
         return { ...base, type: 'checkbox' };
     }
 
-    private buildNumberField(base: FieldBase, schema: Record<string, any>): NumberField {
+    private buildNumberField(base: FieldBase, schema: SchemaNode): NumberField {
         return {
             ...base,
             type: 'number',
-            minimum: schema.minimum,
-            maximum: schema.maximum
+            minimum: typeof schema.minimum === 'number' ? schema.minimum : undefined,
+            maximum: typeof schema.maximum === 'number' ? schema.maximum : undefined,
         };
     }
 
-    private buildTextField(base: FieldBase, schema: Record<string, any>): TextField {
+    private buildTextField(base: FieldBase, schema: SchemaNode): TextField {
         return {
             ...base,
             type: 'text',
-            pattern: schema.pattern
+            pattern: typeof schema.pattern === 'string' ? schema.pattern : undefined,
         };
     }
 
-    private buildObjectField(base: FieldBase, schema: Record<string, any>): ObjectField | MapField | PluginField {
+    private buildObjectField(base: FieldBase, schema: SchemaNode): ObjectField | MapField | PluginField {
 
         // plugins is a special case the renderer needs the full catalog to look up each plugin's
         if (base.name === 'plugins') {
@@ -143,15 +144,16 @@ export class SchemaFormGenerator {
 
         // patternProperties or additionalProperties (as a schema, not false) → free-form key→value map
         if (schema.patternProperties || (schema.additionalProperties && schema.additionalProperties !== false)) {
-            const valueSchema = schema.patternProperties
-                ? Object.values(schema.patternProperties)[0] as JsonSchema
-                : schema.additionalProperties;
+            const patternProps = schema.patternProperties as SchemaNode | undefined;
+            const valueSchema = patternProps
+                ? Object.values(patternProps)[0] as JsonSchema
+                : schema.additionalProperties as JsonSchema;
             return { ...base, type: 'map', valueSchema };
         }
 
         // structured object with known properties → recurse
         if (schema.properties) {
-            const properties = schema.properties as Record<string, Record<string, any>>;
+            const properties = schema.properties as Record<string, SchemaNode>;
             const requiredFields = new Set<string>(
                 Array.isArray(schema.required) ? schema.required : []
             );
@@ -165,9 +167,7 @@ export class SchemaFormGenerator {
         return { ...base, type: 'object', fields: [] };
     }
 
-    private pickBestVariant(variants: Record<string, any>[]): Record<string, any> {
-
-
+    private pickBestVariant(variants: SchemaNode[]): SchemaNode {
         const arrayVariant = variants.find(v => v.type === 'array');
         if (arrayVariant) return arrayVariant;
 
@@ -176,11 +176,11 @@ export class SchemaFormGenerator {
         return variants[0];
     }
 
-    private buildArrayField(base: FieldBase, schema: Record<string, unknown>): ArrayField | ObjectArrayField {
-        const items = schema.items as Record<string, any> | undefined;
+    private buildArrayField(base: FieldBase, schema: SchemaNode): ArrayField | ObjectArrayField {
+        const items = schema.items as SchemaNode | undefined;
 
         if (items?.type === 'object') {
-            return { ...base, type: 'object-array', itemFields: this.getFieldsFromSchema(items) };
+            return { ...base, type: 'object-array', itemFields: this.getFieldsFromSchema(items as JsonSchema) };
         }
         return { ...base, type: 'array', schema };
     }

@@ -15,8 +15,6 @@ import java.util.List;
 @Service
 public class YamlStoreService {
 
-    private static final String REMOTE_PATH = "/tmp/";
-
     private final File file = new File("apisix_config.yaml");
     private final ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -46,7 +44,7 @@ public class YamlStoreService {
             try {
                 boolean created = file.createNewFile();
                 if (created) {
-                    YamlApisixConfig initial = new YamlApisixConfig("", "http://127.0.0.1", 9180, 9092, 9091, new ArrayList<>());
+                    YamlApisixConfig initial = new YamlApisixConfig("http://127.0.0.1", 9092, 9091, new ArrayList<>());
                     writeConfig(initial);
                 }
             } catch (IOException e) {
@@ -55,12 +53,10 @@ public class YamlStoreService {
         }
     }
 
-    public void saveApisixConfig(String newKey, String host, int adminPort, int controlPort, int metricsPort) {
+    public void saveApisixConfig(String host, int controlPort, int metricsPort) {
         YamlApisixConfig current = readConfig();
         YamlApisixConfig updated = new YamlApisixConfig(
-                newKey,
                 host,
-                adminPort,
                 controlPort,
                 metricsPort,
                 current.routes() != null ? current.routes() : new ArrayList<>()
@@ -70,17 +66,6 @@ public class YamlStoreService {
 
     public YamlApisixConfig getFullConfig() {
         return readConfig();
-    }
-
-    public String getApiSixKey() {
-        return getFullConfig().adminKey();
-    }
-
-    public String getAdminUrl() {
-        YamlApisixConfig config = getFullConfig();
-        String host = config.host() != null ? config.host() : "http://127.0.0.1";
-        int port = config.adminPort() != null ? config.adminPort() : 9180;
-        return host + ":" + port;
     }
 
     public String getControlUrl() {
@@ -108,9 +93,7 @@ public class YamlStoreService {
         routes.add(route);
 
         YamlApisixConfig updated = new YamlApisixConfig(
-                current.adminKey(),
                 current.host(),
-                current.adminPort(),
                 current.controlPort(),
                 current.metricsPort(),
                 routes
@@ -125,9 +108,7 @@ public class YamlStoreService {
         routes.removeIf(r -> r.id().equals(routeId));
 
         YamlApisixConfig updated = new YamlApisixConfig(
-                current.adminKey(),
                 current.host(),
-                current.adminPort(),
                 current.controlPort(),
                 current.metricsPort(),
                 routes

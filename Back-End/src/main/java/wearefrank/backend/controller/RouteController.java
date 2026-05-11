@@ -2,7 +2,6 @@ package wearefrank.backend.controller;
 
 import org.springframework.web.bind.annotation.*;
 import wearefrank.backend.dto.RouteDto;
-import wearefrank.backend.service.ApisixClient;
 import wearefrank.backend.service.YamlStoreService;
 
 import java.util.List;
@@ -14,21 +13,14 @@ import java.util.UUID;
 public class RouteController {
 
     private final YamlStoreService yamlStoreService;
-    private final ApisixClient apisixClient;
 
-    public RouteController(YamlStoreService yamlStoreService, ApisixClient apisixClient) {
+    public RouteController(YamlStoreService yamlStoreService) {
         this.yamlStoreService = yamlStoreService;
-        this.apisixClient = apisixClient;
     }
 
     @GetMapping("/saved")
     public List<RouteDto> getAllRoutes() {
         return yamlStoreService.getRoutes();
-    }
-
-    @GetMapping("/live")
-    public String getLiveRoutes() {
-        return apisixClient.adminGet("/apisix/admin/routes");
     }
 
     @PostMapping

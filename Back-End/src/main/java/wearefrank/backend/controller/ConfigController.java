@@ -23,9 +23,7 @@ public class ConfigController {
     public ConfigDto.ApisixConfig getConfig() {
         YamlApisixConfig config = yamlStoreService.getFullConfig();
         return new ConfigDto.ApisixConfig(
-                config.adminKey() != null ? config.adminKey() : "",
                 config.host() != null ? config.host() : "http://127.0.0.1",
-                config.adminPort() != null ? config.adminPort() : 9180,
                 config.controlPort() != null ? config.controlPort() : 9092,
                 config.metricsPort() != null ? config.metricsPort() : 9091
         );
@@ -33,16 +31,12 @@ public class ConfigController {
 
     @PostMapping
     public void saveConfig(@RequestBody ConfigDto.ApisixConfig config) {
-        yamlStoreService.saveApisixConfig(config.key(), config.host(), config.adminPort(), config.controlPort(), config.metricsPort());
+        yamlStoreService.saveApisixConfig(config.host(), config.controlPort(), config.metricsPort());
     }
 
     @PostMapping("/check")
-    public boolean checkConnection(@RequestBody ConfigDto.ApisixConfig payload,
-                                   @RequestParam(defaultValue = "admin") String api) {
-        if ("control".equals(api)) {
-            return apisixClient.checkControl(payload.host(), payload.controlPort());
-        }
-        return apisixClient.checkAdmin(payload.host(), payload.adminPort(), payload.key());
+    public boolean checkConnection(@RequestBody ConfigDto.ApisixConfig payload) {
+        return apisixClient.checkControl(payload.host(), payload.controlPort());
     }
 
     @GetMapping("/check")

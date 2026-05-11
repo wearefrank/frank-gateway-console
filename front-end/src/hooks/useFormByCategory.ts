@@ -16,10 +16,13 @@ export function useFormByCategory(initialCategory: string) {
     }, []);
 
     const handleCategorySwitch = useCallback((newCategory: string) => {
-        setCategoryValMap(prev => ({...prev, [category]: values}));
-        setValues(categoryValMap[newCategory] ?? {});
+        setCategoryValMap(prev => {
+            const updated = {...prev, [category]: values};
+            setValues(updated[newCategory] ?? {});
+            return updated;
+        });
         setCategory(newCategory);
-    }, [category, values, categoryValMap]);
+    }, [category, values]);
 
     const loadValues = useCallback((newValues: Record<string, unknown>) => {
         setValues(newValues);

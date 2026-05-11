@@ -11,10 +11,6 @@ public class SchemaService {
         this.apisixClient = apisixClient;
     }
 
-    public String getRouteSchema() {
-        return apisixClient.adminGet("/apisix/admin/schema/route");
-    }
-
     public String getFullSchema() {
         return apisixClient.controlGet("/v1/schema");
     }

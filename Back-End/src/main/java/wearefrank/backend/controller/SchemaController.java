@@ -17,11 +17,6 @@ public class SchemaController {
         this.schemaService = schemaService;
     }
 
-    @GetMapping("/route")
-    public String getRouteSchema() {
-        return schemaService.getRouteSchema();
-    }
-
     @GetMapping()
     public String getFullSchema() {
         return schemaService.getFullSchema();

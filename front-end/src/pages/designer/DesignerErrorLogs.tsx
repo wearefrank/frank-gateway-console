@@ -16,9 +16,11 @@ export function DesignerErrorLogs({resolvedErrors, onAction}: DesignerErrorLogsP
             <div className="card-header">Validation</div>
             <div className={styles.validationBody}>
                 {resolvedErrors.map((err, i) => (
-                    <div key={i} className={styles.errorMessage}>
-                        {err.path && <strong>[{err.path}] </strong>}
-                        {err.message}
+                    <div key={i} className={styles.logCard}>
+                        <div className={styles.errorMessage}>
+                            {err.path && <strong>[{err.path}] </strong>}
+                            {err.message}
+                        </div>
                         <ErrorActions error={err} onAction={onAction} />
                     </div>
                 ))}
