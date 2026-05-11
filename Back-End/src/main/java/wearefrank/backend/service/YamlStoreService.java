@@ -4,13 +4,11 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.springframework.stereotype.Service;
-import wearefrank.backend.dto.RouteDto;
 import wearefrank.backend.dto.YamlApisixConfig;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.List;
 
 @Service
 public class YamlStoreService {
@@ -82,37 +80,4 @@ public class YamlStoreService {
         return host + ":" + port;
     }
 
-    public List<RouteDto> getRoutes() {
-        YamlApisixConfig config = readConfig();
-        return config.routes() != null ? config.routes() : new ArrayList<>();
-    }
-
-    public void addRoute(RouteDto route) {
-        YamlApisixConfig current = readConfig();
-        ArrayList<RouteDto> routes = current.routes() != null ? current.routes() : new ArrayList<>();
-        routes.add(route);
-
-        YamlApisixConfig updated = new YamlApisixConfig(
-                current.host(),
-                current.controlPort(),
-                current.metricsPort(),
-                routes
-        );
-        writeConfig(updated);
-    }
-
-    public void deleteRoute(String routeId) {
-        YamlApisixConfig current = readConfig();
-        ArrayList<RouteDto> routes = current.routes() != null ? current.routes() : new ArrayList<>();
-
-        routes.removeIf(r -> r.id().equals(routeId));
-
-        YamlApisixConfig updated = new YamlApisixConfig(
-                current.host(),
-                current.controlPort(),
-                current.metricsPort(),
-                routes
-        );
-        writeConfig(updated);
-    }
 }
