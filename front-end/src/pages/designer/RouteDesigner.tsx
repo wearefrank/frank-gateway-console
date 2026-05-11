@@ -129,8 +129,7 @@ export const RouteDesigner = () => {
     const handleManualCategorySwitch = useCallback((newCat: string) => {
         setEditingEntry(null);
         handleCategorySwitch(newCat);
-        loadValues({});
-    }, [handleCategorySwitch, loadValues]);
+    }, [handleCategorySwitch]);
 
     const handleErrorAction = useCallback((action: DesignerAction) => {
         if (action.type === 'set-field') {

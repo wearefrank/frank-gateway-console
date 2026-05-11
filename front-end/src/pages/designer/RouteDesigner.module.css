@@ -110,11 +110,20 @@
 
 .validationBody {
     padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.logCard {
+    padding: 8px 12px;
+    background-color: var(--bg-tertiary);
+    border-left: 3px solid var(--error-color, #e74c3c);
+    border-radius: 4px;
 }
 
 .errorMessage {
     color: var(--error-color, #e74c3c);
-    margin-bottom: 0.25rem;
 }
 
 .errorActions {
