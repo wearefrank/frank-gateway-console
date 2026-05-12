@@ -10,6 +10,7 @@ export interface FieldProps {
     value?: unknown;
     onChange?: (name: string, value: unknown) => void;
     searchTerm?: string;
+    settings?: unknown;
 }
 
 // --- field components ---
@@ -90,23 +91,46 @@ function SelectField({field, value, onChange}: FieldProps) {
     const defaultLabel = field.defaultValue != null
         ? `-- select (default: ${field.defaultValue}) --`
         : '-- select --';
+
+    const selectedIndex = field.options.findIndex(opt => opt.value === value);
+    const selectValue = selectedIndex !== -1 ? String(selectedIndex) : '';
+
+    function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+        const idx = e.target.value;
+        if (idx === '') {
+            onChange?.(field.name, undefined);
+            return;
+        }
+        onChange?.(field.name, field.options[Number(idx)].value);
+    }
+
     return (
         <>
             <div className={styles.selectDescription}>{placeholder}</div>
             <select id={field.name} name={field.name} required={field.required}
-                    value={(value as string) ?? ''}
-                    onChange={e => onChange?.(field.name, e.target.value || undefined)}>
+                    value={selectValue}
+                    onChange={handleChange}>
                 <option value="">{defaultLabel}</option>
-                {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                {field.options.map((opt, idx) => <option key={opt.label} value={idx}>{opt.label}</option>)}
             </select>
         </>
     );
 }
 
 function ArrayTextInput({field, value, onChange}: FieldProps) {
-    const [entries, setEntries] = useState<{ id: number; value: string }[]>([]);
-    const nextId = useRef(0);
-    const [inputValue, setInputValue] = useState<string>((value as string) ?? '');
+    const [entries, setEntries] = useState<{ id: number; value: string }[]>(() =>
+        Array.isArray(value) ? value.map((v, i) => ({ id: i, value: String(v) })) : []
+    );
+    const nextId = useRef(Array.isArray(value) ? value.length : 0);
+    const [inputValue, setInputValue] = useState<string>('');
+    const [syncedValue, setSyncedValue] = useState<unknown>(value);
+
+    if (value !== syncedValue) {
+        setSyncedValue(value);
+        const loaded = Array.isArray(value) ? value.map((v, i) => ({ id: i, value: String(v) })) : [];
+        nextId.current = loaded.length;
+        setEntries(loaded);
+    }
 
     if (field.type !== 'array') return null;
 
@@ -141,6 +165,12 @@ function ArrayTextInput({field, value, onChange}: FieldProps) {
     function handleDelete(id: number) {
         const updated = entries.filter(entry => entry.id !== id);
         setEntries(updated);
+
+        if (updated.length === 0) {
+            onChange?.(field.name, undefined);
+            return
+        }
+
         onChange?.(field.name, updated.map(e => e.value));
     }
 
@@ -212,13 +242,84 @@ function ArrayField({field, value, onChange}: FieldProps) {
     return <ArrayTextInput field={field} value={value} onChange={onChange}/>;
 }
 
-function MapField({field, onChange}: FieldProps) {
-    const [entries, setEntries] = useState<{id: number; key: string; val: string}[]>([]);
-    const nextId = useRef(0);
+function ArrayObjectField({field, value, onChange, searchTerm}: FieldProps) {
+    if (field.type !== 'object-array') return null;
+
+    const items = Array.isArray(value) ? (value as Record<string, unknown>[]) : [];
+
+    function handleItemChange(index: number, name: string, val: unknown) {
+        const updated = items.map((item, i) => {
+            if (i !== index) return item;
+            if (val === undefined) {
+                const {[name]: _, ...rest} = item;
+                return rest;
+            }
+            return {...item, [name]: val};
+        });
+        onChange?.(field.name, updated.length > 0 ? updated : undefined);
+    }
+
+    function handleAdd() {
+        onChange?.(field.name, [...items, {}]);
+    }
+
+    function handleDelete(index: number) {
+        const updated = items.filter((_, i) => i !== index);
+        onChange?.(field.name, updated.length > 0 ? updated : undefined);
+    }
+
+    return (
+        <div className={styles.mapField}>
+            {items.map((item, i) => {
+                const previewKey = field.itemFields.find(f => typeof item[f.name] === 'string')?.name;
+                const previewLabel = previewKey ? String(item[previewKey]) : `item ${i + 1}`;
+                return (
+                    <CollapsibleSection key={i} collapsePreviewNames={[previewLabel]}>
+                        <div className={styles.pluginHeader}>
+                            <span/>
+                            <button type="button" className={styles.mapDelete} onClick={() => handleDelete(i)}>×</button>
+                        </div>
+                        <SchemaFormRenderer
+                            fields={field.itemFields}
+                            values={item}
+                            onChange={(name, val) => handleItemChange(i, name, val)}
+                            searchTerm={searchTerm}
+                        />
+                    </CollapsibleSection>
+                );
+            })}
+            <button type="button" className={styles.addButton} onClick={handleAdd}>
+                + Add {field.name.replace(/_/g, ' ')}
+            </button>
+        </div>
+    );
+}
+
+function MapField({field, value, onChange}: FieldProps) {
+    const [entries, setEntries] = useState<{id: number; key: string; val: string}[]>(() =>
+        (value && typeof value === 'object' && !Array.isArray(value))
+            ? Object.entries(value as Record<string, unknown>).map(([k, v], i) => ({ id: i, key: k, val: String(v) }))
+            : []
+    );
+    const nextId = useRef(entries.length);
+    const [syncedValue, setSyncedValue] = useState<unknown>(value);
+
+    if (value !== syncedValue) {
+        setSyncedValue(value);
+        const loaded = (value && typeof value === 'object' && !Array.isArray(value))
+            ? Object.entries(value as Record<string, unknown>).map(([k, v], i) => ({ id: i, key: k, val: String(v) }))
+            : [];
+        nextId.current = loaded.length;
+        setEntries(loaded);
+    }
 
     if (field.type !== 'map') return null;
 
     function emit(updated: {id: number; key: string; val: string}[]) {
+        if (updated.length === 0) {
+            onChange?.(field.name, undefined)
+            return;
+        }
         onChange?.(field.name, Object.fromEntries(updated.map(e => [e.key, e.val])));
     }
 
@@ -284,7 +385,13 @@ function ObjectField({field, value, onChange, searchTerm}: FieldProps) {
             {field.description &&
                 <div className={styles.selectDescription}>{field.description}</div>
             }
-            <SchemaFormRenderer fields={field.fields} values={objValue} onChange={handleNestedChange} searchTerm={searchTerm}/>
+            <SchemaFormRenderer
+                fields={field.fields}
+                values={objValue}
+                onChange={handleNestedChange}
+                searchTerm={searchTerm}
+
+            />
         </CollapsibleSection>
     );
 }
@@ -301,6 +408,14 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
     const [pluginValues, setPluginValues] = useState<Record<string, Record<string, unknown>>>(
         () => objValue as Record<string, Record<string, unknown>>
     );
+
+    const [syncedValue, setSyncedValue] = useState<unknown>(value);
+    if (value !== syncedValue) {
+        setSyncedValue(value);
+        const newObjValue = (value as Record<string, unknown>) ?? {};
+        setActivePlugins(Object.keys(newObjValue));
+        setPluginValues(newObjValue as Record<string, Record<string, unknown>>);
+    }
 
     if (!('schema' in field) || typeof field.schema.plugins !== 'object' || !field.schema.plugins) {
         return <div>No schema</div>;
@@ -319,6 +434,10 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
 
     // update the nested values
     function emitAll(plugins: string[], values: Record<string, Record<string, unknown>>) {
+        if (plugins.length === 0) {
+            onChange?.(field.name, undefined);
+            return;
+        }
         onChange?.(field.name, Object.fromEntries(plugins.map(name => [name, values[name] ?? {}])));
     }
 
@@ -333,6 +452,8 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
         const updated = activePlugins.filter(p => p !== name);
         const updatedValues = { ...pluginValues };
         delete updatedValues[name];
+
+
         setActivePlugins(updated);
         setPluginValues(updatedValues);
         emitAll(updated, updatedValues);
@@ -380,11 +501,11 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
             {activePlugins.map(name => {
                 const fields = getPluginFields(name);
                 return (
-                    <div key={name} className={styles.pluginSection}>
+                    <CollapsibleSection key={name} collapsePreviewNames={[name]}>
                         <div className={styles.pluginHeader}>
                             <span className={styles.fieldLabel}>{name}</span>
                             <button type="button" className={styles.mapDelete}
-                                    onClick={() => handleRemovePlugin(name)}>X</button>
+                                    onClick={() => handleRemovePlugin(name)}>×</button>
                         </div>
                         {fields.length > 0 ? (
                             <SchemaFormRenderer
@@ -396,7 +517,7 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
                         ) : (
                             <div className={styles.selectDescription}>No configurable properties</div>
                         )}
-                    </div>
+                    </CollapsibleSection>
                 );
             })}
         </div>
@@ -407,6 +528,7 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
 
 const fieldComponents: Record<SchemaField['type'], ComponentType<FieldProps>> = {
     object: ObjectField,
+    'object-array': ArrayObjectField,
     map: MapField,
     text: TextField,
     number: NumberField,
@@ -423,10 +545,12 @@ interface SchemaFormRendererProps {
     values?: Record<string, unknown>;
     onChange?: (name: string, value: unknown) => void;
     overrides?: Record<string, ComponentType<FieldProps>>;
+    overrideSettings?: Record<string, unknown>;
     searchTerm?: string;
+    priorityList?: string[];
 }
 
-export function SchemaFormRenderer({fields, values, onChange, overrides, searchTerm}: SchemaFormRendererProps) {
+export function SchemaFormRenderer({fields, values, onChange, overrides, overrideSettings, searchTerm, priorityList = []}: SchemaFormRendererProps) {
 
     if (!values) {
         return
@@ -435,19 +559,37 @@ export function SchemaFormRenderer({fields, values, onChange, overrides, searchT
     const visibleFields = searchTerm
         ? fields.filter(f => fieldMatchesSearch(f, searchTerm, values[f.name]))
         : fields;
-    const sortedFields = visibleFields.sort((a, b) => a.name.localeCompare(b.name));
+
+    const sortedFields = visibleFields.sort((a, b) => {
+        const indexA = priorityList.indexOf(a.name);
+        const indexB = priorityList.indexOf(b.name);
+
+        // Sort them according to their order in the priorityList
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+
+        // a is priority item, move it to the top
+        if (indexA !== -1) return -1;
+
+        // b is priority item, move it to the top
+        if (indexB !== -1) return 1;
+
+        // sort them alphabetically
+        return a.name.localeCompare(b.name);
+    });
 
     return (
         <>
             {sortedFields.map(field => {
-                const Component = overrides?.[field.name] ?? fieldComponents[field.type] ?? TextField;
+                const override = overrides?.[field.name];
+                const Component = override ?? fieldComponents[field.type] ?? TextField;
+                const settings = override ? overrideSettings?.[field.name] : undefined;
                 return (
                     <div key={field.name} className={styles.fieldGroup}>
                         <label htmlFor={field.name} className={styles.fieldLabel}>
-                            {field.name}
+                            {field.name} {priorityList.includes(field.name) && <span className={"text-muted"}> - Pinned</span>}
                             {field.required && <span className={styles.required}>*</span>}
                         </label>
-                        <Component field={field} value={values?.[field.name]} onChange={onChange} searchTerm={searchTerm}/>
+                        <Component field={field} value={values?.[field.name]} onChange={onChange} searchTerm={searchTerm} settings={settings}/>
                     </div>
                 );
             })}

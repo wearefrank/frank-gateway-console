@@ -1,11 +1,30 @@
-import {useCallback, useMemo, useState} from 'react';
+import {useCallback, useMemo, useState, Fragment} from 'react';
+import {Link} from 'react-router-dom';
 import {useConfigManager} from '../../hooks/useConfigManager';
 import {SchemaFormGenerator, type SchemaField} from '../../actions/SchemaFormGenerator';
 import {SchemaFormRenderer} from '../../components/SchemaFormRenderer/SchemaFormRenderer';
+import {IdField} from '../../components/SchemaFormRenderer/IdField/IdField';
+import {useDesignerSettings, getMergedOverrides} from '../../hooks/useDesignerSettings';
+import {useFormByCategory} from '../../hooks/useFormByCategory';
+import {DesignerSettings} from './DesignerSettings';
+import {DesignerErrorLogs, type DesignerAction} from './DesignerErrorLogs';
+import {PillSelect} from '../../components/PillSelect/PillSelect';
 import {dump} from 'js-yaml';
-import type {ResolvedError} from '../../actions/ErrorResolver';
 import styles from './RouteDesigner.module.css';
 
+export const DESIGNER_CATEGORIES = [
+    'route', 'upstream', 'service', 'consumer', 'global_rule', 'ssl', 'plugin_config'
+] as const;
+
+export type DesignerCategory = typeof DESIGNER_CATEGORIES[number];
+
+function deepSet(obj: Record<string, unknown>, path: string[], value: unknown): Record<string, unknown> {
+    const [head, ...rest] = path;
+    if (rest.length === 0) {
+        return {...obj, [head]: value};
+    }
+    return {...obj, [head]: deepSet((obj[head] as Record<string, unknown>) ?? {}, rest, value)};
+}
 
 function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[]): Record<string, unknown> {
     const result: Record<string, unknown> = {};
@@ -33,97 +52,133 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
 }
 
 export const RouteDesigner = () => {
-
-    const [category, setCategory] = useState<string>('route');
-    const [added, setAdded] = useState<boolean>(false);
+    const {category, values, handleChange, handleCategorySwitch, loadValues} = useFormByCategory('route');
+    const [domain, setDomain] = useState<string>('');
+    const [confirmation, setConfirmation] = useState<string>('');
+    const [search, setSearch] = useState<string>('');
+    const [editingEntry, setEditingEntry] = useState<{category: string; id: string} | null>(null);
+    const [designerSettings, setDesignerSettings] = useDesignerSettings();
 
     const {configManager, schema, schemaLoading, config, setConfig} = useConfigManager();
-    const [values, setValues] = useState<Record<string, unknown>>({});
-
-    const [categoryValMap, setCategoryValMap] = useState<Record<string, Record<string, unknown>>>({});
-
-    const handleCategorySwitch = useCallback((newCategory: string) => {
-        setCategoryValMap(prev => ({ ...prev, [category]: values }));
-        setValues(categoryValMap[newCategory] ?? {});
-        setCategory(newCategory);
-    }, [category, values, categoryValMap]);
-
-    const handleChange = useCallback((name: string, value: unknown) => {
-        setValues(prev => {
-            if (value === undefined) {
-                const { [name]: _, ...rest } = prev;
-                return rest;
-            }
-            return { ...prev, [name]: value };
-        });
-    }, []);
 
     const generator = useMemo(() => schema ? new SchemaFormGenerator(schema) : null, [schema]);
     const fields = useMemo(() => generator?.getFields(category) ?? [], [generator, category]);
-
-    // search
-    const [search, setSearch] = useState('');
-
+    const builtObject = useMemo(() => buildYamlObject(values, fields), [values, fields]);
 
     const yamlPreview = useMemo(() => {
-        const obj = buildYamlObject(values, fields);
+        if (Object.keys(builtObject).length === 0) return '# Fill in a field...';
+        return dump(builtObject, {indent: 2, noRefs: true, sortKeys: true});
+    }, [builtObject]);
 
-        // if nothing is set
-        if (Object.keys(obj).length === 0) return '# Fill in a field...';
-
-        return dump(obj, {indent: 2, noRefs: true, sortKeys: true});
-    }, [values, fields]);
-
-    const resolvedErrors: ResolvedError[] = useMemo(() => {
-        const obj = buildYamlObject(values, fields);
-        if (Object.keys(obj).length === 0) return [];
-        return configManager.validateCategory(category, obj);
-    }, [values, fields, configManager, category]);
+    const resolvedErrors = useMemo(() => {
+        if (Object.keys(builtObject).length === 0) return [];
+        return configManager.validateCategory(category, builtObject);
+    }, [builtObject, configManager, category]);
 
     const handleAddToConfig = useCallback(() => {
-        const obj = buildYamlObject(values, fields);
-        if (Object.keys(obj).length === 0) return;
+        if (Object.keys(builtObject).length === 0) return;
 
         const key = category + 's';
-        let newConfig: Record<string, unknown> = config ? { ...config } : {};
+        const existing = Array.isArray(config?.[key as keyof typeof config])
+            ? [...(config[key as keyof typeof config] as unknown[])]
+            : [];
 
-        let existing: unknown[] = [];
-        if (Array.isArray(newConfig[key])) {
-            existing = [...newConfig[key]];
-        }
+        // bunch of fallbacks in case there is no config
+        const newConfig = {...(config ?? {}), [key]: [...existing, builtObject]};
+        setConfig(newConfig, dump(newConfig, {indent: 2, noRefs: true}));
 
-        newConfig = {
-            ...newConfig,
-            [key]: [...existing, obj]
-        };
+        setConfirmation('Added!');
+        setTimeout(() => setConfirmation(''), 2000);
+    }, [builtObject, category, config, setConfig]);
 
+    const handleSaveEdit = useCallback(() => {
+        if (!editingEntry || Object.keys(builtObject).length === 0) return;
+
+        const categoryKey = (editingEntry.category + 's') as keyof typeof config;
+        const idKey = editingEntry.category === 'consumer' ? 'username' : 'id';
+
+        // we just update over the key
+        const currentList = (config?.[categoryKey] as Record<string, unknown>[]) || [];
+        const updatedList = currentList.map(item =>
+            item[idKey] === editingEntry.id ? builtObject : item
+        );
+
+        const newConfig = { ...config, [categoryKey]: updatedList };
         setConfig(newConfig, dump(newConfig, { indent: 2, noRefs: true }));
 
-        setAdded(true);
-        setTimeout(() => setAdded(false), 2000);
-    }, [values, fields, category, config, setConfig]);
+        setEditingEntry(null);
+        setConfirmation('Saved!');
+        setTimeout(() => setConfirmation(''), 2000);
+    }, [editingEntry, builtObject, config, setConfig]);
+
+    const handleLoadEntry = useCallback((cat: string, id: string) => {
+        const entry = configManager.getCategoryEntry(cat, id);
+        if (!entry) return;
+
+        if (cat !== category) handleCategorySwitch(cat);
+
+        loadValues(entry);
+        setEditingEntry({category: cat, id});
+    }, [category, configManager, handleCategorySwitch, loadValues]);
+
+    const handleNewEntry = useCallback(() => {
+        setEditingEntry(null);
+        loadValues({});
+    }, [loadValues]);
+
+    const handleManualCategorySwitch = useCallback((newCat: string) => {
+        setEditingEntry(null);
+        handleCategorySwitch(newCat);
+    }, [handleCategorySwitch]);
+
+    const handleErrorAction = useCallback((action: DesignerAction) => {
+        if (action.type === 'set-field') {
+            const segments = action.field.replace(/^\//, '').split('/').filter(Boolean);
+            if (segments.length <= 1) {
+                handleChange(segments[0] ?? action.field, action.value);
+            } else {
+                const [topKey, ...rest] = segments;
+                const updated = deepSet((values[topKey] as Record<string, unknown>) ?? {}, rest, action.value);
+                handleChange(topKey, updated);
+            }
+        }
+        if (action.type === 'set-search') setSearch(action.term);
+    }, [handleChange, values]);
 
     if (schemaLoading) return <div>Loading....</div>;
     if (!configManager || !schema) return <div>Config manager not available</div>;
 
-    console.log(resolvedErrors)
+    const priorityList = designerSettings.priorityMap[category] ?? [];
+    const baseOverrides = getMergedOverrides(designerSettings, category);
+    const selectedDomainConfig = designerSettings.domains.find(d => d.name === domain);
+    const overrideSettings = selectedDomainConfig
+        ? {...baseOverrides, id: {...(baseOverrides.id as object ?? {}), placeHolderOptions: selectedDomainConfig.placeholders}}
+        : baseOverrides;
+
+    const domains = designerSettings.domains;
+
 
     return (
         <div className="container">
             <div className={styles.pageHeader}>
-                <h2>{category} designer</h2>
-                <div className={styles.categoryRow}>
-                    <label htmlFor="category-input">Category</label>
-                    <select name="category-input" id="category-input"
-                            onChange={e => handleCategorySwitch(e.target.value)}
-                            className={styles.categoryInput}  >
-                        <option value="route">Routes</option>
-                        <option value="upstream">Upstreams</option>
-                        <option value="service">Services</option>
-                        <option value="consumer">Consumers</option>
-                        <option value="global_rule">global rules</option>
-                    </select>
+                <div className={styles.pageHeaderTop}>
+                    <h2>{category} designer</h2>
+                    <Link to="/designer/settings" className={styles.settingsLink}>Settings</Link>
                 </div>
+                <PillSelect
+                    label="Category"
+                    options={DESIGNER_CATEGORIES.map(c => ({value: c, label: c.replace(/_/g, ' ')}))}
+                    value={category}
+                    onChange={c => handleManualCategorySwitch(c as DesignerCategory)}
+                />
+                {domains.length > 0 && (
+                    <PillSelect
+                        label="Domain"
+                        options={[{value: '', label: 'none'}, ...domains.map(d => ({value: d.name, label: d.name}))]}
+                        value={domain}
+                        onChange={setDomain}
+                    />
+                )}
             </div>
 
             <div className={styles.layout}>
@@ -135,43 +190,75 @@ export const RouteDesigner = () => {
                     </div>
 
                     {/* Validation Results */}
-                    <div className={`card ${styles.validationCard}`}>
-                        <div className="card-header">Validation</div>
-                        <div className={styles.validationBody}>
-                            {resolvedErrors.map((err, i) => (
-                                <div key={`err-${i}`} className={styles.errorMessage}>
-                                    {err.path && <strong>[{err.path}] </strong>}
-                                    {err.message}
-                                    {err.hint && (
-                                        <div className={styles.errorHint}>
-                                            <span>Field: {err.hint.field}</span>
-                                            {err.hint.type && <span> · Type: {err.hint.type}</span>}
-                                            {err.hint.possibleOptions && <span> · Options: {err.hint.possibleOptions.join(', ')}</span>}
-                                            {err.hint.default !== undefined && <span> · Default: {String(err.hint.default)}</span>}
-                                            {err.hint.minimum !== undefined && <span> · Min: {err.hint.minimum}</span>}
-                                            {err.hint.maximum !== undefined && <span> · Max: {err.hint.maximum}</span>}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
+                    <DesignerErrorLogs resolvedErrors={resolvedErrors} onAction={handleErrorAction} />
+
+                    {/* Settings */}
+                    <DesignerSettings
+                        category={category}
+                        fields={fields}
+                        settings={designerSettings}
+                        onSettingsChange={setDesignerSettings}
+                    />
+
+                    <div className={`card`}>
+                        <div className={`card-title`}>
+                            Entries per category
                         </div>
+                        {DESIGNER_CATEGORIES.map((cat) => {
+                            const entries = configManager.getCategoryEntries(cat);
+                            if (entries.length === 0) return null;
+                            return (
+                                <Fragment key={cat}>
+                                    <div className={'card-header'}>{cat}</div>
+                                    <div className={styles.pillList}>
+                                        {entries.map((entry) => {
+                                            const isActive = editingEntry?.category === cat && editingEntry?.id === entry;
+                                            return (
+                                                <button
+                                                    key={entry}
+                                                    className={`${styles.pill}${isActive ? ` ${styles.pillActive}` : ''}`}
+                                                    onClick={() => handleLoadEntry(cat, entry)}
+                                                    type="button"
+                                                >
+                                                    {entry}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </Fragment>
+                            );
+                        })}
                     </div>
                 </div>
-
                 {/* Form Fields */}
-                <div className="card">
+                <div className={`card ${styles.formCard}`}>
                     <div className="card-header">{category} Configuration
-                        <div className={styles.addToConfigRow}>
-                            <button
-                                className={styles.addButton}
-                                onClick={handleAddToConfig}
-                                disabled={resolvedErrors.length > 0 || Object.keys(buildYamlObject(values, fields)).length === 0}
-                            >
-                                Add to Config
-                            </button>
-                            {added && <span className={styles.addedConfirmation}>Added!</span>}
+                        <div className={styles.headerActionRow}>
+                            {editingEntry ? (
+                                <>
+                                    <button
+                                        className={styles.addButton}
+                                        onClick={handleSaveEdit}
+                                        disabled={resolvedErrors.length > 0 || Object.keys(builtObject).length === 0}
+                                    >
+                                        Save Changes
+                                    </button>
+                                    <button className={styles.newButton} onClick={handleNewEntry} type="button">
+                                        New
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    className={styles.addButton}
+                                    onClick={handleAddToConfig}
+                                    disabled={resolvedErrors.length > 0 || Object.keys(builtObject).length === 0}
+                                >
+                                    Add to Config
+                                </button>
+                            )}
+                            {confirmation && <span className={styles.addedConfirmation}>{confirmation}</span>}
                         </div>
-                        <input type={"search"}
+                        <input type="search"
                                placeholder="search for a field"
                                onChange={e => setSearch(e.target.value)}
                                value={search}
@@ -183,6 +270,9 @@ export const RouteDesigner = () => {
                             values={values}
                             onChange={handleChange}
                             searchTerm={search}
+                            priorityList={priorityList}
+                            overrides={{id: IdField}}
+                            overrideSettings={overrideSettings}
                         />
                     </form>
                 </div>

@@ -1,0 +1,95 @@
+.header {
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+.chevron {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.body {
+    padding: 12px 16px;
+}
+
+.sectionLabel {
+    margin: 0 0 8px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.priorityList {
+    list-style: none;
+    margin: 0 0 12px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.priorityItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+.fieldName {
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+}
+
+.emptyState {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.itemActions {
+    display: flex;
+    gap: 4px;
+}
+
+.itemActions button {
+    padding: 2px 6px;
+    font-size: 0.75rem;
+    background: transparent;
+    border: 1px solid var(--border-dim);
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--text-primary);
+}
+
+.itemActions button:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.itemActions button:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.itemActions .removeButton {
+    border-color: var(--error-color);
+    color: var(--error-color);
+}
+
+.itemActions .removeButton:hover:not(:disabled) {
+    background: var(--error-color);
+    color: #fff;
+}
+
+.addRow {
+    display: flex;
+    gap: 8px;
+}
+
+.addRow input {
+    flex: 1;
+}

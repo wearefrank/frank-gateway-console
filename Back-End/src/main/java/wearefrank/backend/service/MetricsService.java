@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import wearefrank.backend.dto.MetricsDto;
 
-import java.io.Console;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;

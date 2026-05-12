@@ -32,9 +32,7 @@ interface PromRangeResponse {
 }
 
 interface ConnectionConfig {
-    key: string;
     host: string;
-    adminPort: number;
     controlPort: number;
 }
 
@@ -88,6 +86,7 @@ export const Dashboard: React.FC = () => {
     const [controlStatus, setControlStatus] = useState<ConnectionStatus>('checking');
     const [hiddenCodes, setHiddenCodes] = useState<Set<string>>(new Set());
     const [hoveredCode, setHoveredCode] = useState<string | null>(null);
+    const [countdown, setCountdown] = useState<number>(30);
 
     useEffect(() => {
         if (!connectionConfigFetch.data) return;
@@ -96,9 +95,31 @@ export const Dashboard: React.FC = () => {
             .catch(() => setControlStatus('offline'));
     }, [connectionConfigFetch.data]);
 
+    useEffect(() => {
+        const refresh = setInterval(() => {
+            connectionConfigFetch.refetch();
+            metricsFetch.refetch();
+            liveRoutesFetch.refetch();
+            liveUpstreamsFetch.refetch();
+            httpStatusFetch.refetch();
+            httpStatusRangeFetch.refetch();
+            setCountdown(30);
+        }, 30_000);
+        const tick = setInterval(() => {
+            setCountdown(prev => (prev <= 1 ? 30 : prev - 1));
+        }, 1_000);
+        return () => {
+            clearInterval(refresh);
+            clearInterval(tick);
+        };
+    }, []);
+
     return (
         <div className="container">
-            <h1>Dashboard</h1>
+            <h1>Dashboard
+                <span className="material-icons text-muted" style={{ fontSize: '1rem', verticalAlign: 'middle', marginLeft: '4px'  }}>sync</span>
+                <span className="text-small text-muted" style={{ verticalAlign: 'middle'}}>{countdown}s</span>
+            </h1>
 
             <div className={styles.grid}>
                 <div className="card">

@@ -7,13 +7,13 @@
 }
 
 .configCard {
-    padding: 0 !important;
+    padding: 0;
     overflow: hidden;
     position: relative;
 }
 
 .btnIcon {
-    padding: 2px 8px !important;
+    padding: 2px 8px;
 }
 
 .toggleGroup {
@@ -101,7 +101,7 @@
 }
 
 .editorOverlay {
-    color: var(--text-secondary);
+    color: inherit;
     opacity: 1;
     pointer-events: none;
     z-index: 1;
@@ -114,7 +114,8 @@
     outline: none;
     resize: none;
     background-color: transparent;
-    color: inherit;
+    color: transparent;
+    caret-color: var(--text-primary);
     position: relative;
     z-index: 2;
     overflow: hidden;
@@ -215,6 +216,16 @@
 
 .overlayContent {
     opacity: 0.5;
+}
+
+.whitespaceText {
+    color: var(--text-secondary);
+    opacity: 0.35;
+}
+
+.commentText {
+    color: var(--text-secondary);
+    opacity: 0.7;
 }
 
 .schemaStatus {

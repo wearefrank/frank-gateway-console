@@ -1,0 +1,160 @@
+.pageHeader {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.pageHeader h2 {
+    margin: 0;
+}
+
+.backLink {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.backLink:hover {
+    color: var(--accent-color);
+}
+
+.section {
+    margin-bottom: 20px;
+}
+
+.sectionBody {
+    padding: 16px;
+}
+
+.categoryPillBar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.pill {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    border: 1px solid var(--border-dim);
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.pill:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.pillActive {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: #000;
+}
+
+.domainList {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    align-items: start;
+}
+
+.domainListEmpty {
+    grid-column: 1 / -1;
+}
+
+.domainCard {
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.domainCardHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+}
+
+.domainCardHeaderActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chevron {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+}
+
+.placeholderSections {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-left: 8px;
+    border-left: 2px solid var(--border-dim);
+}
+
+.placeholderSection {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.placeholderLabel {
+    margin: 0;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.chipRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    min-height: 24px;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-dim);
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+
+.chip button {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: 0.9rem;
+    line-height: 1;
+    color: var(--text-secondary);
+}
+
+.chip button:hover {
+    color: var(--error-color);
+}
+
+.addDomainRow {
+    margin-top: 4px;
+}

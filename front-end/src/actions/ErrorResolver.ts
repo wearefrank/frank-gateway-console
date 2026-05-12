@@ -10,8 +10,8 @@ export interface ResolvedError {
 
 export interface FieldHint {
     field: string;
-    type?: string;
-    possibleOptions?: string[];
+    type: errorType;
+    possibleOptions?: unknown;
     default?: unknown;
     minimum?: number;
     maximum?: number;
@@ -38,7 +38,10 @@ interface IfConditionProperties {
 
 type MatchResult = 'match' | 'vacuous' | 'no-match' | 'unknown';
 
+type errorType = 'anyof' | 'direct';
+
 class ErrorResolver {
+    // these keywords are internal to our validation pipeline and don't make sense to show to the user
     private skippedKeywords = ['detectPlugins'];
 
     public resolve(collections: AjvErrorCollection[]): ResolvedError[] {
@@ -52,6 +55,8 @@ class ErrorResolver {
 
             if (filteredErrors.length == 0) continue;
 
+            // AJV dumps a big flat list of errors we need to sort them into buckets first
+            // so we know how to explain each one in a way that actually makes sense to the user
             const classified = this.classifyErrors(filteredErrors);
             const messages: ResolvedError[] = [];
 
@@ -59,10 +64,12 @@ class ErrorResolver {
                 messages.push(...this.resolveDirectErrors(classified.direct, ajvErrors))
             }
             if (classified.ifThenWrappers.length > 0) {
+                // only show if/then branch errors when the condition actually applied to the data
                 messages.push(...this.resolveBranchErrors(classified.ifThenWrappers, classified.ifThenLeaves, ajvErrors))
             }
             if (classified.oneOfErrors.length > 0) {
-                messages.push(...this.resolveOneOfErrors(classified.oneOfErrors, ajvErrors))
+                // pass the leaf errors too so we can drill into the right branch when needed
+                messages.push(...this.resolveOneOfErrors(classified.oneOfErrors, classified.ifThenLeaves, ajvErrors))
             }
 
             resolvedErrors.push(...messages)
@@ -71,19 +78,41 @@ class ErrorResolver {
         return resolvedErrors;
     }
 
-    private resolveOneOfErrors(errors: ErrorObject[], entry: AjvErrorCollection): ResolvedError[] {
+    private resolveOneOfErrors(errors: ErrorObject[], leaves: ErrorObject[], entry: AjvErrorCollection): ResolvedError[] {
         const resolvedErrors: ResolvedError[] = [];
-
+        console.log(errors)
         for (const error of errors) {
             const schema = error.schema;
             const data = error.data;
 
-            if (!Array.isArray(schema) || !this.isObject(data)) {
+            if (!Array.isArray(schema) || !this.isObject(data)) continue;
+
+            // when the data is not a plain object (e.g. it's an array like nodes)
+            // the generic "score by matching keys" logic below won't work as arrays don't have keys
+            // instead we look at which anyOf branch expects this data type and show its specific errors
+            if (!this.isObject(data)) {
+                const dataType = Array.isArray(data) ? 'array' : typeof data;
+                const branchIdx = (schema as Record<string, unknown>[]).findIndex(b => b.type === dataType);
+                if (branchIdx >= 0) {
+                    // the leaf errors from AJV already contain the details (e.g. missing required field),
+                    // we just need to find the ones that belong to the matching branch
+                    const prefix = `${error.schemaPath}/${branchIdx}/`;
+                    const branchLeaves = leaves.filter(leaf => leaf.schemaPath.startsWith(prefix));
+                    for (const leaf of branchLeaves) {
+                        resolvedErrors.push({
+                            message: `${entry.parent}: ${this.formatDirectError(leaf)}`,
+                            path: this.buildResolvedPath(entry, this.getExactPath(leaf)),
+                            errorObject: entry,
+                            sourceError: leaf,
+                        });
+                    }
+                }
                 continue;
             }
 
             if (error.params?.passingSchemas != null) {
-                // AJV already knows which branches matched — use the indices (oneOf only)
+                // AJV already knows which branches matched, use oneOf only
+                // this means the data matched more than one branch, which oneOf doesn't allow
                 const passing = error.params.passingSchemas as number[];
                 const allOptions = this.gatherOneOfOptions(schema);
                 const conflicting = passing.map(i => allOptions[i] || ['(unknown variant)']);
@@ -97,13 +126,21 @@ class ErrorResolver {
                 continue;
             }
 
-            // No branch matched — score to find closest
+            // no branch matched at all -score each branch by how many of the user's fields appear in it
             const scored = this.matchOneOfErrors(schema, data);
+
+            const fieldHint: FieldHint = {
+                field: entry.parent,
+                type: 'anyof',
+                possibleOptions: scored
+            }
+
             resolvedErrors.push({
                 message: `${entry.parent}: ${error.keyword} — no variant matched. Closest options:\n| ${this.formatOptions(scored)}`,
                 path: this.buildResolvedPath(entry, this.getExactPath(error)),
                 errorObject: entry,
                 sourceError: error,
+                hint: fieldHint
             });
         }
 
@@ -121,7 +158,8 @@ class ErrorResolver {
         for (const error of branch) {
             const opts = this.gatherOneOfOptionsFromBranch(error);
 
-            // see how many opts matches in data
+            // count how many fields the user already provided that appear in this branch
+            // so we can rank which branch they were probably trying to fill in
             const matchCount = opts.filter(opt => dataKeys.includes(opt)).length;
 
             if (matchCount > maxHits){
@@ -131,11 +169,11 @@ class ErrorResolver {
             optionsWithMatches.push({ opts, matchCount });
         }
 
+        // only keep the branches that tied for most matches
         const filteredOptions = optionsWithMatches.filter(
             a => a.matchCount >= maxHits
         );
 
-        // Sort by the highest number of matches first
         filteredOptions.sort(
             (a, b) => b.matchCount - a.matchCount
         );
@@ -163,6 +201,7 @@ class ErrorResolver {
 
         let subOptions: string[] = [];
 
+        // prefer required fields as the label
         if (Array.isArray(branch.required)) {
             subOptions = branch.required.map((item) => item.toString());
             return subOptions;
@@ -235,6 +274,7 @@ class ErrorResolver {
             const matchResult = this.evaluateIfCondition(parsed, data);
 
             if (matchResult === 'match') {
+                // the if condition matched the data so the then/else branch errors are relevant
                 const prefix = wrapper.schemaPath.replace(/\/if$/, '');
 
                 const ownedLeaves = ifThenLeaves.filter(
@@ -255,6 +295,7 @@ class ErrorResolver {
             } else if (matchResult === 'vacuous') {
                 resolvedErrors.push(...this.handleVacuousErrors(wrapper, parsed, entry))
             }
+            // silent skip
         });
 
         return resolvedErrors;
@@ -292,7 +333,6 @@ class ErrorResolver {
                 }];
             }
 
-            // If no specific enum or const options were found, return a generic error message.
             if (options.length === 0) {
                 return [{
                     message: `${entry.parent}: '${field}' is required`,
@@ -310,6 +350,7 @@ class ErrorResolver {
                 path: exactPath,
                 errorObject: entry,
                 sourceError: wrapper,
+                hint: defaultValue !== undefined ? { field: exactPath, type: 'direct', default: propDef.default } : undefined,
             }];
         }
         return [];
@@ -332,6 +373,7 @@ class ErrorResolver {
         let allVacuous = true;
 
         for (const constraint of parsedConstraints) {
+            // field not in data at all can't say if the condition matches yet
             if (!(constraint.field in data)) {
                 continue;
             }
@@ -378,6 +420,7 @@ class ErrorResolver {
         const base = err.instancePath;
         switch (err.keyword) {
             case 'required': {
+                // AJV puts the missing field name in params not in the path itself
                 const field = err.params?.missingProperty ?? '';
                 return base ? `${base}/${field}` : `/${field}`;
             }
@@ -390,8 +433,8 @@ class ErrorResolver {
         }
     }
 
-    // If entry.type is itself a real path (e.g. /routes/0/plugins/limit-count)
-    // Otherwise fall back to exactPath or the entry type as a label.
+    // plugin errors use a full path as the type (e.g. /routes/0/plugins/limit-count)
+    // for everything else we just use the field path directly
     private buildResolvedPath(entry: AjvErrorCollection, exactPath: string): string {
         if (entry.type.startsWith('/')) {
             return `${entry.type}${exactPath}`;

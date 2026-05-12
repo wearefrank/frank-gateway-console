@@ -10,42 +10,52 @@ import { SchemaView } from './components/SchemaView';
 import { useConfigManager } from '../../hooks/useConfigManager';
 
 
-export const ApisixConfigLoader = () => {
+const ApisixConfigLoader = () => {
     const { configManager, config, configText: globalConfigText, schema, setConfig: setGlobalConfig } = useConfigManager();
 
     const [configText, setConfigText] = useState<string>(globalConfigText);
     const [viewMode, setViewMode] = useState<'yaml' | 'json'>(() => (localStorage.getItem('apisix-view-mode') as 'yaml' | 'json') ?? 'yaml');
     const [showWhitespace, setShowWhitespace] = useState(true);
     const [logs, setLogs] = useState<ValidationLog[]>([]);
-    const [validConfig, setValidConfig] = useState(true);
+    const [yamlValid, setYamlValid] = useState(true);
     const [fillDefault, setFillDefault] = useState(() => localStorage.getItem('apisix-fill-default') === 'true');
     const scrollKeyRef = useRef(0);
     const [scrollToTarget, setScrollToTarget] = useState<{ path: string; key: number } | null>(null);
 
     const logger = useMemo(() => new ValidationLogger(), []);
 
-    // Sync global config text when it changes externally
-    useEffect(() => {
-        setConfigText(globalConfigText);
-    }, [globalConfigText]);
+    const localErrors = useMemo<ValidationLog[]>(() => {
+        if (!configText.trim() || configText.trimEnd().endsWith('#END')) return [];
+        return [logger.add('error', 'Config is missing the #END marker at the end')];
+    }, [configText, logger]);
+
+    const validConfig = useMemo(
+        () => yamlValid && !logs.some(l => l.type === 'error') && localErrors.length === 0,
+        [yamlValid, logs, localErrors]
+    );
+
+    const displayLogs = [
+        ...localErrors,
+        ...(localErrors.length > 0 ? logs.filter(l => l.type !== 'success') : logs)
+    ];
 
     const handleConfigChange = (newValue: string) => {
         setConfigText(newValue);
 
         if (!newValue.trim()) {
             setGlobalConfig(null, '');
-            setValidConfig(true);
+            setYamlValid(true);
             return;
         }
 
         try {
             const parsed = yaml.load(newValue) as ApisixConfig;
             setGlobalConfig(parsed, newValue);
-            setValidConfig(true);
+            setYamlValid(true);
         } catch {
             // Still save the text locally for editing, but don't update global config
             localStorage.setItem('apisix-config-text', newValue);
-            setValidConfig(false);
+            setYamlValid(false);
         }
     };
 
@@ -89,13 +99,13 @@ export const ApisixConfigLoader = () => {
                 setGlobalConfig(parsed, formatted);
                 setConfigText(formatted);
                 setLogs([]);
-                setValidConfig(true);
+                setYamlValid(true);
             } catch {
                 setLogs(prev => [
                     logger.add('error', 'Failed to parse file.'),
                     ...prev
                 ]);
-                setValidConfig(false);
+                setYamlValid(false);
             }
         };
         reader.readAsText(file);
@@ -106,7 +116,7 @@ export const ApisixConfigLoader = () => {
     const handleNewConfig = () => {
         setGlobalConfig(null, '');
         setConfigText('');
-        setValidConfig(true);
+        setYamlValid(true);
     };
 
     useEffect(() => {
@@ -139,7 +149,7 @@ export const ApisixConfigLoader = () => {
                     showWhitespace={showWhitespace}
                     validConfig={validConfig}
                     fillDefaults={fillDefault}
-                    validationLogs={logs}
+                    validationLogs={displayLogs}
                     onConfigChange={handleConfigChange}
                     onToggleWhitespace={() => setShowWhitespace(!showWhitespace)}
                     onToggleViewMode={toggleViewMode}
@@ -149,7 +159,7 @@ export const ApisixConfigLoader = () => {
                 />
 
                 <ValidationLogs
-                    logs={logs}
+                    logs={displayLogs}
                     onClear={clearLogs}
                     config={config}
                     onLogClick={(log) => {
@@ -165,3 +175,4 @@ export const ApisixConfigLoader = () => {
         </div>
     );
 };
+export default ApisixConfigLoader

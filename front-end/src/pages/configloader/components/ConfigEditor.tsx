@@ -18,6 +18,69 @@ interface ConfigEditorProps {
     scrollToTarget?: { path: string; key: number } | null;
 }
 
+type SegmentType = 'normal' | 'whitespace' | 'comment';
+
+/**
+ * find the first # in a line thats not inside ' ' or " "
+ *
+ * @param line - line/text to annalyze
+ *
+ * @returns returns the char number where the comments starts
+ */
+function findCommentStart(line: string): number {
+    let inSingle = false;
+    let inDouble = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === "'" && !inDouble) inSingle = !inSingle;
+        else if (c === '"' && !inSingle) inDouble = !inDouble;
+        else if (c === '#' && !inSingle && !inDouble) return i;
+    }
+    return -1;
+}
+
+/**
+ * Function to determine what color a line should be or to generate the whitespaces
+ *
+ * @param line           - line/text to annalyze
+ * @param showWhitespace - bool if whitespaces should be generated
+ */
+function buildLineSegments(line: string, showWhitespace: boolean): { text: string; type: SegmentType }[] {
+    const commentIdx = findCommentStart(line);
+    const leadingSpaces = line.match(/^ */)?.[0].length ?? 0;
+    const segments: { text: string; type: SegmentType }[] = [];
+
+    // append the new char to the same segment if they connect
+    const push = (char: string, type: SegmentType) => {
+        const last = segments[segments.length - 1];
+        if (last?.type === type) {
+            last.text += char;
+        } else {
+            segments.push({text: char, type});
+        }
+    };
+
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const isComment = commentIdx !== -1 && i >= commentIdx;
+
+        if (isComment) {
+            push(char, 'comment');
+        } else if (showWhitespace && char === ' ') {
+            const isLeading = i < leadingSpaces;
+            const indentMarker = i % 2 === 0 ? '·' : '│';
+            const marker = isLeading ? indentMarker : '·';
+            push(marker, 'whitespace');
+        } else {
+            push(char, 'normal');
+        }
+    }
+
+    return segments;
+}
+
+
 export const ConfigEditor = ({
                                  configText,
                                  viewMode,
@@ -177,48 +240,29 @@ export const ConfigEditor = ({
 
                     {/* Editor layers (stacked via grid-area) */}
                     <div className={styles.editorLayers}>
-                    {/* Hidden pre to provide dimensions */}
-                    <pre className={styles.editorBase}>
-                        {configText + (configText.endsWith('\n') ? ' ' : '\n')}
-                    </pre>
+                        {/* Hidden pre to provide dimensions */}
+                        <pre className={styles.editorBase}>
+                            {configText + (configText.endsWith('\n') ? ' ' : '\n')}
+                        </pre>
 
-                    {/* Overlay for highlights and whitespace */}
-                    <div className={styles.editorOverlay}>
-                        {configText.split('\n').map((line, index) => {
-                            const isErrorLine = errorLines.has(index + 1);
-                            const lineClass = isErrorLine ? styles.errorLineBg : '';
-
-                            let content = '';
-                            if (showWhitespace) {
-                                const leadingSpaces = line.match(/^ */)?.[0].length || 0;
-                                if (leadingSpaces > 0) {
-                                    for (let i = 0; i < line.length; i++) {
-                                        if (i < leadingSpaces) {
-                                            content += (i % 2 === 0) ? '·' : '│';
-                                        } else if (line[i] === ' ') {
-                                            content += '·';
-                                        } else {
-                                            content += ' ';
-                                        }
-                                    }
-                                }
-                            }
-
-                            return (
-                                <div key={index} className={`${styles.lineOverlay} ${lineClass}`}>
-                                    <span className={styles.overlayContent}>{content}</span>
+                        {/* Overlay for highlights, comments, and whitespace markers */}
+                        <div className={styles.editorOverlay}>
+                            {configText.split('\n').map((line, index) => (
+                                <div key={index} className={`${styles.lineOverlay} ${errorLines.has(index + 1) ? styles.errorLineBg : ''}`}>
+                                    {buildLineSegments(line, showWhitespace).map((seg, i) => (
+                                        <span key={i} className={seg.type === 'comment' ? styles.commentText : seg.type === 'whitespace' ? styles.whitespaceText : undefined}>{seg.text}</span>
+                                    ))}
                                 </div>
-                            );
-                        })}
-                    </div>
+                            ))}
+                        </div>
 
-                    {/* Actual Textarea */}
-                    <textarea
-                        value={configText}
-                        onChange={(e) => onConfigChange(e.target.value)}
-                        spellCheck={false}
-                        className={styles.editorTextarea}
-                    />
+                        {/* Actual Textarea */}
+                        <textarea
+                            value={configText}
+                            onChange={(e) => onConfigChange(e.target.value)}
+                            spellCheck={false}
+                            className={styles.editorTextarea}
+                        />
                     </div>
 
                     {!configText && (
