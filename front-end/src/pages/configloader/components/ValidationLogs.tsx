@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import React from 'react';
 import { ValidationLog } from '../../../actions/ValidationLogger';
 import { type ApisixConfig } from '../../../actions/SchemaValidation';
 import styles from '../configLoader.module.css';
@@ -8,9 +9,10 @@ interface ValidationLogsProps {
     onClear: () => void;
     config?: ApisixConfig | null;
     onLogClick?: (log: ValidationLog) => void;
+    headerExtra?: React.ReactNode;
 }
 
-export const ValidationLogs = ({ logs, onClear, config, onLogClick }: ValidationLogsProps) => {
+export const ValidationLogs = ({ logs, onClear, config, onLogClick, headerExtra }: ValidationLogsProps) => {
     const [hideInfo, setHideInfo] = useState(true);
 
     const filteredLogs = hideInfo ? logs.filter(log => log.type !== 'info') : logs;
@@ -29,6 +31,7 @@ export const ValidationLogs = ({ logs, onClear, config, onLogClick }: Validation
             <div className="flex justify-between align-center card-header">
                 Validation Results
                 <div className="flex align-center gap-sm">
+                    {headerExtra}
                     <label className="flex align-center gap-xs text-small cursor-pointer">
                         <input
                             type="checkbox"

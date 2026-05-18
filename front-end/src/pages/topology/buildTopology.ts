@@ -1,0 +1,227 @@
+import dagre from '@dagrejs/dagre';
+import type { Node, Edge } from '@xyflow/react';
+import type { ApisixConfig, ResourceConfiguration } from '../../actions/SchemaValidation';
+
+export type ColorScheme = 'source' | 'destination';
+
+export interface ConfigNodeData extends Record<string, unknown> {
+    category: string;
+    entry: ResourceConfiguration;
+}
+
+const NODE_WIDTH  = 240;
+const NODE_HEIGHT = 170;
+
+// Source-scheme styles (color = source node)
+const ROUTE_EDGE_STYLE        = { stroke: '#3b82f6' };
+const ROUTE_PLUGIN_EDGE_STYLE = { stroke: '#3b82f6', strokeDasharray: '5 3' };
+const SERVICE_EDGE_STYLE      = { stroke: '#f97316' };
+
+// Destination-scheme styles (color = destination node)
+const DEST_UPSTREAM_EDGE_STYLE = { stroke: '#22c55e' };
+const DEST_SERVICE_EDGE_STYLE  = { stroke: '#f97316' };
+const DEST_PLUGIN_EDGE_STYLE   = { stroke: '#f59e0b', strokeDasharray: '5 3' };
+
+const CONSUMER_EDGE_STYLE = { stroke: '#8b5cf6', strokeDasharray: '3 3' };
+
+// Destination-scheme consumer edge colors (keyed by the target category)
+const DEST_CONSUMER_EDGE_COLORS: Record<string, string> = {
+    route: '#3b82f6',
+    service: '#f97316',
+    plugin_config: '#f59e0b',
+};
+
+const EDGE_LABEL_STYLE = { fontSize: '9px', fill: '#cbd5e1' };
+const EDGE_LABEL_BG_STYLE = { fill: '#1e293b', fillOpacity: 0.9, rx: 3, ry: 3 };
+
+function entryId(category: string, entry: ResourceConfiguration): string {
+    const raw = category === 'consumer' ? entry['username'] : entry['id'];
+    return String(raw ?? 'unknown');
+}
+
+function nodeId(category: string, entry: ResourceConfiguration): string {
+    return `${category}-${entryId(category, entry)}`;
+}
+
+// Auth plugins whose presence on both a consumer and another resource implies a connection
+const AUTH_PLUGINS = new Set([
+    'key-auth', 'basic-auth', 'jwt-auth', 'hmac-auth',
+    'wolf-rbac', 'openid-connect', 'cas-auth', 'forward-auth',
+    'opa', 'ldap-auth', 'multi-auth',
+]);
+
+function authPluginNames(entry: ResourceConfiguration): Set<string> {
+    const plugins = entry['plugins'];
+    if (!plugins || typeof plugins !== 'object' || Array.isArray(plugins)) return new Set();
+    return new Set(
+        Object.keys(plugins as Record<string, unknown>).filter(p => AUTH_PLUGINS.has(p))
+    );
+}
+
+export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = 'source'): { nodes: Node<ConfigNodeData>[]; edges: Edge[] } {
+    const nodes: Node<ConfigNodeData>[] = [];
+    const edges: Edge[] = [];
+
+    // Build a dagre graph for automatic layout
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 });
+    g.setDefaultEdgeLabel(() => ({}));
+
+    const categories = [
+        'consumer', 'ssl',
+        'route', 'global_rule',
+        'service', 'plugin_config',
+        'upstream',
+    ] as const;
+
+    // First pass: collect nodes
+    for (const category of categories) {
+        const raw = (config as Record<string, unknown>)[category + 's'];
+        if (!Array.isArray(raw)) continue;
+
+        for (const entry of raw as ResourceConfiguration[]) {
+            const id = nodeId(category, entry);
+
+            nodes.push({
+                id,
+                type: 'configNode',
+                position: { x: 0, y: 0 }, // overwritten after dagre.layout()
+                data: { category, entry },
+            });
+
+            g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+        }
+    }
+
+    // Second pass: collect edges (only between nodes that exist)
+    const nodeIds = new Set(nodes.map(n => n.id));
+
+    for (const node of nodes) {
+        const { category, entry } = node.data;
+
+        if (category === 'route') {
+            if (entry['upstream_id']) {
+                const target = `upstream-${entry['upstream_id']}`;
+                if (nodeIds.has(target)) {
+                    edges.push({
+                        id: `${node.id}->${target}`,
+                        source: node.id,
+                        target,
+                        sourceHandle: 'source-upstream',
+                        targetHandle: 'target-from-route',
+                        type: 'smoothstep',
+                        label: 'upstream',
+                        labelStyle: EDGE_LABEL_STYLE,
+                        labelBgStyle: EDGE_LABEL_BG_STYLE,
+                        animated: true,
+                        style: colorScheme === 'source' ? ROUTE_EDGE_STYLE : DEST_UPSTREAM_EDGE_STYLE,
+                    });
+                    g.setEdge(node.id, target);
+                }
+            }
+            if (entry['service_id']) {
+                const target = `service-${entry['service_id']}`;
+                if (nodeIds.has(target)) {
+                    edges.push({
+                        id: `${node.id}->${target}`,
+                        source: node.id,
+                        target,
+                        sourceHandle: 'source-service',
+                        targetHandle: 'target-from-route',
+                        type: 'smoothstep',
+                        label: 'service',
+                        labelStyle: EDGE_LABEL_STYLE,
+                        labelBgStyle: EDGE_LABEL_BG_STYLE,
+                        style: colorScheme === 'source' ? ROUTE_EDGE_STYLE : DEST_SERVICE_EDGE_STYLE,
+                    });
+                    g.setEdge(node.id, target);
+                }
+            }
+            if (entry['plugin_config_id']) {
+                const pluginConfigNode = `plugin_config-${entry['plugin_config_id']}`;
+                if (nodeIds.has(pluginConfigNode)) {
+                    // plugin_config flows INTO the route (it's applied to the route, not an output)
+                    edges.push({
+                        id: `${pluginConfigNode}->${node.id}`,
+                        source: pluginConfigNode,
+                        target: node.id,
+                        sourceHandle: 'source-to-route',
+                        targetHandle: 'target-from-plugin_config',
+                        type: 'smoothstep',
+                        label: 'plugin_config',
+                        labelStyle: EDGE_LABEL_STYLE,
+                        labelBgStyle: EDGE_LABEL_BG_STYLE,
+                        // source=plugin_config(teal), destination=route(blue)
+                        style: colorScheme === 'source' ? DEST_PLUGIN_EDGE_STYLE : ROUTE_PLUGIN_EDGE_STYLE,
+                    });
+                    g.setEdge(pluginConfigNode, node.id);
+                }
+            }
+        }
+
+        if (category === 'service' && entry['upstream_id']) {
+            const target = `upstream-${entry['upstream_id']}`;
+            if (nodeIds.has(target)) {
+                edges.push({
+                    id: `${node.id}->${target}`,
+                    source: node.id,
+                    target,
+                    sourceHandle: 'source-upstream',
+                    targetHandle: 'target-from-service',
+                    type: 'smoothstep',
+                    label: 'upstream',
+                    labelStyle: EDGE_LABEL_STYLE,
+                    labelBgStyle: EDGE_LABEL_BG_STYLE,
+                    animated: true,
+                    style: colorScheme === 'source' ? SERVICE_EDGE_STYLE : DEST_UPSTREAM_EDGE_STYLE,
+                });
+                g.setEdge(node.id, target);
+            }
+        }
+    }
+
+    // Consumer edges: connect each consumer to every route/service/plugin_config
+    // that shares at least one auth plugin with it.
+    const consumerNodes = nodes.filter(n => n.data.category === 'consumer');
+    const authTargetCategories = new Set(['route', 'service', 'plugin_config']);
+    const authTargetNodes = nodes.filter(n => authTargetCategories.has(n.data.category));
+
+    for (const consumer of consumerNodes) {
+        const consumerAuth = authPluginNames(consumer.data.entry);
+        if (consumerAuth.size === 0) continue;
+
+        for (const target of authTargetNodes) {
+            const targetAuth = authPluginNames(target.data.entry);
+            const shared = [...consumerAuth].find(p => targetAuth.has(p));
+            if (!shared) continue;
+
+            const edgeId = `${consumer.id}->${target.id}`;
+            const consumerEdgeColor = colorScheme === 'source'
+                ? '#8b5cf6'
+                : (DEST_CONSUMER_EDGE_COLORS[target.data.category] ?? '#8b5cf6');
+            edges.push({
+                id: edgeId,
+                source: consumer.id,
+                target: target.id,
+                sourceHandle: 'source-auth',
+                targetHandle: 'target-from-consumer',
+                type: 'smoothstep',
+                label: shared,
+                labelStyle: EDGE_LABEL_STYLE,
+                labelBgStyle: EDGE_LABEL_BG_STYLE,
+                style: { stroke: consumerEdgeColor, strokeDasharray: '3 3' },
+            });
+            g.setEdge(consumer.id, target.id);
+        }
+    }
+
+    // Run dagre layout and apply computed positions
+    dagre.layout(g);
+
+    for (const node of nodes) {
+        const pos = g.node(node.id);
+        node.position = { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 };
+    }
+
+    return { nodes, edges };
+}

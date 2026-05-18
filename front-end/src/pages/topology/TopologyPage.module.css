@@ -1,0 +1,258 @@
+.page {
+    width: 100%;
+    height: calc(100vh - 61px); /* 61px ~ sticky header height */
+    overflow: hidden;
+}
+
+.empty {
+    padding-top: 48px;
+}
+
+/* React Flow controls override */
+
+:global(.react-flow__controls) {
+    box-shadow: none;
+}
+
+:global(.react-flow__controls-button) {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-dim);
+    border-bottom-color: var(--border-dim);
+    color: var(--text-primary);
+    fill: var(--text-primary);
+}
+
+:global(.react-flow__controls-button:hover) {
+    background: var(--bg-tertiary);
+}
+
+:global(.react-flow__controls-button svg) {
+    fill: var(--text-primary);
+}
+
+/* Edge labels, hidden by default, visible on hover */
+
+:global(.react-flow__edge-textwrapper) {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    pointer-events: none;
+}
+
+:global(.react-flow__edge:hover .react-flow__edge-textwrapper) {
+    opacity: 1;
+}
+
+/* Input & output indication labels */
+
+.ioLabelTop,
+.ioLabelBottom {
+    text-align: center;
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary, #64748b);
+    padding: 0;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.15s ease, opacity 0.15s ease, padding 0.15s ease;
+    user-select: none;
+    border-bottom: 1px solid transparent;
+    border-top: 1px solid transparent;
+}
+
+.ioLabelTop {
+    border-bottom-color: var(--border-dim, #e2e8f0);
+}
+
+.ioLabelBottom {
+    border-top-color: var(--border-dim, #e2e8f0);
+}
+
+.configNode:hover .ioLabelTop,
+.configNode:hover .ioLabelBottom {
+    max-height: 20px;
+    opacity: 0.7;
+    padding: 2px 0 1px;
+}
+
+/* Custom node */
+
+.configNode {
+    background: var(--bg-secondary, #fff);
+    border: 1px solid var(--border-dim, #e2e8f0);
+    border-radius: 8px;
+    min-width: 200px;
+    max-width: 260px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    font-size: 0.75rem;
+    overflow: hidden;
+}
+
+/* Handle tooltips */
+
+:global(.react-flow__handle[data-tooltip]:hover::after) {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #cbd5e1;
+    font-size: 0.65rem;
+    font-family: monospace;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 100;
+    border: 1px solid #334155;
+}
+
+.nodeMain {
+    display: flex;
+    flex-direction: column;
+}
+
+.nodeHeader {
+    padding: 4px 10px;
+    border-radius: 0;
+}
+
+.nodeCategory {
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.nodeBody {
+    display: flex;
+    flex-direction: column;
+}
+
+.nodeContent {
+    flex: 1;
+    padding: 8px 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.nodeTitle {
+    font-weight: 600;
+    color: var(--text-primary, #1e293b);
+    word-break: break-all;
+}
+
+.nodeDetail {
+    color: var(--text-secondary, #64748b);
+    font-size: 0.7rem;
+    word-break: break-all;
+}
+
+.nodeTag {
+    display: inline-block;
+    margin-top: 2px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--bg-tertiary, #f1f5f9);
+    color: var(--text-secondary, #64748b);
+    font-size: 0.65rem;
+}
+
+/* Edge legend */
+
+.legend {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.legendTitle {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.legendItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+}
+
+@keyframes legendDash {
+    to { stroke-dashoffset: -12; }
+}
+
+.legendAnimatedLine {
+    animation: legendDash 0.8s linear infinite;
+}
+
+/* Right-side settings column */
+
+.sidePanel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+}
+
+/* Color scheme toggle */
+
+.schemeToggle {
+    display: flex;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.schemeBtn {
+    padding: 4px 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.schemeBtn:hover {
+    background: var(--bg-tertiary);
+}
+
+.schemeBtnActive {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* Plugin chips */
+
+.pluginChips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 4px;
+}
+
+.pluginChip {
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: var(--bg-tertiary, #f1f5f9);
+    border: 1px solid var(--border-dim, #e2e8f0);
+    color: var(--text-secondary, #64748b);
+    font-size: 0.65rem;
+    white-space: nowrap;
+}

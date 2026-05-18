@@ -63,6 +63,9 @@ export const Header: React.FC = () => {
           <NavLink to="/designer" className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Designer
           </NavLink>
+          <NavLink to="/topology" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+            Topology
+          </NavLink>
         </nav>
 
         <div className={styles.headerActions}>
