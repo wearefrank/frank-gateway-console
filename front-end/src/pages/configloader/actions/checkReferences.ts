@@ -37,6 +37,7 @@ function checkDuplicateIds(config: ApisixConfig): ValidationLog[] {
         for (const entry of entries) {
             const id = entry[idField];
             if (typeof id !== 'string') continue;
+            // start with 0 or last number always add one
             seen.set(id, (seen.get(id) ?? 0) + 1);
         }
 
