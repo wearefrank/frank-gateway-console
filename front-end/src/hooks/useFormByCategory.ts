@@ -3,12 +3,13 @@ import {useCallback, useState} from 'react';
 export function useFormByCategory(initialCategory: string) {
     const [category, setCategory] = useState(initialCategory);
     const [values, setValues] = useState<Record<string, unknown>>({});
-    const [categoryValMap, setCategoryValMap] = useState<Record<string, Record<string, unknown>>>({});
+    const [, setCategoryValMap] = useState<Record<string, Record<string, unknown>>>({});
 
     const handleChange = useCallback((name: string, value: unknown) => {
         setValues(prev => {
             if (value === undefined) {
-                const {[name]: _, ...rest} = prev;
+                const rest = {...prev};
+                delete rest[name];
                 return rest;
             }
             return {...prev, [name]: value};

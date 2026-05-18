@@ -1,5 +1,33 @@
 import dagre from '@dagrejs/dagre';
 import type { Node, Edge } from '@xyflow/react';
+
+/**
+ * BFS from `startId` through the edge graph using directional queues:
+ * - Nodes reached via an *output* edge only continue following outputs.
+ * - Nodes reached via an *input* edge only continue following inputs.
+ * This prevents unrelated sibling nodes from being pulled into the focus set.
+ */
+export function getConnectedNodeIds(startId: string, edges: Edge[]): Set<string> {
+    const visited    = new Set([startId]);
+    const downQueue: string[] = []; // reached via output — expand outputs only
+    const upQueue:   string[] = []; // reached via input  — expand inputs only
+
+    for (const e of edges) {
+        if (e.source === startId && !visited.has(e.target)) { visited.add(e.target); downQueue.push(e.target); }
+        if (e.target === startId && !visited.has(e.source)) { visited.add(e.source); upQueue.push(e.source); }
+    }
+    while (downQueue.length) {
+        const id = downQueue.shift()!;
+        for (const e of edges)
+            if (e.source === id && !visited.has(e.target)) { visited.add(e.target); downQueue.push(e.target); }
+    }
+    while (upQueue.length) {
+        const id = upQueue.shift()!;
+        for (const e of edges)
+            if (e.target === id && !visited.has(e.source)) { visited.add(e.source); upQueue.push(e.source); }
+    }
+    return visited;
+}
 import type { ApisixConfig, ResourceConfiguration } from '../../actions/SchemaValidation';
 
 export type ColorScheme = 'source' | 'destination';
@@ -21,8 +49,6 @@ const SERVICE_EDGE_STYLE      = { stroke: '#f97316' };
 const DEST_UPSTREAM_EDGE_STYLE = { stroke: '#22c55e' };
 const DEST_SERVICE_EDGE_STYLE  = { stroke: '#f97316' };
 const DEST_PLUGIN_EDGE_STYLE   = { stroke: '#f59e0b', strokeDasharray: '5 3' };
-
-const CONSUMER_EDGE_STYLE = { stroke: '#8b5cf6', strokeDasharray: '3 3' };
 
 // Destination-scheme consumer edge colors (keyed by the target category)
 const DEST_CONSUMER_EDGE_COLORS: Record<string, string> = {
