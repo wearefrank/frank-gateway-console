@@ -6,8 +6,10 @@ import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLo
 import { FileUpload } from './components/FileUpload';
 import { ConfigEditor } from './components/ConfigEditor';
 import { ValidationLogs } from './components/ValidationLogs';
+import { ReferencesPanel } from './components/ReferencesPanel';
 import { SchemaView } from './components/SchemaView';
 import { useConfigManager } from '../../hooks/useConfigManager';
+import { checkReferences } from './actions/checkReferences';
 
 
 const ApisixConfigLoader = () => {
@@ -21,6 +23,8 @@ const ApisixConfigLoader = () => {
     const [fillDefault, setFillDefault] = useState(() => localStorage.getItem('apisix-fill-default') === 'true');
     const scrollKeyRef = useRef(0);
     const [scrollToTarget, setScrollToTarget] = useState<{ path: string; key: number } | null>(null);
+    const [rightTab, setRightTab] = useState<'validation' | 'references'>('validation');
+    const [refLogs, setRefLogs] = useState<ValidationLog[]>([]);
 
     const logger = useMemo(() => new ValidationLogger(), []);
 
@@ -36,8 +40,26 @@ const ApisixConfigLoader = () => {
 
     const displayLogs = [
         ...localErrors,
-        ...(localErrors.length > 0 ? logs.filter(l => l.type !== 'success') : logs)
+        ...(localErrors.length > 0 ? logs.filter(l => l.type !== 'success') : logs),
+        ...refLogs,
     ];
+
+    const tabToggle = (
+        <div className={styles.toggleGroup}>
+            <button
+                className={rightTab === 'validation' ? styles.toggleBtnActive : styles.toggleBtn}
+                onClick={() => setRightTab('validation')}
+            >
+                Logs
+            </button>
+            <button
+                className={rightTab === 'references' ? styles.toggleBtnActive : styles.toggleBtn}
+                onClick={() => setRightTab('references')}
+            >
+                References
+            </button>
+        </div>
+    );
 
     const handleConfigChange = (newValue: string) => {
         setConfigText(newValue);
@@ -134,6 +156,10 @@ const ApisixConfigLoader = () => {
         }
     }, [config, schema, configManager, fillDefault]);
 
+    useEffect(() => {
+        setRefLogs(config ? checkReferences(config) : []);
+    }, [config]);
+
     return (
         <div className="container">
             <div className={`flex justify-between align-center mb-4 pb-3 ${styles.loaderHeader}`}>
@@ -158,17 +184,22 @@ const ApisixConfigLoader = () => {
                     scrollToTarget={scrollToTarget}
                 />
 
-                <ValidationLogs
-                    logs={displayLogs}
-                    onClear={clearLogs}
-                    config={config}
-                    onLogClick={(log) => {
-                        if (log.path) {
-                            scrollKeyRef.current += 1;
-                            setScrollToTarget({ path: log.path, key: scrollKeyRef.current });
-                        }
-                    }}
-                />
+                {rightTab === 'validation' ? (
+                    <ValidationLogs
+                        logs={displayLogs}
+                        onClear={clearLogs}
+                        config={config}
+                        headerExtra={tabToggle}
+                        onLogClick={(log) => {
+                            if (log.path) {
+                                scrollKeyRef.current += 1;
+                                setScrollToTarget({ path: log.path, key: scrollKeyRef.current });
+                            }
+                        }}
+                    />
+                ) : (
+                    <ReferencesPanel headerExtra={tabToggle} />
+                )}
             </div>
 
             <SchemaView schema={schema} />
