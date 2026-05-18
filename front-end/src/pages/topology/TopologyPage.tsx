@@ -1,5 +1,6 @@
-import React, {useContext, useEffect, useMemo, useState, createContext} from 'react';
+import React, {useCallback, useContext, useEffect, useMemo, useRef, useState, createContext} from 'react';
 import {Link} from 'react-router-dom';
+import {dump} from 'js-yaml';
 import {
     ReactFlow,
     Background,
@@ -10,10 +11,11 @@ import {
     useEdgesState,
     useEdges,
     useNodeId,
+    useViewport,
     Handle,
     Position,
 } from '@xyflow/react';
-import type {NodeProps, Node} from '@xyflow/react';
+import type {NodeProps, Node, Edge} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import {useConfigManager} from '../../hooks/useConfigManager';
@@ -363,11 +365,205 @@ const ConfigNode: React.FC<NodeProps<ConfigNodeType>> = ({data}) => {
 
 const nodeTypes = {configNode: ConfigNode};
 
+// Focus mode
+
+function getConnectedNodeIds(startId: string, edges: Edge[]): Set<string> {
+    const visited = new Set([startId]);
+    const downQueue: string[] = []; // reached via output — only follow outputs
+    const upQueue: string[] = [];   // reached via input  — only follow inputs
+
+    for (const e of edges) {
+        if (e.source === startId && !visited.has(e.target)) {
+            visited.add(e.target);
+            downQueue.push(e.target);
+        }
+        if (e.target === startId && !visited.has(e.source)) {
+            visited.add(e.source);
+            upQueue.push(e.source);
+        }
+    }
+
+    while (downQueue.length) {
+        const id = downQueue.shift()!;
+        for (const e of edges) {
+            if (e.source === id && !visited.has(e.target)) {
+                visited.add(e.target);
+                downQueue.push(e.target);
+            }
+        }
+    }
+
+    while (upQueue.length) {
+        const id = upQueue.shift()!;
+        for (const e of edges) {
+            if (e.target === id && !visited.has(e.source)) {
+                visited.add(e.source);
+                upQueue.push(e.source);
+            }
+        }
+    }
+
+    return visited;
+}
+
+// Detail cards
+
+type DetailCard = {
+    id: string;
+    data: ConfigNodeData;
+    x: number; // flow coordinates
+    y: number;
+    scale: number;
+};
+
+type CardLayerProps = {
+    cards: DetailCard[];
+    edges: Edge[];
+    closeCard: (id: string) => void;
+    onHeaderMouseDown: (e: React.MouseEvent, id: string) => void;
+    onResizeMouseDown: (e: React.MouseEvent, id: string) => void;
+};
+
+const CardLayer: React.FC<CardLayerProps> = ({cards, edges, closeCard, onHeaderMouseDown, onResizeMouseDown}) => {
+    const {x: vpX, y: vpY, zoom} = useViewport();
+    return (
+        <div className={styles.cardStack}>
+            {cards.map(card => {
+                const color = CATEGORY_COLOR[card.data.category] ?? '#64748b';
+                const label = CATEGORY_LABEL[card.data.category] ?? card.data.category;
+                const entry = card.data.entry as Record<string, unknown>;
+                const title = String(card.data.category === 'consumer' ? entry['username'] : (entry['id'] ?? '—'));
+                const edgeCount = edges.filter(e => e.source === card.id || e.target === card.id).length;
+                const yamlText = dump(entry, {indent: 2, noRefs: true});
+                const sx = card.x * zoom + vpX;
+                const sy = card.y * zoom + vpY;
+                return (
+                    <div key={card.id} className={styles.detailCard} style={{left: sx, top: sy, transform: `scale(${zoom * card.scale})`, transformOrigin: 'top left'}}>
+                        <div
+                            className={styles.cardHeader}
+                            style={{background: color}}
+                            onMouseDown={e => onHeaderMouseDown(e, card.id)}
+                        >
+                            <span className={styles.cardCategory}>{label}</span>
+                            <button className={styles.cardCloseBtn} onClick={() => closeCard(card.id)}>✕</button>
+                        </div>
+                        <div className={styles.cardBody}>
+                            <div className={styles.cardTitle}>{title}</div>
+                            {edgeCount > 0 && (
+                                <div className={styles.cardMeta}>{edgeCount} connection{edgeCount !== 1 ? 's' : ''}</div>
+                            )}
+                            <pre className={styles.cardYaml}>{yamlText}</pre>
+                        </div>
+                        <div className={styles.cardResizeFooter} onMouseDown={e => onResizeMouseDown(e, card.id)}>
+                            <svg width="10" height="10" viewBox="0 0 10 10" className={styles.cardResizeIcon}>
+                                <line x1="3" y1="10" x2="10" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                                <line x1="6" y1="10" x2="10" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            </svg>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
 // Page
 
 export const TopologyPage: React.FC = () => {
     const {config} = useConfigManager();
     const [colorScheme, setColorScheme] = useState<ColorScheme>('destination');
+    const [cards, setCards] = useState<DetailCard[]>([]);
+    const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+    const pageRef = useRef<HTMLDivElement>(null);
+    const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const dragRef = useRef<{ id: string; startX: number; startY: number; origX: number; origY: number; zoom: number } | null>(null);
+    const resizeRef = useRef<{ id: string; startX: number; startY: number; startScale: number } | null>(null);
+    const viewportRef = useRef({x: 0, y: 0, zoom: 1});
+
+    const handleViewportMove = useCallback((_: unknown, vp: {x: number; y: number; zoom: number}) => {
+        viewportRef.current = vp;
+    }, []);
+
+    const handleNodeClick = useCallback((e: React.MouseEvent, node: Node<ConfigNodeData>) => {
+        const rect = pageRef.current?.getBoundingClientRect() ?? {left: 0, top: 0};
+        const {x: vpX, y: vpY, zoom} = viewportRef.current;
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const x = (sx - vpX) / zoom + 20;
+        const y = (sy - vpY) / zoom - 20;
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = setTimeout(() => {
+            clickTimerRef.current = null;
+            setCards(prev => {
+                const existing = prev.find(c => c.id === node.id);
+                if (existing) return [...prev.filter(c => c.id !== node.id), {...existing}];
+                return [...prev, {id: node.id, data: node.data, x, y, scale: 1}];
+            });
+        }, 220);
+    }, []);
+
+    const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node<ConfigNodeData>) => {
+        if (clickTimerRef.current) {
+            clearTimeout(clickTimerRef.current);
+            clickTimerRef.current = null;
+        }
+        setFocusedNodeId(prev => prev === node.id ? null : node.id);
+    }, []);
+
+    const closeCard = useCallback((id: string) => {
+        setCards(prev => prev.filter(c => c.id !== id));
+    }, []);
+
+    const closeAllCards = useCallback(() => setCards([]), []);
+
+    const onResizeMouseDown = useCallback((e: React.MouseEvent, id: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = cards.find(c => c.id === id);
+        if (!card) return;
+        resizeRef.current = {id, startX: e.clientX, startY: e.clientY, startScale: card.scale};
+
+        const onMove = (me: MouseEvent) => {
+            if (!resizeRef.current) return;
+            const {id, startX, startY, startScale} = resizeRef.current;
+            const delta = (me.clientX - startX + me.clientY - startY) * 0.004;
+            const newScale = Math.min(3, Math.max(0.4, startScale + delta));
+            setCards(prev => prev.map(c => c.id === id ? {...c, scale: newScale} : c));
+        };
+        const onUp = () => {
+            resizeRef.current = null;
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }, [cards]);
+
+    const onHeaderMouseDown = useCallback((e: React.MouseEvent, id: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const card = cards.find(c => c.id === id);
+        if (!card) return;
+        const {zoom} = viewportRef.current;
+        dragRef.current = {id, startX: e.clientX, startY: e.clientY, origX: card.x, origY: card.y, zoom};
+
+        const onMove = (me: MouseEvent) => {
+            if (!dragRef.current) return;
+            const {id, startX, startY, origX, origY, zoom} = dragRef.current;
+            const dx = (me.clientX - startX) / zoom;
+            const dy = (me.clientY - startY) / zoom;
+            setCards(prev => prev.map(c =>
+                c.id === id ? {...c, x: origX + dx, y: origY + dy} : c
+            ));
+        };
+        const onUp = () => {
+            dragRef.current = null;
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }, [cards]);
 
     const {nodes: initNodes, edges: initEdges} = useMemo(
         () => (config ? buildTopology(config, colorScheme) : {nodes: [], edges: []}),
@@ -381,15 +577,57 @@ export const TopologyPage: React.FC = () => {
         };
     }, []);
 
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFocusedNodeId(null); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
+
     const [nodes, setNodes, onNodesChange] = useNodesState(initNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges);
 
     useEffect(() => {
-        setNodes(initNodes);
+        setNodes(prev => {
+            const posMap = new Map(prev.map(n => [n.id, n.position]));
+            return initNodes.map(n => ({
+                ...n,
+                position: posMap.get(n.id) ?? n.position,
+            }));
+        });
     }, [initNodes, setNodes]);
     useEffect(() => {
         setEdges(initEdges);
     }, [initEdges, setEdges]);
+
+    const connectedIds = useMemo(
+        () => focusedNodeId ? getConnectedNodeIds(focusedNodeId, edges) : null,
+        [focusedNodeId, edges],
+    );
+
+    const displayNodes = useMemo(() => {
+        if (!connectedIds) return nodes;
+        return nodes.map(n => {
+            if (!connectedIds.has(n.id)) return {...n, style: {...n.style, opacity: 0.12, filter: 'grayscale(0.6)'}};
+            if (n.id === focusedNodeId) return {...n, style: {...n.style, outline: '2px solid var(--accent-color)', borderRadius: '8px'}};
+            return n;
+        });
+    }, [nodes, connectedIds, focusedNodeId]);
+
+    const displayEdges = useMemo(() => {
+        if (!connectedIds) return edges;
+        return edges.map(e =>
+            connectedIds.has(e.source) && connectedIds.has(e.target)
+                ? e
+                : {...e, style: {...e.style, opacity: 0.06}},
+        );
+    }, [edges, connectedIds]);
+
+    const focusedNode = focusedNodeId ? nodes.find(n => n.id === focusedNodeId) : null;
+    const focusedLabel = focusedNode
+        ? String(focusedNode.data.category === 'consumer'
+            ? focusedNode.data.entry['username']
+            : (focusedNode.data.entry['id'] ?? focusedNodeId))
+        : null;
 
     if (!config) {
         return (
@@ -406,13 +644,17 @@ export const TopologyPage: React.FC = () => {
 
     return (
         <ColorSchemeContext.Provider value={colorScheme}>
-            <div className={styles.page}>
+            <div className={styles.page} ref={pageRef}>
                 <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
+                    nodes={displayNodes}
+                    edges={displayEdges}
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     nodeTypes={nodeTypes}
+                    onNodeClick={handleNodeClick}
+                    onNodeDoubleClick={handleNodeDoubleClick}
+                    onPaneClick={() => setFocusedNodeId(null)}
+                    onMove={handleViewportMove}
                     fitView
                     fitViewOptions={{padding: 0.15}}
                     minZoom={0.2}
@@ -420,7 +662,23 @@ export const TopologyPage: React.FC = () => {
                     proOptions={{hideAttribution: true}}
                 >
                     <Background color="var(--accent-color)"/>
-                    <Controls position="bottom-right" style={{bottom: 168}}/>
+                    {cards.length > 0 && (
+                        <Panel position="top-right">
+                            <div className={styles.focusBanner}>
+                                <span>{cards.length} card{cards.length !== 1 ? 's' : ''} open</span>
+                                <button className={styles.focusClearBtn} onClick={closeAllCards}>✕ Close all</button>
+                            </div>
+                        </Panel>
+                    )}
+                    {focusedNodeId && (
+                        <Panel position="top-center">
+                            <div className={styles.focusBanner}>
+                                <span>Focused: <strong>{focusedLabel}</strong></span>
+                                <button className={styles.focusClearBtn} onClick={() => setFocusedNodeId(null)}>✕ Clear</button>
+                            </div>
+                        </Panel>
+                    )}
+                    <Controls position="bottom-right" style={{bottom: 170}}/>
                     <MiniMap
                         nodeColor={n => CATEGORY_COLOR[(n.data as ConfigNodeData).category] ?? '#94a3b8'}
                         maskColor="var(--bg-color)"
@@ -430,7 +688,7 @@ export const TopologyPage: React.FC = () => {
                             borderRadius: '8px',
                         }}
                     />
-                    <Panel position="bottom-right" style={{bottom: 310}}>
+                    <Panel position="bottom-right" style={{bottom: 210}}>
                         <div className={styles.sidePanel}>
                             <div className={styles.schemeToggle}>
                                 <button
@@ -466,9 +724,19 @@ export const TopologyPage: React.FC = () => {
                                     </svg>
                                     <span>Plugin / Auth</span>
                                 </div>
+                                <div className={styles.legendDivider}/>
+                                <div className={styles.legendItem}>
+                                    <span className={styles.legendKey}>click</span>
+                                    <span>Open detail card</span>
+                                </div>
+                                <div className={styles.legendItem}>
+                                    <span className={styles.legendKey}>double</span>
+                                    <span>Focus flow</span>
+                                </div>
                             </div>
                         </div>
                     </Panel>
+                    <CardLayer cards={cards} edges={edges} closeCard={closeCard} onHeaderMouseDown={onHeaderMouseDown} onResizeMouseDown={onResizeMouseDown}/>
                 </ReactFlow>
             </div>
         </ColorSchemeContext.Provider>
