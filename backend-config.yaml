@@ -1,0 +1,4 @@
+host: "http://apisix"
+controlPort: 9092
+metricsPort: 9091
+routes: []
