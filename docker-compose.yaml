@@ -11,10 +11,8 @@ services:
     env_file: ./frank-gateway/.env
 
   prometheus:
-    image: prom/prometheus:latest
+    image: ghcr.io/tijmensosef/federated-gateway-prometheus:latest
     restart: always
-    volumes:
-      - ./frank-gateway/conf/prometheus_conf/prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
 
