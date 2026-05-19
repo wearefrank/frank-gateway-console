@@ -1,7 +1,10 @@
 services:
   apisix:
-    image: ghcr.io/tijmensosef/federated-gateway-apisix:latest
+    image: ghcr.io/wearefrank/frank-gateway:master
     restart: always
+    configs:
+      - source: apisix_config
+        target: /usr/local/apisix/conf/apisix.yaml
     ports:
       - "9180:9180"   # Admin API
       - "9080:9080"   # HTTP proxy
@@ -11,8 +14,11 @@ services:
     env_file: ./frank-gateway/.env
 
   prometheus:
-    image: ghcr.io/tijmensosef/federated-gateway-prometheus:latest
+    image: prom/prometheus:latest
     restart: always
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
 
@@ -23,24 +29,110 @@ services:
       - "80:80"
 
   backend:
-    build: ./Back-End
     image: ghcr.io/tijmensosef/federated-gateway-backend:latest
     restart: always
     environment:
       - PROMETHEUS_URL=http://prometheus:9090
+      - APISIX_HOST=http://apisix
     volumes:
-      - ./backend-config.yaml:/data/apisix_config.yaml
+      - backend_data:/data
     depends_on:
       - apisix
 
   frontend:
-    build: ./front-end
     image: ghcr.io/tijmensosef/federated-gateway-frontend:latest
     restart: always
     ports:
       - "3000:80"
     depends_on:
       - backend
+
+configs:
+  apisix_config:
+    content: |
+      routes:
+        - id: test-test-test-route
+          uri: /hello
+          upstream_id: 1
+          plugins:
+            limit-count:
+              count: 2
+              time_window: 60
+              rejected_code: 503
+              policy: local
+            response-rewrite:
+              status_code: 200
+              body: "hello\n"
+            prometheus: {}
+        - id: host-test-test-route
+          uri: /world
+          upstream:
+            nodes:
+              httpbin:80: 1
+            type: roundrobin
+          plugins:
+            response-rewrite:
+              status_code: 200
+              body: "hello world\n"
+            prometheus: {}
+        - id: veiligheidenvergunningen-test-test-route
+          uri: /secure-test
+          upstream_id: 1
+          plugins:
+            key-auth: {}
+      upstreams:
+        - id: 1
+          nodes:
+            httpbin:80: 1
+          type: roundrobin
+      services:
+        - id: 1
+          upstream_id: 1
+          plugins:
+            limit-count:
+              count: 1
+              time_window: 60
+              rejected_code: 503
+            prometheus: {}
+      consumers:
+        - username: jacks
+          plugins:
+            key-auth:
+              key: auth-one
+        - username: rose
+          plugins:
+            basic-auth:
+              username: rose
+              password: rose-password
+      global_rules:
+        - id: 1
+          plugins:
+            limit-count:
+              count: 100
+              time_window: 60
+              rejected_code: 503
+              key: remote_addr
+            prometheus: {}
+
+  prometheus_config:
+    content: |
+      global:
+        scrape_interval: 1s
+        external_labels:
+          stack: "apisix"
+      scrape_configs:
+        - job_name: "prometheus"
+          scrape_interval: 5s
+          static_configs:
+            - targets: ["localhost:9090"]
+        - job_name: "apisix"
+          scrape_interval: 5s
+          metrics_path: "/apisix/prometheus/metrics"
+          static_configs:
+            - targets: ["apisix:9091"]
+
+volumes:
+  backend_data:
 
 networks:
   default:
