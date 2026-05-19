@@ -39,7 +39,7 @@ export const ConfigManagerProvider: React.FC<{ children: React.ReactNode }> = ({
     const fetchSchema = useCallback(async () => {
         setSchemaLoading(true);
         try {
-            const res = await fetch("http://localhost:8080/api/schema");
+            const res = await fetch("/api/schema");
             if (!res.ok) throw new Error(`Status: ${res.status}`);
             const data = await res.json();
             setSchema(data);

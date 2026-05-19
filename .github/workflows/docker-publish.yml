@@ -7,8 +7,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/federated-gateway-backend
-  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/federated-gateway-frontend
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner | lower }}/federated-gateway-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner | lower }}/federated-gateway-frontend
 
 jobs:
   build-and-push:
