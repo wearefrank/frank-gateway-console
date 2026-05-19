@@ -1,4 +1,4 @@
-# FederatedGateWay — Setup Guide
+# FederatedGateWay - Setup Guide
 
 ## Prerequisites
 
@@ -12,12 +12,12 @@
 Clone the repository and start all services with a single command:
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/tijmensosef/FederatedGateWay.git
 cd FederatedGateWay
 docker compose up
 ```
 
-Docker pulls the pre-built images from GitHub Container Registry automatically — no local build tools needed.
+Docker pulls the pre-built images from GitHub Container Registry automatically - no local build tools needed.
 
 | Service | URL | Description |
 |---|---|---|
@@ -32,7 +32,7 @@ Docker pulls the pre-built images from GitHub Container Registry automatically �
 
 ## APISIX configuration
 
-Routes, upstreams, services, and consumers are defined in **`config/apisix.yaml`**. Edit this file to change what APISIX serves — changes take effect after restarting the `apisix` container:
+Routes, upstreams, services, and consumers are defined in **`config/apisix.yaml`**. Edit this file to change what APISIX serves - changes take effect after restarting the `apisix` container:
 
 ```bash
 docker compose restart apisix
@@ -66,7 +66,7 @@ These can also be changed at runtime via the **Config** page in the UI at http:/
 
 ## TLS / certificates
 
-The `frank-gateway/.env` file contains the TLS certificates and keys used by APISIX. This file is required — without it the `apisix` container will not start. The file is already present in the repository.
+The `frank-gateway/.env` file contains the TLS certificates and keys used by APISIX. This file is required - without it the `apisix` container will not start. The file is already present in the repository.
 
 ---
 
@@ -80,7 +80,7 @@ docker compose up --build
 
 This builds both the backend and frontend images locally using the Dockerfiles in `Back-End/` and `front-end/`.
 
-End-users who only want to run (not develop) can ignore the override file — `docker compose up` will pull the pre-built images from GHCR.
+End-users who only want to run (not develop) can ignore the override file - `docker compose up` will pull the pre-built images from GHCR.
 
 ---
 
