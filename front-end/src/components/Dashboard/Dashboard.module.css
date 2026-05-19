@@ -70,6 +70,59 @@
     margin: 0.75rem 0;
 }
 
+.chartArea {
+    min-height: 260px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chartAreaMessage {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
 .fullWidthCard {
     grid-column: 1 / -1;
+}
+
+.chartAreaTable {
+    align-items: flex-start;
+}
+
+.routeTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+.routeTable th,
+.routeTable td {
+    padding: 0.4rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.routeTable th {
+    color: var(--text-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.routeTable tr:last-child td {
+    border-bottom: none;
+}
+
+.routeTable tbody tr:hover {
+    background: var(--bg-tertiary);
+}
+
+.codeBadge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #fff;
 }

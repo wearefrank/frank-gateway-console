@@ -21,8 +21,11 @@ public class MetricsController {
     }
 
     @GetMapping("/prom-range")
-    public String prometheusRangeQuery(@RequestParam String query) {
-        return metricsService.prometheusRangeQuery(query);
+    public String prometheusRangeQuery(
+            @RequestParam String query,
+            @RequestParam(required = false) Long startTime,
+            @RequestParam(required = false) String step) {
+        return metricsService.prometheusRangeQuery(query, startTime, step);
     }
 
     @GetMapping("/health")

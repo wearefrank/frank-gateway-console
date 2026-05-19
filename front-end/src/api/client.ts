@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:8080/api';
+const BASE_URL = '/api';
 
 interface RequestConfig extends Omit<RequestInit, 'body'> {
     body?: unknown;

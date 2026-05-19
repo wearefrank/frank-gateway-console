@@ -46,10 +46,18 @@ public class MetricsService {
         return prometheusClient.query(query);
     }
 
-    public String prometheusRangeQuery(String query) {
+    public String prometheusRangeQuery(String query, Long startTime, String step) {
         long now = System.currentTimeMillis() / 1000;
-        long start = now - 3600;
-        return prometheusClient.rangeQuery(query, start, now, "60");
+        long resolvedStart;
+        if (startTime == null) {
+            resolvedStart = now - 3600;
+        } else if (startTime == 0) {
+            resolvedStart = prometheusClient.getTsdbMinTime();
+        } else {
+            resolvedStart = startTime;
+        }
+        String resolvedStep = (step != null) ? step : "60";
+        return prometheusClient.rangeQuery(query, resolvedStart, now, resolvedStep);
     }
 
     public String getPrometheusRaw() {

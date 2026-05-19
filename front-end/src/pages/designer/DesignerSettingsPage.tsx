@@ -1,19 +1,49 @@
-import {useState} from 'react';
+import React, {useState, useRef} from 'react';
 import {Link} from 'react-router-dom';
-import {useDesignerSettings, getMergedOverrides, withCategoryOverride, parsePlaceholders, type DomainConfig} from '../../hooks/useDesignerSettings';
+import {getMergedOverrides, withCategoryOverride, parsePlaceholders, type DomainConfig, type DesignerSettings} from '../../hooks/useDesignerSettings';
 import type {IdFieldSettings} from '../../components/SchemaFormRenderer/IdField/IdField';
 import {IdDesigner} from './DesignerSettings';
 import {DESIGNER_CATEGORIES} from './RouteDesigner';
+import {useAppSettings} from '../../hooks/useAppSettings';
+import {exportSettings, importSettings} from '../../settings/settingsIO';
 import styles from './DesignerSettingsPage.module.css';
 import dsStyles from './DesignerSettings.module.css';
 
 export function DesignerSettingsPage() {
-    const [settings, setSettings] = useDesignerSettings();
+    const [appSettings, setAppSettings] = useAppSettings();
+    const settings = appSettings.designer;
+    const setSettings = (next: DesignerSettings) => setAppSettings({ ...appSettings, designer: next });
     const [category, setCategory] = useState('route');
+    const [importStatus, setImportStatus] = useState<string | null>(null);
+    const [dragOver, setDragOver] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const idSettings = (getMergedOverrides(settings, category).id ?? {}) as IdFieldSettings;
     const template = idSettings.template ?? '';
     const placeholderNames = parsePlaceholders(template);
+
+    async function handleFile(file: File) {
+        try {
+            const imported = await importSettings(file);
+            setAppSettings(imported);
+            setImportStatus('Settings imported successfully.');
+        } catch (err) {
+            setImportStatus(`Import failed: ${err instanceof Error ? err.message : 'invalid file'}`);
+        }
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+
+    function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (file) handleFile(file);
+    }
+
+    function handleDrop(e: React.DragEvent) {
+        e.preventDefault();
+        setDragOver(false);
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+    }
 
     return (
         <div className="container">
@@ -23,12 +53,58 @@ export function DesignerSettingsPage() {
             </div>
 
             <div className={`card ${styles.section}`}>
+                <div className="card-header">Import / Export Settings</div>
+                <div
+                    className={`${styles.sectionBody} ${dragOver ? styles.dropZoneActive : ''}`}
+                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={handleDrop}
+                >
+                    <p className={dsStyles.sectionLabel}>
+                        Export all settings (designer, domains, UI preferences) as a JSON file, or import a previously exported file. You can also drop a file anywhere in this card.
+                    </p>
+                    {appSettings.meta.exportedAt && (
+                        <p className={dsStyles.sectionLabel}>
+                            Last exported: {new Date(appSettings.meta.exportedAt).toLocaleString()}
+                        </p>
+                    )}
+                    <div className={dsStyles.addRow}>
+                        <input
+                            type="text"
+                            placeholder="Settings label (optional)"
+                            value={appSettings.meta.label}
+                            onChange={e => setAppSettings({ ...appSettings, meta: { ...appSettings.meta, label: e.target.value } })}
+                        />
+                        <button type="button" onClick={() => {
+                            const exportedAt = exportSettings(appSettings);
+                            setAppSettings({ ...appSettings, meta: { ...appSettings.meta, exportedAt } });
+                        }}>Export Settings</button>
+                        <button type="button" onClick={() => fileInputRef.current?.click()}>Import Settings</button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".json,application/json"
+                            style={{display: 'none'}}
+                            onChange={handleImport}
+                        />
+                    </div>
+                    {importStatus && (
+                        <p className={dsStyles.sectionLabel} style={{marginTop: 8}}>{importStatus}</p>
+                    )}
+                </div>
+            </div>
+
+            <div className={`card ${styles.section}`}>
                 <div className="card-header">Domain Configuration</div>
                 <div className={styles.sectionBody}>
+                    <p className={dsStyles.sectionLabel}>
+                        Domains let you predefine sets of values for each placeholder in your ID template.
+                        When you select a domain in the Designer, its values are automatically injected into the ID field dropdowns.
+                        For example, a domain called <code>production</code> could define <code>{'{subdomain}'}</code> as <code>api</code>, <code>web</code>, etc.
+                    </p>
                     {placeholderNames.length === 0 && (
                         <p className={dsStyles.sectionLabel}>
-                            Set an ID template below first, placeholders like <code>{'{subdomain}'}</code> will appear
-                            here.
+                            Set an ID template in <a href="#category-settings">Category Settings</a> first, placeholders like <code>{'{subdomain}'}</code> will appear here.
                         </p>
                     )}
                     <DomainManager
@@ -39,7 +115,7 @@ export function DesignerSettingsPage() {
                 </div>
             </div>
 
-            <div className={`card ${styles.section}`}>
+            <div id="category-settings" className={`card ${styles.section}`}>
                 <div className="card-header">Category Settings</div>
                 <div className={styles.categoryPillBar}>
                     {DESIGNER_CATEGORIES.map(c => (

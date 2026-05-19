@@ -1,4 +1,4 @@
-import {type ChangeEvent, type ComponentType, useMemo, useRef, useState} from 'react';
+import {type ChangeEvent, type ComponentType, useMemo, useState} from 'react';
 import {type SchemaField, SchemaFormGenerator} from '../../actions/SchemaFormGenerator';
 import type {JsonSchema, SchemaCatalog} from '../../actions/SchemaValidation';
 import styles from './SchemaFormRenderer.module.css';
@@ -95,14 +95,14 @@ function SelectField({field, value, onChange}: FieldProps) {
     const selectedIndex = field.options.findIndex(opt => opt.value === value);
     const selectValue = selectedIndex !== -1 ? String(selectedIndex) : '';
 
-    function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const idx = e.target.value;
         if (idx === '') {
             onChange?.(field.name, undefined);
             return;
         }
         onChange?.(field.name, field.options[Number(idx)].value);
-    }
+    };
 
     return (
         <>
@@ -121,14 +121,12 @@ function ArrayTextInput({field, value, onChange}: FieldProps) {
     const [entries, setEntries] = useState<{ id: number; value: string }[]>(() =>
         Array.isArray(value) ? value.map((v, i) => ({ id: i, value: String(v) })) : []
     );
-    const nextId = useRef(Array.isArray(value) ? value.length : 0);
     const [inputValue, setInputValue] = useState<string>('');
     const [syncedValue, setSyncedValue] = useState<unknown>(value);
 
     if (value !== syncedValue) {
         setSyncedValue(value);
         const loaded = Array.isArray(value) ? value.map((v, i) => ({ id: i, value: String(v) })) : [];
-        nextId.current = loaded.length;
         setEntries(loaded);
     }
 
@@ -157,7 +155,8 @@ function ArrayTextInput({field, value, onChange}: FieldProps) {
     };
 
     function handleAdd(name: string) {
-        const updated = [...entries, { id: nextId.current++, value: name }];
+        const newId = Math.max(-1, ...entries.map(e => e.id)) + 1;
+        const updated = [...entries, { id: newId, value: name }];
         setEntries(updated);
         onChange?.(field.name, updated.map(e => e.value));
     }
@@ -251,7 +250,8 @@ function ArrayObjectField({field, value, onChange, searchTerm}: FieldProps) {
         const updated = items.map((item, i) => {
             if (i !== index) return item;
             if (val === undefined) {
-                const {[name]: _, ...rest} = item;
+                const rest = {...item};
+                delete rest[name];
                 return rest;
             }
             return {...item, [name]: val};
@@ -301,7 +301,6 @@ function MapField({field, value, onChange}: FieldProps) {
             ? Object.entries(value as Record<string, unknown>).map(([k, v], i) => ({ id: i, key: k, val: String(v) }))
             : []
     );
-    const nextId = useRef(entries.length);
     const [syncedValue, setSyncedValue] = useState<unknown>(value);
 
     if (value !== syncedValue) {
@@ -309,7 +308,6 @@ function MapField({field, value, onChange}: FieldProps) {
         const loaded = (value && typeof value === 'object' && !Array.isArray(value))
             ? Object.entries(value as Record<string, unknown>).map(([k, v], i) => ({ id: i, key: k, val: String(v) }))
             : [];
-        nextId.current = loaded.length;
         setEntries(loaded);
     }
 
@@ -324,7 +322,8 @@ function MapField({field, value, onChange}: FieldProps) {
     }
 
     function handleAdd() {
-        const updated = [...entries, {id: nextId.current++, key: '', val: ''}];
+        const newId = Math.max(-1, ...entries.map(e => e.id)) + 1;
+        const updated = [...entries, {id: newId, key: '', val: ''}];
         setEntries(updated);
         emit(updated);
     }

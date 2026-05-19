@@ -1,34 +1,6 @@
-import {useState} from 'react';
-
-export interface DesignerOverrideSettings {
-    global: Record<string, unknown>;
-    perCategory: Record<string, Record<string, unknown>>;
-}
-
-export interface DomainConfig {
-    name: string;
-    placeholders: Record<string, string[]>;
-}
-
-export interface DesignerSettings {
-    priorityMap: Record<string, string[]>;
-    overrideSettings: DesignerOverrideSettings;
-    domains: DomainConfig[];
-}
-
-const STORAGE_KEY = 'designer-settings';
-
-const DEFAULT_SETTINGS: DesignerSettings = {
-    priorityMap: {
-        route: ['id', 'uri', 'upstream_id'],
-        upstream: ['id', 'name', 'nodes'],
-        service: ['id', 'name'],
-        consumer: ['username', 'plugins'],
-        global_rule: ['id', 'plugins'],
-    },
-    overrideSettings: {global: {}, perCategory: {}},
-    domains: [],
-};
+export type { DesignerOverrideSettings, DomainConfig, DesignerSettings } from '../settings/AppSettings';
+import type { DesignerSettings } from '../settings/AppSettings';
+import { useAppSettings } from './useAppSettings';
 
 export function getMergedOverrides(settings: DesignerSettings, category: string): Record<string, unknown> {
     const {global, perCategory} = settings.overrideSettings;
@@ -62,46 +34,12 @@ export function parsePlaceholders(template: string): string[] {
     return [...new Set([...template.matchAll(/\{([^}]+)}/g)].map(m => m[1]))];
 }
 
-function deserialize(json: string): DesignerSettings {
-    const p = JSON.parse(json) as Partial<DesignerSettings>;
-
-    const domains = (Array.isArray(p.domains) ? p.domains : []).map((d: unknown): DomainConfig => {
-        if (typeof d === 'string') return { name: d, placeholders: {} };
-        const name = (d as DomainConfig)?.name || 'unknown';
-        const placeholders = Object.fromEntries(
-            Object.entries((d as DomainConfig)?.placeholders ?? {}).map(
-                ([k, v]) => [k, Array.isArray(v) ? v : [v as string]]
-            )
-        );
-        return { name, placeholders };
-    });
-
-    return {
-        priorityMap: p.priorityMap ?? DEFAULT_SETTINGS.priorityMap,
-        overrideSettings: {
-            global: p.overrideSettings?.global ?? {},
-            perCategory: p.overrideSettings?.perCategory ?? {},
-        },
-        domains,
-    };
-}
-
-function fromStorage(): DesignerSettings {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? deserialize(raw) : DEFAULT_SETTINGS;
-    } catch {
-        return DEFAULT_SETTINGS;
-    }
-}
-
 export function useDesignerSettings(): [DesignerSettings, (next: DesignerSettings) => void] {
-    const [settings, setSettingsState] = useState<DesignerSettings>(fromStorage);
+    const [appSettings, setAppSettings] = useAppSettings();
 
     function setSettings(next: DesignerSettings) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        setSettingsState(next);
+        setAppSettings({ ...appSettings, designer: next });
     }
 
-    return [settings, setSettings];
+    return [appSettings.designer, setSettings];
 }

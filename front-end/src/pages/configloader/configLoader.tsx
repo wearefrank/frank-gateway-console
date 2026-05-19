@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useMemo, useRef} from 'react';
+import React, {useState, useEffect, useMemo, useRef, useCallback} from 'react';
 import yaml from 'js-yaml';
 import styles from './configLoader.module.css';
 import { type ApisixConfig } from '../../actions/SchemaValidation';
@@ -6,21 +6,27 @@ import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLo
 import { FileUpload } from './components/FileUpload';
 import { ConfigEditor } from './components/ConfigEditor';
 import { ValidationLogs } from './components/ValidationLogs';
+import { ReferencesPanel } from './components/ReferencesPanel';
 import { SchemaView } from './components/SchemaView';
 import { useConfigManager } from '../../hooks/useConfigManager';
+import { useAppSettings } from '../../hooks/useAppSettings';
+import { checkReferences } from './actions/checkReferences';
 
 
 const ApisixConfigLoader = () => {
     const { configManager, config, configText: globalConfigText, schema, setConfig: setGlobalConfig } = useConfigManager();
+    const [appSettings, setAppSettings] = useAppSettings();
 
     const [configText, setConfigText] = useState<string>(globalConfigText);
-    const [viewMode, setViewMode] = useState<'yaml' | 'json'>(() => (localStorage.getItem('apisix-view-mode') as 'yaml' | 'json') ?? 'yaml');
+    const [viewMode, setViewMode] = useState<'yaml' | 'json'>(appSettings.ui.configViewMode);
     const [showWhitespace, setShowWhitespace] = useState(true);
     const [logs, setLogs] = useState<ValidationLog[]>([]);
     const [yamlValid, setYamlValid] = useState(true);
-    const [fillDefault, setFillDefault] = useState(() => localStorage.getItem('apisix-fill-default') === 'true');
+    const [fillDefault, setFillDefault] = useState(appSettings.ui.configFillDefault);
     const scrollKeyRef = useRef(0);
     const [scrollToTarget, setScrollToTarget] = useState<{ path: string; key: number } | null>(null);
+    const [rightTab, setRightTab] = useState<'validation' | 'references'>('validation');
+    const [refLogs, setRefLogs] = useState<ValidationLog[]>([]);
 
     const logger = useMemo(() => new ValidationLogger(), []);
 
@@ -36,8 +42,26 @@ const ApisixConfigLoader = () => {
 
     const displayLogs = [
         ...localErrors,
-        ...(localErrors.length > 0 ? logs.filter(l => l.type !== 'success') : logs)
+        ...(localErrors.length > 0 ? logs.filter(l => l.type !== 'success') : logs),
+        ...refLogs,
     ];
+
+    const tabToggle = (
+        <div className={styles.toggleGroup}>
+            <button
+                className={rightTab === 'validation' ? styles.toggleBtnActive : styles.toggleBtn}
+                onClick={() => setRightTab('validation')}
+            >
+                Logs
+            </button>
+            <button
+                className={rightTab === 'references' ? styles.toggleBtnActive : styles.toggleBtn}
+                onClick={() => setRightTab('references')}
+            >
+                References
+            </button>
+        </div>
+    );
 
     const handleConfigChange = (newValue: string) => {
         setConfigText(newValue);
@@ -59,17 +83,18 @@ const ApisixConfigLoader = () => {
         }
     };
 
-    const toggleFillDefault = () => {
+    const toggleFillDefault = useCallback(() => {
         setFillDefault(prev => {
-            localStorage.setItem('apisix-fill-default', String(!prev));
-            return !prev;
+            const next = !prev;
+            setAppSettings({ ...appSettings, ui: { ...appSettings.ui, configFillDefault: next } });
+            return next;
         });
-    }
+    }, [appSettings, setAppSettings]);
 
     const toggleViewMode = (mode: 'yaml' | 'json') => {
         if (mode === viewMode) return;
         setViewMode(mode);
-        localStorage.setItem('apisix-view-mode', mode);
+        setAppSettings({ ...appSettings, ui: { ...appSettings.ui, configViewMode: mode } });
         if (config) {
             try {
                 const formatted = mode === 'json'
@@ -134,6 +159,10 @@ const ApisixConfigLoader = () => {
         }
     }, [config, schema, configManager, fillDefault]);
 
+    useEffect(() => {
+        setRefLogs(config ? checkReferences(config) : []);
+    }, [config]);
+
     return (
         <div className="container">
             <div className={`flex justify-between align-center mb-4 pb-3 ${styles.loaderHeader}`}>
@@ -158,17 +187,22 @@ const ApisixConfigLoader = () => {
                     scrollToTarget={scrollToTarget}
                 />
 
-                <ValidationLogs
-                    logs={displayLogs}
-                    onClear={clearLogs}
-                    config={config}
-                    onLogClick={(log) => {
-                        if (log.path) {
-                            scrollKeyRef.current += 1;
-                            setScrollToTarget({ path: log.path, key: scrollKeyRef.current });
-                        }
-                    }}
-                />
+                {rightTab === 'validation' ? (
+                    <ValidationLogs
+                        logs={displayLogs}
+                        onClear={clearLogs}
+                        config={config}
+                        headerExtra={tabToggle}
+                        onLogClick={(log) => {
+                            if (log.path) {
+                                scrollKeyRef.current += 1;
+                                setScrollToTarget({ path: log.path, key: scrollKeyRef.current });
+                            }
+                        }}
+                    />
+                ) : (
+                    <ReferencesPanel headerExtra={tabToggle} />
+                )}
             </div>
 
             <SchemaView schema={schema} />

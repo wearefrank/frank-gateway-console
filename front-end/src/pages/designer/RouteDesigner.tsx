@@ -1,4 +1,5 @@
 import {useCallback, useMemo, useState, Fragment} from 'react';
+import type {ResolvedError} from '../../actions/ErrorResolver';
 import {Link} from 'react-router-dom';
 import {useConfigManager} from '../../hooks/useConfigManager';
 import {SchemaFormGenerator, type SchemaField} from '../../actions/SchemaFormGenerator';
@@ -74,6 +75,29 @@ export const RouteDesigner = () => {
         if (Object.keys(builtObject).length === 0) return [];
         return configManager.validateCategory(category, builtObject);
     }, [builtObject, configManager, category]);
+
+    const duplicateIdErrors = useMemo<ResolvedError[]>(() => {
+        const idKey = category === 'consumer' ? 'username' : 'id';
+        const currentId = builtObject[idKey];
+        if (typeof currentId !== 'string' || !currentId) return [];
+
+        const existingIds = configManager.getCategoryEntries(category);
+        const idsToCheck = editingEntry
+            ? existingIds.filter(id => id !== editingEntry.id)
+            : existingIds;
+
+        if (!idsToCheck.includes(currentId)) return [];
+
+        return [{
+            message: `${category} id "${currentId}" already exists in the config`,
+            path: `/${idKey}`,
+        }];
+    }, [builtObject, category, configManager, editingEntry]);
+
+    const allErrors = useMemo(
+        () => [...resolvedErrors, ...duplicateIdErrors],
+        [resolvedErrors, duplicateIdErrors]
+    );
 
     const handleAddToConfig = useCallback(() => {
         if (Object.keys(builtObject).length === 0) return;
@@ -190,7 +214,7 @@ export const RouteDesigner = () => {
                     </div>
 
                     {/* Validation Results */}
-                    <DesignerErrorLogs resolvedErrors={resolvedErrors} onAction={handleErrorAction} />
+                    <DesignerErrorLogs resolvedErrors={allErrors} onAction={handleErrorAction} />
 
                     {/* Settings */}
                     <DesignerSettings
@@ -239,7 +263,7 @@ export const RouteDesigner = () => {
                                     <button
                                         className={styles.addButton}
                                         onClick={handleSaveEdit}
-                                        disabled={resolvedErrors.length > 0 || Object.keys(builtObject).length === 0}
+                                        disabled={allErrors.length > 0 || Object.keys(builtObject).length === 0}
                                     >
                                         Save Changes
                                     </button>
@@ -251,7 +275,7 @@ export const RouteDesigner = () => {
                                 <button
                                     className={styles.addButton}
                                     onClick={handleAddToConfig}
-                                    disabled={resolvedErrors.length > 0 || Object.keys(builtObject).length === 0}
+                                    disabled={allErrors.length > 0 || Object.keys(builtObject).length === 0}
                                 >
                                     Add to Config
                                 </button>

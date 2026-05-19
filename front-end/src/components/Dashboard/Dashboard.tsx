@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Cell, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer } from 'recharts';
 import { useFetch } from '../../hooks/useFetch';
 import { client } from '../../api/client';
 import styles from './Dashboard.module.css';
+import { PromLineChart, RangeToggle, ChartTooltip, buildCodeMaps, RANGE_OPTIONS } from '../PromLineChart/PromLineChart';
+import type { RangeLabel } from '../PromLineChart/PromLineChart';
 
 interface PromResult {
     metric: Record<string, string>;
@@ -15,19 +17,6 @@ interface PromQueryResponse {
     data: {
         resultType: string;
         result: PromResult[];
-    };
-}
-
-interface PromRangeSeries {
-    metric: Record<string, string>;
-    values: [number, string][];
-}
-
-interface PromRangeResponse {
-    status: string;
-    data: {
-        resultType: string;
-        result: PromRangeSeries[];
     };
 }
 
@@ -80,13 +69,61 @@ export const Dashboard: React.FC = () => {
     const metricsFetch = useFetch<MetricsDto>('/metrics/prometheus');
     const liveRoutesFetch = useFetch<LiveRoute[]>('/metrics/routes');
     const liveUpstreamsFetch = useFetch<LiveUpstream[]>('/metrics/upstreams');
-    const httpStatusFetch = useFetch<PromQueryResponse>('/metrics/prom-query?query=' + encodeURIComponent('sum by (code) (apisix_http_status)'));
-    const httpStatusRangeFetch = useFetch<PromRangeResponse>('/metrics/prom-range?query=' + encodeURIComponent('sum by (code) (apisix_http_status)'));
+    const [barRangeLabel, setBarRangeLabel] = useState<RangeLabel>('All');
+    const [routeTableRangeLabel, setRouteTableRangeLabel] = useState<RangeLabel>('All');
+    const [refreshKey, setRefreshKey] = useState(0);
+    const selectedBarRange = RANGE_OPTIONS.find(r => r.label === barRangeLabel)!;
+    const selectedRouteTableRange = RANGE_OPTIONS.find(r => r.label === routeTableRangeLabel)!;
+    const barEndpoint = useMemo(() => {
+        const query = `sum by (code) (last_over_time(apisix_http_status[${selectedBarRange.barWindow}]))`;
+        return '/metrics/prom-query?query=' + encodeURIComponent(query);
+    }, [selectedBarRange.barWindow]);
+    const routeTableEndpoint = useMemo(() => {
+        const query = `sum by (route, code) (last_over_time(apisix_http_status[${selectedRouteTableRange.barWindow}]))`;
+        return '/metrics/prom-query?query=' + encodeURIComponent(query);
+    }, [selectedRouteTableRange.barWindow]);
+    const httpStatusFetch = useFetch<PromQueryResponse>(barEndpoint);
+    const routeTableFetch = useFetch<PromQueryResponse>(routeTableEndpoint);
 
     const [controlStatus, setControlStatus] = useState<ConnectionStatus>('checking');
-    const [hiddenCodes, setHiddenCodes] = useState<Set<string>>(new Set());
-    const [hoveredCode, setHoveredCode] = useState<string | null>(null);
     const [countdown, setCountdown] = useState<number>(30);
+
+    const barChartData = useMemo(() => {
+        if (!httpStatusFetch.data?.data?.result?.length) return null;
+        const sorted = [...httpStatusFetch.data.data.result]
+            .sort((a, b) => (a.metric.code ?? '').localeCompare(b.metric.code ?? ''))
+            .map(r => ({ code: r.metric.code ?? '?', count: Number(r.value[1]) }));
+        const { colorMap } = buildCodeMaps(sorted.map(d => d.code));
+        return { sorted, colorMap };
+    }, [httpStatusFetch.data]);
+
+    const routeTableData = useMemo(() => {
+        if (!routeTableFetch.data?.data?.result?.length) return null;
+        const routeMap: Record<string, Record<string, number>> = {};
+        const allCodes = new Set<string>();
+        for (const r of routeTableFetch.data.data.result) {
+            const route = r.metric.route ?? '(none)';
+            const code = r.metric.code ?? '?';
+            allCodes.add(code);
+            if (!routeMap[route]) routeMap[route] = {};
+            routeMap[route][code] = Number(r.value[1]);
+        }
+        const routes = Object.keys(routeMap).sort();
+        const codes = [...allCodes].sort();
+        const { colorMap } = buildCodeMaps(codes);
+        return { routeMap, routes, codes, colorMap };
+    }, [routeTableFetch.data]);
+
+    const barTooltipContent = useCallback(({ active, payload, label }: { active?: boolean; payload?: ReadonlyArray<{ value?: unknown }>; label?: unknown }) => {
+        const code = label as string;
+        const entries = [{ key: code, label: 'requests', color: barChartData?.colorMap[code] ?? '', value: Number(payload?.[0]?.value ?? 0) }];
+        return <ChartTooltip active={active} header={`HTTP ${code}`} entries={entries} />;
+    }, [barChartData?.colorMap]);
+
+    const httpStatusRefetchRef = useRef(httpStatusFetch.refetch);
+    useEffect(() => { httpStatusRefetchRef.current = httpStatusFetch.refetch; });
+    const routeTableRefetchRef = useRef(routeTableFetch.refetch);
+    useEffect(() => { routeTableRefetchRef.current = routeTableFetch.refetch; });
 
     useEffect(() => {
         if (!connectionConfigFetch.data) return;
@@ -101,8 +138,9 @@ export const Dashboard: React.FC = () => {
             metricsFetch.refetch();
             liveRoutesFetch.refetch();
             liveUpstreamsFetch.refetch();
-            httpStatusFetch.refetch();
-            httpStatusRangeFetch.refetch();
+            httpStatusRefetchRef.current();
+            routeTableRefetchRef.current();
+            setRefreshKey(k => k + 1);
             setCountdown(30);
         }, 30_000);
         const tick = setInterval(() => {
@@ -112,7 +150,25 @@ export const Dashboard: React.FC = () => {
             clearInterval(refresh);
             clearInterval(tick);
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const statusDotClass =
+        controlStatus === 'online'  ? styles.statusDotOnline  :
+        controlStatus === 'offline' ? styles.statusDotOffline :
+        styles.statusDotChecking;
+
+    let barSubtitle: string;
+    if (httpStatusFetch.loading) barSubtitle = 'Loading…';
+    else if (httpStatusFetch.error) barSubtitle = 'Prometheus unavailable';
+    else if (httpStatusFetch.data?.data?.result?.length === 0) barSubtitle = 'No data yet — send requests through APISIX to populate this chart';
+    else barSubtitle = `via Prometheus: last_over_time(apisix_http_status[${selectedBarRange.barWindow}])`;
+
+    let routeTableSubtitle: string;
+    if (routeTableFetch.loading) routeTableSubtitle = 'Loading…';
+    else if (routeTableFetch.error) routeTableSubtitle = 'Prometheus unavailable';
+    else if (routeTableFetch.data?.data?.result?.length === 0) routeTableSubtitle = 'No data yet — send requests through APISIX to populate this table';
+    else routeTableSubtitle = `via Prometheus: last_over_time(apisix_http_status[${selectedRouteTableRange.barWindow}]) grouped by route and code`;
 
     return (
         <div className="container">
@@ -123,13 +179,9 @@ export const Dashboard: React.FC = () => {
 
             <div className={styles.grid}>
                 <div className="card">
-                    <div className="card-header">APISIX Status</div>
+                    <div className="card-header">APISIX Status</div> {/* Card title */}
                     <div className={styles.statusRow}>
-                        <span className={`${styles.statusDot} ${
-                            controlStatus === 'online'  ? styles.statusDotOnline  :
-                            controlStatus === 'offline' ? styles.statusDotOffline :
-                                                         styles.statusDotChecking
-                        }`} />
+                        <span className={`${styles.statusDot} ${statusDotClass}`} />
                         {controlStatus === 'checking' && 'Checking...'}
                         {controlStatus === 'online'   && 'Online'}
                         {controlStatus === 'offline'  && 'Offline'}
@@ -167,7 +219,7 @@ export const Dashboard: React.FC = () => {
                 </div>
 
                 <div className="card">
-                    <div className="card-header">Live Routes</div>
+                    <div className="card-header">Live Routes</div> {/* Card title */}
                     {/* loading */}
                     {liveRoutesFetch.loading && <div className={`text-small text-muted ${styles.emptyHint}`}>Loading...</div>}
                     {/* Unavailable */}
@@ -189,7 +241,7 @@ export const Dashboard: React.FC = () => {
                 </div>
 
                 <div className="card">
-                    <div className="card-header">Live Upstreams</div>
+                    <div className="card-header">Live Upstreams</div> {/* Card title */}
                     {liveUpstreamsFetch.loading && <div className={`text-small text-muted ${styles.emptyHint}`}>Loading...</div>}
                     {liveUpstreamsFetch.error && <div className={`text-small text-muted ${styles.emptyHint}`}>Unavailable</div>}
                     {liveUpstreamsFetch.data && liveUpstreamsFetch.data.length === 0 && (
@@ -211,115 +263,91 @@ export const Dashboard: React.FC = () => {
                     ))}
                 </div>
                 <div className={`card ${styles.fullWidthCard}`}>
-                    <div className="card-header">HTTP Status Codes</div>
-                    <div className={`text-small text-muted ${styles.emptyHint}`}>via Prometheus: sum by (code) (apisix_http_status)</div>
-                    {httpStatusFetch.loading && <div className={`text-small text-muted ${styles.emptyHint}`}>Loading...</div>}
-                    {httpStatusFetch.error && <div className={`text-small text-muted ${styles.emptyHint}`}>Prometheus unavailable</div>}
-                    {httpStatusFetch.data?.data?.result?.length === 0 && (
-                        <div className={`text-small text-muted ${styles.emptyHint}`}>No data yet — send requests through APISIX to populate this chart</div>
+                    <div className="card-header">HTTP Status Codes — All Time</div> {/* Card title */}
+                    <RangeToggle value={barRangeLabel} onChange={setBarRangeLabel} />
+                    <div className={`text-small text-muted ${styles.emptyHint}`}>{barSubtitle}</div>
+                    <div className={styles.chartArea}>
+                    {barChartData && (
+                        <ResponsiveContainer width="100%" height={220}>
+                            <BarChart data={barChartData.sorted} margin={{ top: 12, right: 24, left: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-dim)" />
+                                <XAxis dataKey="code" tick={{ fontSize: 13, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+                                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} width={48} axisLine={false} tickLine={false} />
+                                <Tooltip cursor={{ fill: 'var(--border-dim)' }} content={barTooltipContent} />
+                                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                                    {barChartData.sorted.map(entry => (
+                                        <Cell key={entry.code} fill={barChartData.colorMap[entry.code]} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
                     )}
-                    {httpStatusFetch.data?.data?.result && httpStatusFetch.data.data.result.length > 0 && (() => {
-                        const chartData = [...httpStatusFetch.data!.data.result]
-                            .sort((a, b) => (a.metric.code ?? '').localeCompare(b.metric.code ?? ''))
-                            .map(r => ({ code: r.metric.code ?? '?', count: Number(r.value[1]) }));
-                        const colorForCode = (code: string) => {
-                            if (code.startsWith('2')) return '#22c55e';
-                            if (code.startsWith('3')) return '#3b82f6';
-                            if (code.startsWith('4')) return '#f97316';
-                            if (code.startsWith('5')) return '#ef4444';
-                            return '#94a3b8';
-                        };
-                        return (
-                            <ResponsiveContainer width="100%" height={220}>
-                                <BarChart data={chartData} margin={{ top: 12, right: 24, left: 0, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border, #e2e8f0)" />
-                                    <XAxis dataKey="code" tick={{ fontSize: 13 }} />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={48} />
-                                    <Tooltip formatter={(v) => [Number(v).toLocaleString(), 'Requests']} />
-                                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                                        {chartData.map(entry => (
-                                            <Cell key={entry.code} fill={colorForCode(entry.code)} />
-                                        ))}
-                                    </Bar>
-                                </BarChart>
-                            </ResponsiveContainer>
-                        );
-                    })()}
+                    </div>
                 </div>
                 <div className={`card ${styles.fullWidthCard}`}>
-                    <div className="card-header">HTTP Status Codes — Last Hour</div>
-                    <div className={`text-small text-muted ${styles.emptyHint}`}>Via Prometheus: sum by (code) (apisix_http_status) 1 min resolution</div>
-                    {httpStatusRangeFetch.loading && <div className={`text-small text-muted ${styles.emptyHint}`}>Loading...</div>}
-                    {httpStatusRangeFetch.error && <div className={`text-small text-muted ${styles.emptyHint}`}>Prometheus unavailable</div>}
-                    {httpStatusRangeFetch.data?.data?.result?.length === 0 && (
-                        <div className={`text-small text-muted ${styles.emptyHint}`}>No data yet — send requests through APISIX to populate this chart</div>
-                    )}
-                    {httpStatusRangeFetch.data?.data?.result && httpStatusRangeFetch.data.data.result.length > 0 && (() => {
-                        const series = httpStatusRangeFetch.data!.data.result;
-                        const codes = series.map(s => s.metric.code ?? '?').sort();
-                        const colorForCode = (code: string) => {
-                            if (code.startsWith('2')) return '#22c55e';
-                            if (code.startsWith('3')) return '#3b82f6';
-                            if (code.startsWith('4')) return '#f97316';
-                            if (code.startsWith('5')) return '#ef4444';
-                            return '#94a3b8';
-                        };
-
-                        // Pivot: { time, "200": n, "404": n, ... }[]
-                        const timeMap = new Map<number, Record<string, number>>();
-                        for (const s of series) {
-                            const code = s.metric.code ?? '?';
-                            for (const [ts, val] of s.values) {
-                                if (!timeMap.has(ts)) timeMap.set(ts, { ts });
-                                timeMap.get(ts)![code] = Number(val);
-                            }
-                        }
-                        // sort chart data and map the time to the propper format
-                        const chartData = [...timeMap.values()]
-                            .sort((a, b) => a.ts - b.ts)
-                            .map(row => ({
-                                ...row,
-                                time: new Date(row.ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                            }));
-
-                        return (
-                            <ResponsiveContainer width="100%" height={260}>
-                                <LineChart data={chartData} margin={{ top: 12, right: 24, left: 0, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border, #e2e8f0)" />
-                                    <XAxis dataKey="time" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={48} />
-                                    <Tooltip formatter={(v) => [Number(v).toLocaleString(), 'Requests']} />
-                                    <Legend
-                                        onClick={(e) => {
-                                            const code = e.dataKey as string;
-                                            setHiddenCodes(prev => {
-                                                const next = new Set(prev);
-                                                next.has(code) ? next.delete(code) : next.add(code);
-                                                return next;
-                                            });
-                                        }}
-                                        onMouseEnter={(e) => setHoveredCode(e.dataKey as string)}
-                                        onMouseLeave={() => setHoveredCode(null)}
-                                        wrapperStyle={{ cursor: 'pointer' }}
-                                    />
-                                    {codes.map(code => (
-                                        <Line
-                                            key={code}
-                                            type="monotone"
-                                            dataKey={code}
-                                            stroke={colorForCode(code)}
-                                            strokeWidth={hoveredCode === code ? 3 : 2}
-                                            strokeOpacity={hoveredCode && hoveredCode !== code ? 0.2 : 1}
-                                            dot={false}
-                                            hide={hiddenCodes.has(code)}
-                                            isAnimationActive={false}
-                                        />
+                    <div className="card-header">Status Codes per Route</div> {/* Card title */}
+                    <RangeToggle value={routeTableRangeLabel} onChange={setRouteTableRangeLabel} />
+                    <div className={`text-small text-muted ${styles.emptyHint}`}>{routeTableSubtitle}</div>
+                    <div className={`${styles.chartArea} ${styles.chartAreaTable}`}>
+                        {routeTableData && (
+                            <table className={styles.routeTable}>
+                                <thead>
+                                    <tr>
+                                        <th>Route</th>
+                                        {routeTableData.codes.map(code => <th key={code}>HTTP {code}</th>)}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {routeTableData.routes.map(route => (
+                                        <tr key={route}>
+                                            <td><code>{route}</code></td>
+                                            {routeTableData.codes.map(code => {
+                                                const count = routeTableData.routeMap[route][code] ?? 0;
+                                                return (
+                                                    <td key={code}>
+                                                        {count > 0
+                                                            ? <span className={styles.codeBadge} style={{ background: routeTableData.colorMap[code] }}>{count.toLocaleString()}</span>
+                                                            : <span className={styles.chartAreaMessage}>—</span>}
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
                                     ))}
-                                </LineChart>
-                            </ResponsiveContainer>
-                        );
-                    })()}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
                 </div>
+                <PromLineChart
+                    title="HTTP Status Codes"
+                    queryTemplate="round(sum by (code) (increase(apisix_http_status[$RANGE])))"
+                    seriesKey="code"
+                    seriesDisplay={k => `HTTP ${k}`}
+                    buildMaps={buildCodeMaps}
+                    subtitle={r => `Via Prometheus: increase(apisix_http_status[${r.promRange}]) · ${r.label === 'All' ? 'all time' : `last ${r.label}`} · ${r.promRange} buckets`}
+                    refreshKey={refreshKey}
+                />
+                <PromLineChart
+                    title="Requests by Route"
+                    queryTemplate="round(sum by (route) (increase(apisix_http_status[$RANGE])))"
+                    seriesKey="route"
+                    subtitle={r => `Via Prometheus: increase(apisix_http_status[${r.promRange}]) grouped by route · ${r.label === 'All' ? 'all time' : `last ${r.label}`}`}
+                    refreshKey={refreshKey}
+                />
+                {/*<PromLineChart*/}
+                {/*    title="Avg Request Latency by Route (ms)"*/}
+                {/*    queryTemplate={`round(sum by (route) (increase(apisix_http_latency_sum{type="request"}[$RANGE])) / clamp_min(sum by (route) (increase(apisix_http_latency_count{type="request"}[$RANGE])), 1))`}*/}
+                {/*    seriesKey="route"*/}
+                {/*    subtitle={r => `Via Prometheus: avg request latency per route · ${r.promRange} buckets`}*/}
+                {/*    refreshKey={refreshKey}*/}
+                {/*/>*/}
+                {/*<PromLineChart*/}
+                {/*    title="Egress Bandwidth by Route (bytes)"*/}
+                {/*    queryTemplate={`round(sum by (route) (increase(apisix_bandwidth{type="egress"}[$RANGE])))`}*/}
+                {/*    seriesKey="route"*/}
+                {/*    subtitle={r => `Via Prometheus: increase(apisix_bandwidth{egress}) · ${r.promRange} buckets`}*/}
+                {/*    refreshKey={refreshKey}*/}
+                {/*/>*/}
             </div>
         </div>
     );

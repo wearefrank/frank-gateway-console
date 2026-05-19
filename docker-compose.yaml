@@ -28,6 +28,26 @@ services:
     ports:
       - "80:80"
 
+  backend:
+    build: ./Back-End
+    image: ghcr.io/wearefrank/federated-gateway-backend:latest
+    restart: always
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+    volumes:
+      - ./backend-config.yaml:/data/apisix_config.yaml
+    depends_on:
+      - apisix
+
+  frontend:
+    build: ./front-end
+    image: ghcr.io/wearefrank/federated-gateway-frontend:latest
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
 networks:
   default:
     driver: bridge

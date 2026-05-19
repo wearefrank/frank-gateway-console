@@ -1,0 +1,40 @@
+.section {
+    margin-bottom: 16px;
+}
+
+.sectionLabel {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    border-left: 3px solid;
+    padding-left: 6px;
+    margin-bottom: 6px;
+}
+
+.entryRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.entryRow:last-child {
+    border-bottom: none;
+}
+
+.entryId {
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    word-break: break-all;
+    flex: 1;
+}
+
+.copyBtn {
+    flex-shrink: 0;
+    min-width: 44px;
+    text-align: center;
+}

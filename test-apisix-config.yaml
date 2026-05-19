@@ -1,5 +1,5 @@
 routes:
-  - id: 1
+  - id: test-test-test-route
     uri: /hello
     upstream_id: 1
     plugins:
@@ -13,7 +13,7 @@ routes:
         body: |
           hello
       prometheus: {}
-  - id: 2
+  - id: host-test-test-route
     uri: /world
     upstream:
       nodes:
@@ -25,13 +25,12 @@ routes:
         body: |
           hello world
       prometheus: {}
-  - id: 3
+  - id: veiligheidenvergunningen-test-test-route
     uri: /secure-test
     upstream_id: 1
     plugins:
       key-auth: {}
-  - uri: testa
-    plugins: {}
+# parsed
 upstreams:
   - id: 1
     nodes:
@@ -42,12 +41,12 @@ services:
     upstream_id: 1
     plugins:
       limit-count:
-        count: 2
+        count: 1
         time_window: 60
         rejected_code: 503
       prometheus: {}
 consumers:
-  - username: jack
+  - username: jacks
     plugins:
       key-auth:
         key: auth-one
@@ -65,3 +64,4 @@ global_rules:
         rejected_code: 503
         key: remote_addr
       prometheus: {}
+#END
