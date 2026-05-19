@@ -158,3 +158,9 @@
 .addDomainRow {
     margin-top: 4px;
 }
+
+.dropZoneActive {
+    outline: 2px dashed var(--accent-color);
+    outline-offset: -4px;
+    background: color-mix(in srgb, var(--accent-color) 6%, transparent);
+}

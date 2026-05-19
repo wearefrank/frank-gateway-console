@@ -4,7 +4,7 @@ import type {NodeProps, Node} from '@xyflow/react';
 import type {ColorScheme, ConfigNodeData} from './buildTopology';
 import styles from './TopologyPage.module.css';
 
-// Color scheme context — provided by TopologyPage, consumed here
+// Color scheme context - provided by TopologyPage, consumed here
 
 export const ColorSchemeContext = createContext<ColorScheme>('source');
 
@@ -187,7 +187,7 @@ function getHandles(
                 </>
             );
         default:
-            // ssl, global_rule — standalone, no connections
+            // ssl, global_rule - standalone, no connections
             return null;
     }
 }
