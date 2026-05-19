@@ -30,7 +30,7 @@ services:
 
   backend:
     build: ./Back-End
-    image: ghcr.io/wearefrank/federated-gateway-backend:latest
+    image: ghcr.io/tijmensosef/federated-gateway-backend:latest
     restart: always
     environment:
       - PROMETHEUS_URL=http://prometheus:9090
@@ -41,7 +41,7 @@ services:
 
   frontend:
     build: ./front-end
-    image: ghcr.io/wearefrank/federated-gateway-frontend:latest
+    image: ghcr.io/tijmensosef/federated-gateway-frontend:latest
     restart: always
     ports:
       - "3000:80"

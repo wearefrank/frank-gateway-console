@@ -82,22 +82,6 @@ This builds both the backend and frontend images locally using the Dockerfiles i
 
 ---
 
-## Publishing images (CI/CD)
-
-Pushing to the `main` branch triggers a GitHub Actions workflow (`.github/workflows/docker-publish.yml`) that builds and pushes both images to GitHub Container Registry:
-
-- `ghcr.io/wearefrank/federated-gateway-backend:latest`
-- `ghcr.io/wearefrank/federated-gateway-frontend:latest`
-
-After the workflow completes, colleagues can pull the updated images with:
-
-```bash
-docker compose pull
-docker compose up
-```
-
----
-
 ## Local development (without Docker)
 
 ### Prerequisites
