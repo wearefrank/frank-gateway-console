@@ -1,18 +1,23 @@
 services:
   apisix:
-    image: ghcr.io/tijmensosef/federated-gateway-apisix:latest
+    image: ghcr.io/wearefrank/frank-gateway:master
     restart: always
+    volumes:
+      - ./apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./apisix-config.yaml:/usr/local/apisix/conf/config.yaml:ro
     ports:
       - "9180:9180"   # Admin API
       - "9080:9080"   # HTTP proxy
       - "9091:9091"   # Prometheus metrics
       - "9092:9092"   # Control API (/v1/schema)
       - "9443:9443"   # HTTPS proxy
-    env_file: ./frank-gateway/.env
 
   prometheus:
-    image: ghcr.io/tijmensosef/federated-gateway-prometheus:latest
+    image: prom/prometheus:latest
     restart: always
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
 
@@ -28,8 +33,9 @@ services:
     restart: always
     environment:
       - PROMETHEUS_URL=http://prometheus:9090
+      - APISIX_HOST=http://apisix
     volumes:
-      - ./backend-config.yaml:/data/apisix_config.yaml
+      - backend_data:/data
     depends_on:
       - apisix
 
@@ -41,6 +47,27 @@ services:
       - "3000:80"
     depends_on:
       - backend
+
+configs:
+  prometheus_config:
+    content: |
+      global:
+        scrape_interval: 1s
+        external_labels:
+          stack: "apisix"
+      scrape_configs:
+        - job_name: "prometheus"
+          scrape_interval: 5s
+          static_configs:
+            - targets: ["localhost:9090"]
+        - job_name: "apisix"
+          scrape_interval: 5s
+          metrics_path: "/apisix/prometheus/metrics"
+          static_configs:
+            - targets: ["apisix:9091"]
+
+volumes:
+  backend_data:
 
 networks:
   default:
