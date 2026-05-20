@@ -3,7 +3,7 @@ import {Link} from 'react-router-dom';
 import {getMergedOverrides, withCategoryOverride, parsePlaceholders, type DomainConfig, type DesignerSettings} from '../../hooks/useDesignerSettings';
 import type {IdFieldSettings} from '../../components/SchemaFormRenderer/IdField/IdField';
 import {IdDesigner} from './DesignerSettings';
-import {DESIGNER_CATEGORIES} from './RouteDesigner';
+import {DESIGNER_CATEGORIES} from './ConfigDesigner';
 import {useAppSettings} from '../../hooks/useAppSettings';
 import {exportSettings, importSettings} from '../../settings/settingsIO';
 import styles from './DesignerSettingsPage.module.css';

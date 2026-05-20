@@ -1,5 +1,5 @@
 import type {ResolvedError} from '../../actions/ErrorResolver';
-import styles from './RouteDesigner.module.css';
+import styles from './ConfigDesigner.module.css';
 
 export type DesignerAction =
     | { type: 'set-field'; field: string; value: unknown }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import React from 'react';
 import { ValidationLog } from '../../../actions/ValidationLogger';
 import { type ApisixConfig } from '../../../actions/SchemaValidation';
-import styles from '../configLoader.module.css';
+import styles from '../YamlEditor.module.css';
 
 interface ValidationLogsProps {
     logs: ValidationLog[];

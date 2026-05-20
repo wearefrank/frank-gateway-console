@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useRef} from 'react';
 import {ValidationLog} from '../../../actions/ValidationLogger';
 import {Document, LineCounter, parseDocument, type Node} from 'yaml';
-import styles from '../configLoader.module.css';
+import styles from '../YamlEditor.module.css';
 
 interface ConfigEditorProps {
     configText: string;

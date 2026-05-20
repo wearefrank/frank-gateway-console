@@ -11,7 +11,7 @@ import {DesignerSettings} from './DesignerSettings';
 import {DesignerErrorLogs, type DesignerAction} from './DesignerErrorLogs';
 import {PillSelect} from '../../components/PillSelect/PillSelect';
 import {dump} from 'js-yaml';
-import styles from './RouteDesigner.module.css';
+import styles from './ConfigDesigner.module.css';
 
 export const DESIGNER_CATEGORIES = [
     'route', 'upstream', 'service', 'consumer', 'global_rule', 'ssl', 'plugin_config'
@@ -52,7 +52,7 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
     return result;
 }
 
-export const RouteDesigner = () => {
+export const ConfigDesigner = () => {
     const [searchParams] = useSearchParams();
     const rawCat = searchParams.get('category') ?? '';
     const initialCategory = (DESIGNER_CATEGORIES as readonly string[]).includes(rawCat)

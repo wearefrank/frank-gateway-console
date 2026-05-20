@@ -1,4 +1,4 @@
-import styles from '../configLoader.module.css';
+import styles from '../YamlEditor.module.css';
 
 interface SchemaViewProps {
     schema: Record<string, unknown> | null;

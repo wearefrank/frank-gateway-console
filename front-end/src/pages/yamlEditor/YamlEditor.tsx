@@ -1,7 +1,7 @@
 import React, {useState, useEffect, useMemo, useRef, useCallback, startTransition} from 'react';
 import yaml from 'js-yaml';
 import {useSearchParams} from 'react-router-dom';
-import styles from './configLoader.module.css';
+import styles from './YamlEditor.module.css';
 import { type ApisixConfig } from '../../actions/SchemaValidation';
 import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLogger';
 import { FileUpload } from './components/FileUpload';
@@ -14,7 +14,7 @@ import { useAppSettings } from '../../hooks/useAppSettings';
 import { checkReferences } from './actions/checkReferences';
 
 
-const ApisixConfigLoader = () => {
+const YamlEditor = () => {
     const { configManager, config, configText: globalConfigText, schema, setConfig: setGlobalConfig } = useConfigManager();
     const [appSettings, setAppSettings] = useAppSettings();
     const [searchParams] = useSearchParams();
@@ -228,4 +228,4 @@ const ApisixConfigLoader = () => {
         </div>
     );
 };
-export default ApisixConfigLoader
+export default YamlEditor

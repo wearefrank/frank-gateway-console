@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useConfigManager } from '../../../hooks/useConfigManager';
-import loaderStyles from '../configLoader.module.css';
+import loaderStyles from '../YamlEditor.module.css';
 import styles from './ReferencesPanel.module.css';
 
 const CATEGORY_COLOR: Record<string, string> = {
