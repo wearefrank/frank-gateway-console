@@ -49,3 +49,7 @@ Thumbs.db
 /test-apisix-config.yaml
 /apisix.yaml
 /apisix-config.yaml
+/scratch/
+/.claudeignore
+/CLAUDE.md
+/Designs/
