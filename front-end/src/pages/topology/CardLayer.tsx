@@ -62,8 +62,8 @@ export const CardLayer: React.FC<CardLayerProps> = ({cards, edges, closeCard, on
                         <div className={styles.cardActions}>
                             <div className={styles.cardActionsLabel}>Open in</div>
                             <div className={styles.cardActionsBtns}>
-                                <Link to={configFocusHref} className={styles.cardActionBtn}>Config</Link>
-                                <Link to={`/designer?category=${card.data.category}&focusId=${focusId}`} className={styles.cardActionBtn}>Designer</Link>
+                                <Link to={configFocusHref} className={styles.cardActionBtn}>YAML Editor</Link>
+                                <Link to={`/designer?category=${card.data.category}&focusId=${focusId}`} className={styles.cardActionBtn}>Config Designer</Link>
                             </div>
                         </div>
                         <div className={styles.cardResizeFooter} onMouseDown={e => onResizeMouseDown(e, card.id)}>

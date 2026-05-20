@@ -185,7 +185,7 @@ const YamlEditor = () => {
     return (
         <div className="container">
             <div className={`flex justify-between align-center mb-4 pb-3 ${styles.loaderHeader}`}>
-                <h2 className="mb-1">APISIX Config Validator</h2>
+                <h2 className="mb-1">YAML Editor</h2>
             </div>
 
             <FileUpload onFileUpload={handleFileUpload} />

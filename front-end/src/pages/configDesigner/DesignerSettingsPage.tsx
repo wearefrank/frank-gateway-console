@@ -48,8 +48,8 @@ export function DesignerSettingsPage() {
     return (
         <div className="container">
             <div className={styles.pageHeader}>
-                <Link to="/designer" className={styles.backLink}>Back to Designer</Link>
-                <h2>Designer Settings</h2>
+                <Link to="/designer" className={styles.backLink}>Back to Config Designer</Link>
+                <h2>Config Designer Settings</h2>
             </div>
 
             <div className={`card ${styles.section}`}>
@@ -61,7 +61,7 @@ export function DesignerSettingsPage() {
                     onDrop={handleDrop}
                 >
                     <p className={dsStyles.sectionLabel}>
-                        Export all settings (designer, domains, UI preferences) as a JSON file, or import a previously exported file. You can also drop a file anywhere in this card.
+                        Export all settings (Config Designer, domains, UI preferences) as a JSON file, or import a previously exported file. You can also drop a file anywhere in this card.
                     </p>
                     {appSettings.meta.exportedAt && (
                         <p className={dsStyles.sectionLabel}>
@@ -99,7 +99,7 @@ export function DesignerSettingsPage() {
                 <div className={styles.sectionBody}>
                     <p className={dsStyles.sectionLabel}>
                         Domains let you predefine sets of values for each placeholder in your ID template.
-                        When you select a domain in the Designer, its values are automatically injected into the ID field dropdowns.
+                        When you select a domain in the Config Designer, its values are automatically injected into the ID field dropdowns.
                         For example, a domain called <code>production</code> could define <code>{'{subdomain}'}</code> as <code>api</code>, <code>web</code>, etc.
                     </p>
                     {placeholderNames.length === 0 && (

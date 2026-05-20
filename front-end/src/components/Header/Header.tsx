@@ -23,11 +23,7 @@ export const Header: React.FC = () => {
   const [controlStatus, setControlStatus] = useState<Status>('checking');
   const [metricsStatus, setMetricsStatus] = useState<Status>('checking');
 
-  const checkConnections = useCallback(() => {
-    setSchemaStatus('checking');
-    setControlStatus('checking');
-    setMetricsStatus('checking');
-
+  const doFetch = useCallback(() => {
     Promise.allSettled([
       fetchSchema(),
       client<boolean>('/config/check?api=control', { method: 'GET' }),
@@ -37,9 +33,16 @@ export const Header: React.FC = () => {
       setControlStatus(control.status === 'fulfilled' && control.value   ? 'ok' : 'error');
       setMetricsStatus(metrics.status === 'fulfilled' && metrics.value   ? 'ok' : 'error');
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchSchema]);
 
-  useEffect(() => { checkConnections(); }, [checkConnections]);
+  const checkConnections = useCallback(() => {
+    setSchemaStatus('checking');
+    setControlStatus('checking');
+    setMetricsStatus('checking');
+    doFetch();
+  }, [doFetch]);
+
+  useEffect(() => { doFetch(); }, [doFetch]);
 
   const isChecking = schemaStatus === 'checking' || controlStatus === 'checking' || metricsStatus === 'checking';
 
@@ -55,13 +58,13 @@ export const Header: React.FC = () => {
             Dashboard
           </NavLink>
           <NavLink to="/loadConfig" className={({ isActive }) => (isActive ? 'active' : undefined)}>
-            Config Validation
+            YAML Editor
           </NavLink>
           <NavLink to="/config" className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Config
           </NavLink>
           <NavLink to="/designer" className={({ isActive }) => (isActive ? 'active' : undefined)}>
-            Designer
+            Config Designer
           </NavLink>
           <NavLink to="/topology" className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Topology
