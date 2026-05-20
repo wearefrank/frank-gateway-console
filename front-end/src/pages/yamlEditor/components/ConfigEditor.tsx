@@ -1,6 +1,6 @@
-import {useEffect, useMemo, useRef} from 'react';
+import React, {useEffect, useMemo, useRef} from 'react';
 import {ValidationLog} from '../../../actions/ValidationLogger';
-import {Document, LineCounter, parseDocument, type Node} from 'yaml';
+import {parseYamlDoc, resolvePathToNode} from '../yamlLineUtils';
 import styles from '../YamlEditor.module.css';
 
 interface ConfigEditorProps {
@@ -98,90 +98,96 @@ export const ConfigEditor = ({
 
     const editorContainerRef = useRef<HTMLDivElement>(null);
 
-    const errorLines = useMemo(() => {
-        if (!configText) return new Set<number>();
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+            e.preventDefault();
 
-        const lines = new Set<number>();
+            const textarea = e.currentTarget;
+            const { selectionStart, selectionEnd, value } = textarea;
 
-        // We use the YAML parser for both YAML and JSON modes since both can be parsed with the same library
-        try {
-            const lineCounter = new LineCounter();
-            const doc: Document = parseDocument(configText, {lineCounter});
+            const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+            const lineEnd = value.indexOf('\n', selectionEnd);
+            const blockEnd = lineEnd === -1 ? value.length : lineEnd;
 
-            // Highlight YAML syntax errors (only the exact line)
-            for (const err of doc.errors) {
-                if (err.pos && err.pos.length >= 1) {
-                    lines.add(lineCounter.linePos(err.pos[0]).line);
-                }
-            }
+            const block = value.slice(lineStart, blockEnd);
+            const lines = block.split('\n');
 
-            // Highlight schema validation errors
-            validationLogs.forEach(log => {
-                if ((log.type === 'error' || log.type === 'warning') && log.path) {
+            const nonEmpty = lines.filter(l => l.trim() !== '');
+            const allCommented = nonEmpty.length > 0 && nonEmpty.every(l => /^\s*#/.test(l));
 
-                    const pathParts = log.path.split('/').filter(Boolean).map(p => {
-                        const num = parseInt(p, 10);
-                        return isNaN(num) ? p : num;
-                    });
-
-                    // searches the path parts in the document and returns the node (node is the whole indent)
-                    // If the node doesn't exist (field not set), keep removing the last path part until a parent is found
-                    let trimmedParts = [...pathParts];
-                    let node = doc.getIn(trimmedParts, true) as Node;
-                    while ((!node || !node.range) && trimmedParts.length > 0) {
-                        trimmedParts = trimmedParts.slice(0, -1);
-                        node = doc.getIn(trimmedParts, true) as Node;
-                    }
-
-                    if (node && node.range) {
-                        // Added an ofset as everything was 1 line to far as we also want the parent marked
-                        const offset: number = 0;
-
-                        const startLine = lineCounter.linePos(node.range[0]).line + offset;
-                        const endLine = lineCounter.linePos(node.range[1]).line + offset;
-
-                        // Add all lines in the range
-                        for (let i = startLine; i <= endLine; i++) {
-                            lines.add(i);
-                        }
-                    }
+            const newLines = lines.map(line => {
+                if (line.trim() === '') return line;
+                if (allCommented) {
+                    return line.replace(/^(\s*)# ?/, '$1');
+                } else {
+                    const indentMatch = line.match(/^(\s*)/);
+                    const indent = indentMatch ? indentMatch[1] : '';
+                    return indent + '# ' + line.slice(indent.length);
                 }
             });
-        } catch (e) {
-            console.error("Error parsing config for highlighting:", e);
+
+            const newBlock = newLines.join('\n');
+            const newText = value.slice(0, lineStart) + newBlock + value.slice(blockEnd);
+
+            const firstLineDelta = newLines[0].length - lines[0].length;
+            const totalDelta = newBlock.length - block.length;
+
+            onConfigChange(newText);
+
+            requestAnimationFrame(() => {
+                const newStart = Math.max(lineStart, selectionStart + firstLineDelta);
+                const newEnd = Math.max(lineStart, selectionEnd + totalDelta);
+                textarea.setSelectionRange(newStart, newEnd);
+            });
         }
+    };
+
+    const parsedDoc = useMemo(() => {
+        if (!configText) return null;
+        try { return parseYamlDoc(configText); }
+        catch { return null; }
+    }, [configText]);
+
+    const errorLines = useMemo(() => {
+        const lines = new Set<number>();
+        if (!parsedDoc) return lines;
+
+        const {doc, lineCounter} = parsedDoc;
+
+        // Highlight YAML syntax errors (only the exact line)
+        for (const err of doc.errors) {
+            if (err.pos && err.pos.length >= 1) {
+                lines.add(lineCounter.linePos(err.pos[0]).line);
+            }
+        }
+
+        // Highlight schema validation errors
+        validationLogs.forEach(log => {
+            if ((log.type === 'error' || log.type === 'warning') && log.path) {
+                const node = resolvePathToNode(doc, log.path);
+                if (node && node.range) {
+                    const startLine = lineCounter.linePos(node.range[0]).line;
+                    const endLine = lineCounter.linePos(node.range[1]).line;
+                    for (let i = startLine; i <= endLine; i++) lines.add(i);
+                }
+            }
+        });
 
         return lines;
-    }, [configText, validationLogs]);
+    }, [parsedDoc, validationLogs]);
 
     useEffect(() => {
-        if (!scrollToTarget || !configText || !editorContainerRef.current) return;
+        if (!scrollToTarget || !parsedDoc || !editorContainerRef.current) return;
 
-        try {
-            const lineCounter = new LineCounter();
-            const doc: Document = parseDocument(configText, {lineCounter});
+        const {doc, lineCounter} = parsedDoc;
+        const node = resolvePathToNode(doc, scrollToTarget.path);
 
-            const pathParts = scrollToTarget.path.split('/').filter(Boolean).map(p => {
-                const num = parseInt(p, 10);
-                return isNaN(num) ? p : num;
-            });
-
-            let trimmedParts = [...pathParts];
-            let node = doc.getIn(trimmedParts, true) as Node;
-            while ((!node || !node.range) && trimmedParts.length > 0) {
-                trimmedParts = trimmedParts.slice(0, -1);
-                node = doc.getIn(trimmedParts, true) as Node;
-            }
-
-            if (node && node.range) {
-                const targetLine = lineCounter.linePos(node.range[0]).line;
-                const lineHeight = parseFloat(getComputedStyle(editorContainerRef.current).lineHeight) || 21;
-                editorContainerRef.current.scrollTop = (targetLine - 1) * lineHeight;
-            }
-        } catch {
-            // ignore scroll errors
+        if (node && node.range) {
+            const targetLine = lineCounter.linePos(node.range[0]).line;
+            const lineHeight = parseFloat(getComputedStyle(editorContainerRef.current).lineHeight) || 21;
+            editorContainerRef.current.scrollTop = (targetLine - 1) * lineHeight;
         }
-    }, [scrollToTarget, configText]);
+    }, [scrollToTarget, parsedDoc]);
 
 
 
@@ -260,6 +266,7 @@ export const ConfigEditor = ({
                         <textarea
                             value={configText}
                             onChange={(e) => onConfigChange(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             spellCheck={false}
                             className={styles.editorTextarea}
                         />

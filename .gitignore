@@ -53,3 +53,4 @@ Thumbs.db
 /.claudeignore
 /CLAUDE.md
 /Designs/
+/front-end/src/components/SchemaFormRenderer/SchemaFormRenderer.puml
