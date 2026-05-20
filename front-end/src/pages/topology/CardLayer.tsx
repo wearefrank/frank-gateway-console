@@ -1,4 +1,5 @@
 import React from 'react';
+import {Link} from 'react-router-dom';
 import {useViewport} from '@xyflow/react';
 import type {Edge} from '@xyflow/react';
 import {dump} from 'js-yaml';
@@ -35,6 +36,10 @@ export const CardLayer: React.FC<CardLayerProps> = ({cards, edges, closeCard, on
                 const edgeCount = edges.filter(e => e.source === card.id || e.target === card.id).length;
                 const yamlText  = dump(entry, {indent: 2, noRefs: true});
 
+                const focusIdField = card.data.category === 'consumer' ? 'username' : 'id';
+                const focusId      = encodeURIComponent(String(entry[focusIdField] ?? ''));
+                const configFocusHref = `/loadConfig?focusCategory=${card.data.category}&focusId=${focusId}`;
+
                 // Convert flow-space position to screen-space
                 const sx = card.x * zoom + vpX;
                 const sy = card.y * zoom + vpY;
@@ -53,6 +58,13 @@ export const CardLayer: React.FC<CardLayerProps> = ({cards, edges, closeCard, on
                                 <div className={styles.cardMeta}>{edgeCount} connection{edgeCount !== 1 ? 's' : ''}</div>
                             )}
                             <pre className={styles.cardYaml}>{yamlText}</pre>
+                        </div>
+                        <div className={styles.cardActions}>
+                            <div className={styles.cardActionsLabel}>Open in</div>
+                            <div className={styles.cardActionsBtns}>
+                                <Link to={configFocusHref} className={styles.cardActionBtn}>Config</Link>
+                                <Link to={`/designer?category=${card.data.category}&focusId=${focusId}`} className={styles.cardActionBtn}>Designer</Link>
+                            </div>
                         </div>
                         <div className={styles.cardResizeFooter} onMouseDown={e => onResizeMouseDown(e, card.id)}>
                             <svg width="10" height="10" viewBox="0 0 10 10" className={styles.cardResizeIcon}>

@@ -1,6 +1,6 @@
-import {useCallback, useMemo, useState, Fragment} from 'react';
+import {useCallback, useEffect, useMemo, useRef, startTransition, useState, Fragment} from 'react';
 import type {ResolvedError} from '../../actions/ErrorResolver';
-import {Link} from 'react-router-dom';
+import {Link, useSearchParams} from 'react-router-dom';
 import {useConfigManager} from '../../hooks/useConfigManager';
 import {SchemaFormGenerator, type SchemaField} from '../../actions/SchemaFormGenerator';
 import {SchemaFormRenderer} from '../../components/SchemaFormRenderer/SchemaFormRenderer';
@@ -53,7 +53,13 @@ function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[])
 }
 
 export const RouteDesigner = () => {
-    const {category, values, handleChange, handleCategorySwitch, loadValues} = useFormByCategory('route');
+    const [searchParams] = useSearchParams();
+    const rawCat = searchParams.get('category') ?? '';
+    const initialCategory = (DESIGNER_CATEGORIES as readonly string[]).includes(rawCat)
+        ? rawCat as DesignerCategory
+        : 'route';
+    const {category, values, handleChange, handleCategorySwitch, loadValues} = useFormByCategory(initialCategory);
+    const hasAutoLoaded = useRef(false);
     const [domain, setDomain] = useState<string>('');
     const [confirmation, setConfirmation] = useState<string>('');
     const [search, setSearch] = useState<string>('');
@@ -149,6 +155,14 @@ export const RouteDesigner = () => {
         setEditingEntry(null);
         loadValues({});
     }, [loadValues]);
+
+    useEffect(() => {
+        if (hasAutoLoaded.current || !configManager) return;
+        const focusId = searchParams.get('focusId');
+        if (!focusId) return;
+        hasAutoLoaded.current = true;
+        startTransition(() => handleLoadEntry(initialCategory, focusId));
+    }, [configManager, handleLoadEntry, initialCategory, searchParams]);
 
     const handleManualCategorySwitch = useCallback((newCat: string) => {
         setEditingEntry(null);

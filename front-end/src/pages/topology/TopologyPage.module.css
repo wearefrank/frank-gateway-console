@@ -180,6 +180,48 @@
     gap: 4px;
 }
 
+.cardActions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-dim);
+}
+
+.cardActionsLabel {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.cardActionsBtns {
+    display: flex;
+    gap: 6px;
+}
+
+.cardActionBtn {
+    flex: 1;
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 5px 8px;
+    border-radius: 5px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-dim);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    cursor: pointer;
+}
+
+.cardActionBtn:hover {
+    background: var(--accent-color, #3b82f6);
+    color: #fff;
+    border-color: transparent;
+}
+
 .nodeTitle {
     font-weight: 600;
     color: var(--text-primary, #1e293b);

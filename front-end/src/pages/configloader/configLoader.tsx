@@ -1,5 +1,6 @@
-import React, {useState, useEffect, useMemo, useRef, useCallback} from 'react';
+import React, {useState, useEffect, useMemo, useRef, useCallback, startTransition} from 'react';
 import yaml from 'js-yaml';
+import {useSearchParams} from 'react-router-dom';
 import styles from './configLoader.module.css';
 import { type ApisixConfig } from '../../actions/SchemaValidation';
 import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLogger';
@@ -16,6 +17,7 @@ import { checkReferences } from './actions/checkReferences';
 const ApisixConfigLoader = () => {
     const { configManager, config, configText: globalConfigText, schema, setConfig: setGlobalConfig } = useConfigManager();
     const [appSettings, setAppSettings] = useAppSettings();
+    const [searchParams] = useSearchParams();
 
     const [configText, setConfigText] = useState<string>(globalConfigText);
     const [viewMode, setViewMode] = useState<'yaml' | 'json'>(appSettings.ui.configViewMode);
@@ -146,22 +148,39 @@ const ApisixConfigLoader = () => {
 
     useEffect(() => {
         if (config && schema) {
-            setLogs(prev => prev.filter(l => l.message.includes('backend') || l.message.includes('Schema')));
-
             configManager.setConfig(config);
             configManager.setSchema(schema);
             configManager.setFillInDefaults(fillDefault);
 
             const validationLogs = configManager.validate();
-            if (Array.isArray(validationLogs)) {
-                setLogs(prev => [...validationLogs, ...prev]);
-            }
+            startTransition(() => {
+                setLogs(prev => {
+                    const base = prev.filter(l => l.message.includes('backend') || l.message.includes('Schema'));
+                    return Array.isArray(validationLogs) ? [...validationLogs, ...base] : base;
+                });
+            });
         }
     }, [config, schema, configManager, fillDefault]);
 
     useEffect(() => {
-        setRefLogs(config ? checkReferences(config) : []);
+        const refLogs = config ? checkReferences(config) : [];
+        startTransition(() => setRefLogs(refLogs));
     }, [config]);
+
+    useEffect(() => {
+        const focusCategory = searchParams.get('focusCategory');
+        const focusId = searchParams.get('focusId');
+        if (!config || !focusCategory || !focusId) return;
+
+        const key = focusCategory + 's';
+        const entries = (config[key as keyof typeof config] as Record<string, unknown>[]) ?? [];
+        const idField = focusCategory === 'consumer' ? 'username' : 'id';
+        const index = entries.findIndex(e => String(e[idField]) === focusId);
+        if (index === -1) return;
+
+        scrollKeyRef.current += 1;
+        setScrollToTarget({ path: `/${key}/${index}`, key: scrollKeyRef.current });
+    }, [config, searchParams]);
 
     return (
         <div className="container">
