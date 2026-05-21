@@ -29,6 +29,7 @@ export function getConnectedNodeIds(startId: string, edges: Edge[]): Set<string>
     return visited;
 }
 import type { ApisixConfig, ResourceConfiguration } from '../../actions/SchemaValidation';
+import { getIdField, getDisplayId } from '../../config/categoryDefinitions';
 
 export type ColorScheme = 'source' | 'destination';
 
@@ -60,13 +61,8 @@ const DEST_CONSUMER_EDGE_COLORS: Record<string, string> = {
 const EDGE_LABEL_STYLE = { fontSize: '9px', fill: '#cbd5e1' };
 const EDGE_LABEL_BG_STYLE = { fill: '#1e293b', fillOpacity: 0.9, rx: 3, ry: 3 };
 
-function entryId(category: string, entry: ResourceConfiguration): string {
-    const raw = category === 'consumer' ? entry['username'] : entry['id'];
-    return String(raw ?? 'unknown');
-}
-
-function nodeId(category: string, entry: ResourceConfiguration): string {
-    return `${category}-${entryId(category, entry)}`;
+function nodeId(category: string, entry: ResourceConfiguration, index?: number): string {
+    return `${category}-${getDisplayId(category, entry as Record<string, unknown>, index)}`;
 }
 
 // Auth plugins whose presence on both a consumer and another resource implies a connection
@@ -100,13 +96,29 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
         'upstream',
     ] as const;
 
-    // First pass: collect nodes
+    // First pass: collect nodes and build a reference registry.
+    // Registry maps "category-originalId" -> resolved node ID so that edge lookups
+    // work even when a node's ID was derived from a fallback (no id field).
+    const refRegistry = new Map<string, string>();
+
+    const resolveRef = (category: string, refId: unknown): string | null => {
+        if (refId === undefined || refId === null) return null;
+        return refRegistry.get(`${category}-${String(refId)}`) ?? null;
+    };
+
     for (const category of categories) {
         const raw = (config as Record<string, unknown>)[category + 's'];
         if (!Array.isArray(raw)) continue;
 
-        for (const entry of raw as ResourceConfiguration[]) {
-            const id = nodeId(category, entry);
+        for (let i = 0; i < (raw as ResourceConfiguration[]).length; i++) {
+            const entry = (raw as ResourceConfiguration[])[i];
+            const id = nodeId(category, entry, i);
+
+            // Register by original id/username so other entries can reference this node
+            const originalId = entry[getIdField(category)];
+            if (originalId !== undefined && originalId !== null) {
+                refRegistry.set(`${category}-${String(originalId)}`, id);
+            }
 
             nodes.push({
                 id,
@@ -119,79 +131,71 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
         }
     }
 
-    // Second pass: collect edges (only between nodes that exist)
-    const nodeIds = new Set(nodes.map(n => n.id));
-
+    // Second pass: collect edges using the registry for all reference lookups
     for (const node of nodes) {
         const { category, entry } = node.data;
 
         if (category === 'route') {
-            if (entry['upstream_id']) {
-                const target = `upstream-${entry['upstream_id']}`;
-                if (nodeIds.has(target)) {
-                    edges.push({
-                        id: `${node.id}->${target}`,
-                        source: node.id,
-                        target,
-                        sourceHandle: 'source-upstream',
-                        targetHandle: 'target-from-route',
-                        type: 'smoothstep',
-                        label: 'upstream',
-                        labelStyle: EDGE_LABEL_STYLE,
-                        labelBgStyle: EDGE_LABEL_BG_STYLE,
-                        animated: true,
-                        style: colorScheme === 'source' ? ROUTE_EDGE_STYLE : DEST_UPSTREAM_EDGE_STYLE,
-                    });
-                    g.setEdge(node.id, target);
-                }
+            const upstreamTarget = resolveRef('upstream', entry['upstream_id']);
+            if (upstreamTarget) {
+                edges.push({
+                    id: `${node.id}->${upstreamTarget}`,
+                    source: node.id,
+                    target: upstreamTarget,
+                    sourceHandle: 'source-upstream',
+                    targetHandle: 'target-from-route',
+                    type: 'smoothstep',
+                    label: 'upstream',
+                    labelStyle: EDGE_LABEL_STYLE,
+                    labelBgStyle: EDGE_LABEL_BG_STYLE,
+                    animated: true,
+                    style: colorScheme === 'source' ? ROUTE_EDGE_STYLE : DEST_UPSTREAM_EDGE_STYLE,
+                });
+                g.setEdge(node.id, upstreamTarget);
             }
-            if (entry['service_id']) {
-                const target = `service-${entry['service_id']}`;
-                if (nodeIds.has(target)) {
-                    edges.push({
-                        id: `${node.id}->${target}`,
-                        source: node.id,
-                        target,
-                        sourceHandle: 'source-service',
-                        targetHandle: 'target-from-route',
-                        type: 'smoothstep',
-                        label: 'service',
-                        labelStyle: EDGE_LABEL_STYLE,
-                        labelBgStyle: EDGE_LABEL_BG_STYLE,
-                        style: colorScheme === 'source' ? ROUTE_EDGE_STYLE : DEST_SERVICE_EDGE_STYLE,
-                    });
-                    g.setEdge(node.id, target);
-                }
+            const serviceTarget = resolveRef('service', entry['service_id']);
+            if (serviceTarget) {
+                edges.push({
+                    id: `${node.id}->${serviceTarget}`,
+                    source: node.id,
+                    target: serviceTarget,
+                    sourceHandle: 'source-service',
+                    targetHandle: 'target-from-route',
+                    type: 'smoothstep',
+                    label: 'service',
+                    labelStyle: EDGE_LABEL_STYLE,
+                    labelBgStyle: EDGE_LABEL_BG_STYLE,
+                    style: colorScheme === 'source' ? ROUTE_EDGE_STYLE : DEST_SERVICE_EDGE_STYLE,
+                });
+                g.setEdge(node.id, serviceTarget);
             }
-            if (entry['plugin_config_id']) {
-                const pluginConfigNode = `plugin_config-${entry['plugin_config_id']}`;
-                if (nodeIds.has(pluginConfigNode)) {
-                    // plugin_config flows INTO the route (it's applied to the route, not an output)
-                    edges.push({
-                        id: `${pluginConfigNode}->${node.id}`,
-                        source: pluginConfigNode,
-                        target: node.id,
-                        sourceHandle: 'source-to-route',
-                        targetHandle: 'target-from-plugin_config',
-                        type: 'smoothstep',
-                        label: 'plugin_config',
-                        labelStyle: EDGE_LABEL_STYLE,
-                        labelBgStyle: EDGE_LABEL_BG_STYLE,
-                        // source=plugin_config(teal), destination=route(blue)
-                        style: colorScheme === 'source' ? DEST_PLUGIN_EDGE_STYLE : ROUTE_PLUGIN_EDGE_STYLE,
-                    });
-                    g.setEdge(pluginConfigNode, node.id);
-                }
+            const pluginConfigSource = resolveRef('plugin_config', entry['plugin_config_id']);
+            if (pluginConfigSource) {
+                // plugin_config flows INTO the route (it's applied to the route, not an output)
+                edges.push({
+                    id: `${pluginConfigSource}->${node.id}`,
+                    source: pluginConfigSource,
+                    target: node.id,
+                    sourceHandle: 'source-to-route',
+                    targetHandle: 'target-from-plugin_config',
+                    type: 'smoothstep',
+                    label: 'plugin_config',
+                    labelStyle: EDGE_LABEL_STYLE,
+                    labelBgStyle: EDGE_LABEL_BG_STYLE,
+                    // source=plugin_config(teal), destination=route(blue)
+                    style: colorScheme === 'source' ? DEST_PLUGIN_EDGE_STYLE : ROUTE_PLUGIN_EDGE_STYLE,
+                });
+                g.setEdge(pluginConfigSource, node.id);
             }
         }
 
-        if (category === 'service' && entry['upstream_id']) {
-            const target = `upstream-${entry['upstream_id']}`;
-            if (nodeIds.has(target)) {
+        if (category === 'service') {
+            const upstreamTarget = resolveRef('upstream', entry['upstream_id']);
+            if (upstreamTarget) {
                 edges.push({
-                    id: `${node.id}->${target}`,
+                    id: `${node.id}->${upstreamTarget}`,
                     source: node.id,
-                    target,
+                    target: upstreamTarget,
                     sourceHandle: 'source-upstream',
                     targetHandle: 'target-from-service',
                     type: 'smoothstep',
@@ -201,7 +205,7 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
                     animated: true,
                     style: colorScheme === 'source' ? SERVICE_EDGE_STYLE : DEST_UPSTREAM_EDGE_STYLE,
                 });
-                g.setEdge(node.id, target);
+                g.setEdge(node.id, upstreamTarget);
             }
         }
     }

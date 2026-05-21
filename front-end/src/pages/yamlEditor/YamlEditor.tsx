@@ -12,6 +12,7 @@ import { SchemaView } from './components/SchemaView';
 import { useConfigManager } from '../../hooks/useConfigManager';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { checkReferences } from './actions/checkReferences';
+import { getIdField } from '../../config/categoryDefinitions';
 
 
 const YamlEditor = () => {
@@ -153,7 +154,7 @@ const YamlEditor = () => {
 
         const key = focusCategory + 's';
         const entries = (config[key as keyof typeof config] as Record<string, unknown>[]) ?? [];
-        const idField = focusCategory === 'consumer' ? 'username' : 'id';
+        const idField = getIdField(focusCategory);
         const index = entries.findIndex(e => String(e[idField]) === focusId);
         if (index === -1) return;
 

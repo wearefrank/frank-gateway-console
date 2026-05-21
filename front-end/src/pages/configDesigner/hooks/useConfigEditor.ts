@@ -1,5 +1,6 @@
 import {useCallback, useState} from 'react';
 import type {ApisixConfig} from '../../../actions/SchemaValidation';
+import { getIdField } from '../../../config/categoryDefinitions';
 import {dump} from 'js-yaml';
 import {parseDocument, isSeq, isMap} from 'yaml';
 
@@ -107,7 +108,7 @@ export function useConfigEditor({builtObject, category, config, configText, setC
         if (!editingEntry || Object.keys(builtObject).length === 0) return;
 
         const categoryKey = (editingEntry.category + 's') as keyof ApisixConfig;
-        const idKey = editingEntry.category === 'consumer' ? 'username' : 'id';
+        const idKey = getIdField(editingEntry.category);
         const currentList = (config?.[categoryKey] as Record<string, unknown>[]) || [];
         const updatedList = currentList.map(item => item[idKey] === editingEntry.id ? builtObject : item);
         const newJson = {...config, [categoryKey]: updatedList} as ApisixConfig;

@@ -1,4 +1,5 @@
 import {useCallback, useMemo, useState} from 'react';
+import { getIdField } from '../../config/categoryDefinitions';
 import type {ResolvedError} from '../../actions/ErrorResolver';
 import type {ApisixConfig} from '../../actions/SchemaValidation';
 import {Link, useSearchParams} from 'react-router-dom';
@@ -97,7 +98,7 @@ export const ConfigDesigner = () => {
     });
 
     const duplicateIdErrors = useMemo<ResolvedError[]>(() => {
-        const idKey = category === 'consumer' ? 'username' : 'id';
+        const idKey = getIdField(category);
         const currentId = builtObject[idKey];
         if (typeof currentId !== 'string' || !currentId) return [];
 

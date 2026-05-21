@@ -5,6 +5,7 @@ import type {Edge} from '@xyflow/react';
 import {dump} from 'js-yaml';
 import type {ConfigNodeData} from './buildTopology';
 import {CATEGORY_COLOR, CATEGORY_LABEL} from './ConfigNode';
+import { getIdField, getDisplayId } from '../../config/categoryDefinitions';
 import styles from './TopologyPage.module.css';
 
 export type DetailCard = {
@@ -32,11 +33,11 @@ export const CardLayer: React.FC<CardLayerProps> = ({cards, edges, closeCard, on
                 const color     = CATEGORY_COLOR[card.data.category] ?? '#64748b';
                 const label     = CATEGORY_LABEL[card.data.category] ?? card.data.category;
                 const entry     = card.data.entry as Record<string, unknown>;
-                const title     = String(card.data.category === 'consumer' ? entry['username'] : (entry['id'] ?? '—'));
+                const title     = getDisplayId(card.data.category, entry) || '—';
                 const edgeCount = edges.filter(e => e.source === card.id || e.target === card.id).length;
                 const yamlText  = dump(entry, {indent: 2, noRefs: true});
 
-                const focusIdField = card.data.category === 'consumer' ? 'username' : 'id';
+                const focusIdField = getIdField(card.data.category);
                 const focusId      = encodeURIComponent(String(entry[focusIdField] ?? ''));
                 const configFocusHref = `/loadConfig?focusCategory=${card.data.category}&focusId=${focusId}`;
 

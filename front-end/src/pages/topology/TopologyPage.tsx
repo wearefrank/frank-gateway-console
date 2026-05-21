@@ -8,6 +8,7 @@ import {useConfigManager} from '../../hooks/useConfigManager';
 import {buildTopology, getConnectedNodeIds} from './buildTopology';
 import type {ColorScheme, ConfigNodeData} from './buildTopology';
 import {ColorSchemeContext, CATEGORY_COLOR, nodeTypes} from './ConfigNode';
+import { getDisplayId } from '../../config/categoryDefinitions';
 import {CardLayer} from './CardLayer';
 import {useDetailCards} from './useDetailCards';
 import styles from './TopologyPage.module.css';
@@ -86,9 +87,7 @@ export const TopologyPage: React.FC = () => {
 
     const focusedNode  = focusedNodeId ? nodes.find(n => n.id === focusedNodeId) : null;
     const focusedLabel = focusedNode
-        ? String(focusedNode.data.category === 'consumer'
-            ? focusedNode.data.entry['username']
-            : (focusedNode.data.entry['id'] ?? focusedNodeId))
+        ? getDisplayId(focusedNode.data.category, focusedNode.data.entry as Record<string, unknown>) || focusedNodeId
         : null;
 
     if (!config) {

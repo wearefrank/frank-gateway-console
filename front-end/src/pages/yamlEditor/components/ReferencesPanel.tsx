@@ -1,46 +1,41 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useConfigManager } from '../../../hooks/useConfigManager';
+import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_DEFINITIONS, getIdField, getDisplayId } from '../../../config/categoryDefinitions';
 import loaderStyles from '../YamlEditor.module.css';
 import styles from './ReferencesPanel.module.css';
-
-const CATEGORY_COLOR: Record<string, string> = {
-    upstream:      '#22c55e',
-    service:       '#f97316',
-    consumer:      '#8b5cf6',
-    plugin_config: '#0d9488',
-    global_rule:   '#ef4444',
-};
-
-const CATEGORY_LABEL: Record<string, string> = {
-    upstream:      'Upstream',
-    service:       'Service',
-    consumer:      'Consumer',
-    plugin_config: 'Plugin Config',
-    global_rule:   'Global Rule',
-};
-
-const CATEGORIES = ['upstream', 'service', 'consumer', 'plugin_config', 'global_rule'] as const;
 
 interface ReferencesPanelProps {
     headerExtra?: React.ReactNode;
 }
 
 export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ headerExtra }) => {
-    const { configManager } = useConfigManager();
-    const [copiedId, setCopiedId] = useState<string | null>(null);
+    const { config } = useConfigManager();
+    const [, setSearchParams] = useSearchParams();
+    const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-    const handleCopy = (id: string) => {
-        navigator.clipboard.writeText(id)
+    const handleCopy = (value: string, key: string) => {
+        navigator.clipboard.writeText(value)
             .then(() => {
-                setCopiedId(id);
-                setTimeout(() => setCopiedId(null), 1500);
+                setCopiedKey(key);
+                setTimeout(() => setCopiedKey(null), 1500);
             })
             .catch(() => {});
     };
 
-    const sections = CATEGORIES
-        .map(cat => ({ category: cat, ids: configManager.getCategoryEntries(cat) }))
-        .filter(s => s.ids.length > 0);
+    const handleFocus = (category: string, entry: Record<string, unknown>) => {
+        const idField = getIdField(category);
+        const idValue = entry[idField];
+        if (idValue === undefined || idValue === null) return;
+        setSearchParams({ focusCategory: category, focusId: String(idValue) });
+    };
+
+    const sections = Object.entries(CATEGORY_DEFINITIONS).flatMap(([cat, def]) => {
+        const raw = config ? (config as Record<string, unknown>)[cat + 's'] : undefined;
+        if (!Array.isArray(raw) || raw.length === 0) return [];
+        const entries = raw as Record<string, unknown>[];
+        return [{ category: cat, def, entries }];
+    });
 
     return (
         <div className={`card flex flex-column ${loaderStyles.configCard}`}>
@@ -54,10 +49,10 @@ export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ headerExtra })
             <div className={`scroll-y ${loaderStyles.logContainer}`}>
                 {sections.length === 0 ? (
                     <p className="text-muted text-small">
-                        No referenceable entries found. Load a config that contains upstreams, services, or other linkable resources.
+                        No entries found. Load a config to see its resources here.
                     </p>
                 ) : (
-                    sections.map(({ category, ids }) => (
+                    sections.map(({ category, def, entries }) => (
                         <div key={category} className={styles.section}>
                             <div
                                 className={styles.sectionLabel}
@@ -65,17 +60,39 @@ export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ headerExtra })
                             >
                                 {CATEGORY_LABEL[category]}
                             </div>
-                            {ids.map(id => (
-                                <div key={id} className={styles.entryRow}>
-                                    <code className={styles.entryId}>{id}</code>
-                                    <button
-                                        className={`text-small ${loaderStyles.btnIcon} ${styles.copyBtn}`}
-                                        onClick={() => handleCopy(id)}
-                                    >
-                                        {copiedId === id ? '✓' : 'Copy'}
-                                    </button>
-                                </div>
-                            ))}
+                            {entries.map((entry, i) => {
+                                const displayName = getDisplayId(category, entry, i);
+                                return (
+                                    <div key={i} className={styles.entryBlock}>
+                                        <button
+                                            className={styles.entryName}
+                                            onClick={() => handleFocus(category, entry)}
+                                            title="Click to scroll to this entry in the editor"
+                                        >
+                                            {displayName}
+                                        </button>
+                                        {def.referenceableFields.map(field => {
+                                            const val = entry[field];
+                                            if (val === undefined || val === null) return null;
+                                            const strVal = String(val);
+                                            if (strVal === displayName) return null;
+                                            const copyKey = `${category}-${i}-${field}`;
+                                            return (
+                                                <div key={field} className={styles.entryRow}>
+                                                    <span className={styles.refField}>{field}:</span>
+                                                    <code className={styles.entryId}>{strVal}</code>
+                                                    <button
+                                                        className={`text-small ${loaderStyles.btnIcon} ${styles.copyBtn}`}
+                                                        onClick={() => handleCopy(strVal, copyKey)}
+                                                    >
+                                                        {copiedKey === copyKey ? '✓' : 'Copy'}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })}
                         </div>
                     ))
                 )}

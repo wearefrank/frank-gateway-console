@@ -2,33 +2,15 @@ import React, {createContext, useContext} from 'react';
 import {Handle, Position, useEdges, useNodeId} from '@xyflow/react';
 import type {NodeProps, Node} from '@xyflow/react';
 import type {ColorScheme, ConfigNodeData} from './buildTopology';
+import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_DEFINITIONS, getDisplayId } from '../../config/categoryDefinitions';
 import styles from './TopologyPage.module.css';
+
+// Re-export so existing importers (TopologyPage, CardLayer) don't need to change
+export { CATEGORY_COLOR, CATEGORY_LABEL };
 
 // Color scheme context - provided by TopologyPage, consumed here
 
 export const ColorSchemeContext = createContext<ColorScheme>('source');
-
-// Category display metadata
-
-export const CATEGORY_COLOR: Record<string, string> = {
-    route:        '#3b82f6',
-    upstream:     '#22c55e',
-    service:      '#f97316',
-    consumer:     '#8b5cf6',
-    global_rule:  '#ef4444',
-    plugin_config:'#f59e0b',
-    ssl:          '#94a3b8',
-};
-
-export const CATEGORY_LABEL: Record<string, string> = {
-    route:        'Route',
-    upstream:     'Upstream',
-    service:      'Service',
-    consumer:     'Consumer',
-    global_rule:  'Global Rule',
-    plugin_config:'Plugin Config',
-    ssl:          'SSL',
-};
 
 // Handle styling helpers
 
@@ -240,7 +222,14 @@ export const ConfigNode: React.FC<NodeProps<ConfigNodeType>> = ({data}) => {
 
     const color     = CATEGORY_COLOR[category] ?? '#64748b';
     const label     = CATEGORY_LABEL[category] ?? category;
-    const title     = String(category === 'consumer' ? entry['username'] : (entry['id'] ?? '—'));
+    const title     = getDisplayId(category, entry as Record<string, unknown>) || '—';
+    const fallbackInfo = (CATEGORY_DEFINITIONS[category]?.fallbackFields ?? [])
+        .flatMap(field => {
+            const val = (entry as Record<string, unknown>)[field];
+            if (val === undefined || val === null) return [];
+            const str = Array.isArray(val) ? String(val[0]) : String(val);
+            return str.trim() !== '' && str !== title ? [str] : [];
+        });
     const plugins   = entry['plugins'];
     const pluginKeys = plugins && typeof plugins === 'object' && !Array.isArray(plugins)
         ? Object.keys(plugins as Record<string, unknown>)
@@ -261,9 +250,12 @@ export const ConfigNode: React.FC<NodeProps<ConfigNodeType>> = ({data}) => {
                     <div className={styles.nodeContent}>
                         <div className={styles.nodeTitle}>{title}</div>
 
-                        {category === 'route' && !!entry['uri'] && (
-                            <div className={styles.nodeDetail}><code>{String(entry['uri'])}</code></div>
+                        {fallbackInfo.length > 0 && (
+                            <div className={styles.nodeDetail}>
+                                {fallbackInfo.map(v => <div key={v}>{v}</div>)}
+                            </div>
                         )}
+
                         {category === 'upstream' && (
                             <div className={styles.nodeDetail}>
                                 {upstreamAddresses(entry['nodes']).map(addr => (
@@ -272,9 +264,7 @@ export const ConfigNode: React.FC<NodeProps<ConfigNodeType>> = ({data}) => {
                                 {!!entry['type'] && <div className={styles.nodeTag}>{String(entry['type'])}</div>}
                             </div>
                         )}
-                        {category === 'service' && !!entry['name'] && (
-                            <div className={styles.nodeDetail}>{String(entry['name'])}</div>
-                        )}
+
                         {pluginKeys.length > 0 && (
                             <div className={styles.pluginChips}>
                                 {pluginKeys.map(p => <span key={p} className={styles.pluginChip}>{p}</span>)}

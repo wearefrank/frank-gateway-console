@@ -1,4 +1,5 @@
 import {type ApisixConfig, type RawConfigValidation, type SchemaCatalog, SchemaValidator} from './SchemaValidation';
+import { getIdField } from '../config/categoryDefinitions';
 import {ValidationLog} from './ValidationLogger';
 import ErrorResolver, {type ResolvedError} from './ErrorResolver';
 
@@ -80,7 +81,7 @@ export class ConfigManager {
         if (!Array.isArray(categoryData))
             categoryData = (this.config as Record<string, unknown>)[categoryName];
         if (!Array.isArray(categoryData)) return null;
-        const idField = categoryName === 'consumer' ? 'username' : 'id';
+        const idField = getIdField(categoryName);
         return categoryData.find((e: Record<string, unknown>) => e[idField] === id) ?? null;
     }
 
@@ -96,6 +97,7 @@ export class ConfigManager {
             }
         }
 
-        return categoryData.map(cat => cat['id'] ?? cat['username'])
+        const idField = getIdField(categoryName);
+        return categoryData.map(cat => cat[idField])
     }
 }

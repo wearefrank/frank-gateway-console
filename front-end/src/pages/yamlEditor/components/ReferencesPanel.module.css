@@ -13,22 +13,50 @@
     margin-bottom: 6px;
 }
 
-.entryRow {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
+.entryBlock {
     padding: 4px 0;
     border-bottom: 1px solid var(--border-dim);
 }
 
-.entryRow:last-child {
+.entryBlock:last-child {
     border-bottom: none;
 }
 
-.entryId {
+.entryName {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 2px 0;
     font-size: 0.8rem;
+    font-weight: 500;
     color: var(--text-primary);
+    word-break: break-all;
+    cursor: pointer;
+}
+
+.entryName:hover {
+    text-decoration: underline;
+    color: var(--accent-color);
+}
+
+.entryRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0 2px 0;
+}
+
+.refField {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.entryId {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
     word-break: break-all;
     flex: 1;
 }
