@@ -18,7 +18,7 @@ interface ConfigEditorProps {
     scrollToTarget?: { path: string; key: number } | null;
 }
 
-type SegmentType = 'normal' | 'whitespace' | 'comment';
+type SegmentType = 'normal' | 'whitespace' | 'comment' | 'placeholder' | 'key';
 
 /**
  * find the first # in a line thats not inside ' ' or " "
@@ -41,6 +41,38 @@ function findCommentStart(line: string): number {
 }
 
 /**
+ * Find the key span in a YAML line: returns start (first non-indent, non-list-marker char)
+ * and end (index of the colon), or null if the line has no key-value pair.
+ * Skips colons inside quoted strings and lines that are purely comments.
+ */
+function findYamlKey(line: string, commentIdx: number): { start: number; end: number } | null {
+    let pos = 0;
+    while (pos < line.length && line[pos] === ' ') pos++;
+    if (line[pos] === '-' && (pos + 1 >= line.length || line[pos + 1] === ' ')) {
+        pos += 2;
+        while (pos < line.length && line[pos] === ' ') pos++;
+    }
+    const keyStart = pos;
+
+    let inSingle = false;
+    let inDouble = false;
+    while (pos < line.length) {
+        if (commentIdx !== -1 && pos >= commentIdx) break;
+        const c = line[pos];
+        if (c === "'" && !inDouble) { inSingle = !inSingle; pos++; continue; }
+        if (c === '"' && !inSingle) { inDouble = !inDouble; pos++; continue; }
+        if (!inSingle && !inDouble && c === ':') {
+            const next = line[pos + 1];
+            if (pos === line.length - 1 || next === ' ' || next === '\t') {
+                return { start: keyStart, end: pos };
+            }
+        }
+        pos++;
+    }
+    return null;
+}
+
+/**
  * Function to determine what color a line should be or to generate the whitespaces
  *
  * @param line           - line/text to annalyze
@@ -49,7 +81,9 @@ function findCommentStart(line: string): number {
 function buildLineSegments(line: string, showWhitespace: boolean): { text: string; type: SegmentType }[] {
     const commentIdx = findCommentStart(line);
     const leadingSpaces = line.match(/^ */)?.[0].length ?? 0;
+    const yamlKey = findYamlKey(line, commentIdx);
     const segments: { text: string; type: SegmentType }[] = [];
+    let pastKey = false;
 
     // append the new char to the same segment if they connect
     const push = (char: string, type: SegmentType) => {
@@ -61,19 +95,35 @@ function buildLineSegments(line: string, showWhitespace: boolean): { text: strin
         }
     };
 
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
+    let i = 0;
+    while (i < line.length) {
         const isComment = commentIdx !== -1 && i >= commentIdx;
+        const isKeyChar = !pastKey && yamlKey !== null && i >= yamlKey.start && i <= yamlKey.end;
 
         if (isComment) {
-            push(char, 'comment');
-        } else if (showWhitespace && char === ' ') {
+            push(line[i], 'comment');
+            i++;
+        } else if (line[i] === '$' && line[i + 1] === '{' && line[i + 2] === '{') {
+            let end = i + 3;
+            while (end < line.length) {
+                if (line[end] === '}' && line[end + 1] === '}') { end += 2; break; }
+                end++;
+            }
+            segments.push({ text: line.slice(i, end), type: 'placeholder' });
+            i = end;
+        } else if (isKeyChar) {
+            push(line[i], 'key');
+            if (i === yamlKey!.end) pastKey = true;
+            i++;
+        } else if (showWhitespace && line[i] === ' ') {
             const isLeading = i < leadingSpaces;
             const indentMarker = i % 2 === 0 ? '·' : '│';
             const marker = isLeading ? indentMarker : '·';
             push(marker, 'whitespace');
+            i++;
         } else {
-            push(char, 'normal');
+            push(line[i], 'normal');
+            i++;
         }
     }
 
@@ -359,9 +409,14 @@ export const ConfigEditor = ({
                         <div className={styles.editorOverlay}>
                             {configText.split('\n').map((line, index) => (
                                 <div key={index} className={`${styles.lineOverlay} ${errorLines.has(index + 1) ? styles.errorLineBg : ''}`}>
-                                    {buildLineSegments(line, showWhitespace).map((seg, i) => (
-                                        <span key={i} className={seg.type === 'comment' ? styles.commentText : seg.type === 'whitespace' ? styles.whitespaceText : undefined}>{seg.text}</span>
-                                    ))}
+                                    {buildLineSegments(line, showWhitespace).map((seg, i) => {
+                                        let cls: string | undefined;
+                                        if (seg.type === 'comment') cls = styles.commentText;
+                                        else if (seg.type === 'whitespace') cls = styles.whitespaceText;
+                                        else if (seg.type === 'placeholder') cls = styles.placeholderText;
+                                        else if (seg.type === 'key') cls = styles.keyText;
+                                        return <span key={i} className={cls}>{seg.text}</span>;
+                                    })}
                                 </div>
                             ))}
                         </div>

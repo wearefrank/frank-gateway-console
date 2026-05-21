@@ -271,6 +271,27 @@
     opacity: 0.7;
 }
 
+.keyText {
+    color: #d4916a;
+}
+
+.placeholderText {
+    color: #6bb5d6;
+}
+
+.patternLink {
+    margin-left: 6px;
+    font-size: 0.75rem;
+    color: #6bb5d6;
+    text-decoration: none;
+    border-bottom: 1px dashed #6bb5d6;
+}
+
+.patternLink:hover {
+    color: #90cfe8;
+    border-bottom-color: #90cfe8;
+}
+
 .schemaStatus {
     font-weight: 600;
 }

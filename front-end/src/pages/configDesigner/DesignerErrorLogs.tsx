@@ -20,6 +20,12 @@ export function DesignerErrorLogs({resolvedErrors, onAction}: DesignerErrorLogsP
                         <div className={styles.errorMessage}>
                             {err.path && <strong>[{err.path}] </strong>}
                             {err.message}
+                            {(() => {
+                                const pattern = err.sourceError?.keyword === 'pattern' ? err.sourceError.params?.pattern as string | undefined : undefined;
+                                if (!pattern) return null;
+                                const url = `https://regex101.com/?regex=${encodeURIComponent(pattern)}&flavor=pcre2`;
+                                return <a href={url} target="_blank" rel="noopener noreferrer" className={styles.patternLink}>regex101</a>;
+                            })()}
                         </div>
                         <ErrorActions error={err} onAction={onAction} />
                     </div>

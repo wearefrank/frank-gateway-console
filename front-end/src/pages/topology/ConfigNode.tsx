@@ -228,7 +228,7 @@ export const ConfigNode: React.FC<NodeProps<ConfigNodeType>> = ({data}) => {
             const val = (entry as Record<string, unknown>)[field];
             if (val === undefined || val === null) return [];
             const str = Array.isArray(val) ? String(val[0]) : String(val);
-            return str.trim() !== '' && str !== title ? [str] : [];
+            return str.trim() !== '' && str !== title ? [{ field, value: str }] : [];
         });
     const plugins   = entry['plugins'];
     const pluginKeys = plugins && typeof plugins === 'object' && !Array.isArray(plugins)
@@ -252,7 +252,13 @@ export const ConfigNode: React.FC<NodeProps<ConfigNodeType>> = ({data}) => {
 
                         {fallbackInfo.length > 0 && (
                             <div className={styles.nodeDetail}>
-                                {fallbackInfo.map(v => <div key={v}>{v}</div>)}
+                                {fallbackInfo.map(({ field, value }) => (
+                                    <div key={field}>
+                                        <span className={styles.nodeDetailLabel}>{field}</span>
+                                        {': '}
+                                        {value}
+                                    </div>
+                                ))}
                             </div>
                         )}
 

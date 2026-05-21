@@ -1,4 +1,4 @@
-import {useCallback, useMemo, useState} from 'react';
+import {useCallback, useMemo, useState, type ReactNode} from 'react';
 import { getIdField } from '../../config/categoryDefinitions';
 import type {ResolvedError} from '../../actions/ErrorResolver';
 import type {ApisixConfig} from '../../actions/SchemaValidation';
@@ -16,6 +16,16 @@ import {useEntryEditor} from './hooks/useEntryEditor';
 import {EntryList} from './components/EntryList';
 import {ConfigFormCard} from './components/ConfigFormCard';
 import styles from './ConfigDesigner.module.css';
+
+function renderWithPlaceholders(text: string, placeholderClass: string): ReactNode[] {
+    const parts = text.split(/(\$\{\{[^}]+}})/g);
+    return parts.map((part, i) => {
+        if (/^\$\{\{[^}]+}}$/.test(part)) {
+            return <span key={i} className={placeholderClass}>{part}</span>;
+        }
+        return part;
+    });
+}
 
 export const DESIGNER_CATEGORIES = [
     'route', 'upstream', 'service', 'consumer', 'global_rule', 'ssl', 'plugin_config'
@@ -182,7 +192,7 @@ export const ConfigDesigner = () => {
                 <div className={styles.leftColumn}>
                     <div className={`card ${styles.yamlPreviewCard}`}>
                         <div className="card-header">YAML Preview</div>
-                        <pre className={styles.yamlPreviewContent}>{yamlPreview}</pre>
+                        <pre className={styles.yamlPreviewContent}>{renderWithPlaceholders(yamlPreview, styles.yamlPlaceholder)}</pre>
                     </div>
 
                     <DesignerErrorLogs resolvedErrors={allErrors} onAction={handleErrorAction} />

@@ -45,7 +45,7 @@ interface PluginValidator {
 }
 
 export class SchemaValidator {
-    private ajv: Ajv;
+    private readonly ajv: Ajv;
     private schema: SchemaCatalog | null = null;
     private config: ApisixConfig | null = null;
     private pluginErrorBatch: AjvErrorCollection[] = [];
@@ -114,13 +114,16 @@ export class SchemaValidator {
             }
         }
 
+        const filteredSchemaErrors = this.filterTemplateErrors(schemaErrors, payloadToValidate);
+
         const errorCollections: AjvErrorCollection[] = [];
-        if (schemaErrors.length > 0) {
-            errorCollections.push({ type: 'root', parent: 'config', sourceErrors: schemaErrors });
+        if (filteredSchemaErrors.length > 0) {
+            errorCollections.push({ type: 'root', parent: 'config', sourceErrors: filteredSchemaErrors });
         }
         errorCollections.push(...this.pluginErrorBatch);
 
-        return { valid: false, errorCollections, warningErrors, warnings: [...this.pluginWarningBatch] };
+        const isValid = errorCollections.length === 0;
+        return { valid: isValid, errorCollections, warningErrors, warnings: [...this.pluginWarningBatch] };
     }
 
     public addPluginDetection() {
@@ -202,7 +205,10 @@ export class SchemaValidator {
             const payload = structuredClone(data);
             const collections: AjvErrorCollection[] = [];
             if (!validate(payload) && validate.errors) {
-                collections.push({ type: categoryName, parent: categoryName, sourceErrors: [...validate.errors] });
+                const filteredErrors = this.filterTemplateErrors([...validate.errors], payload);
+                if (filteredErrors.length > 0) {
+                    collections.push({ type: categoryName, parent: categoryName, sourceErrors: filteredErrors });
+                }
             }
             return [...collections, ...this.pluginErrorBatch];
         } catch {
@@ -242,10 +248,14 @@ export class SchemaValidator {
         }
 
         if (validate.errors) {
+            const filteredErrors = this.filterTemplateErrors([...validate.errors], pluginConfig);
+            if (filteredErrors.length === 0) {
+                return true;
+            }
             this.pluginErrorBatch.push({
                 type: pluginPath,
                 parent: pluginName,
-                sourceErrors: [...validate.errors],
+                sourceErrors: filteredErrors,
             });
         }
 
@@ -265,7 +275,7 @@ export class SchemaValidator {
             return null;
         }
 
-        let schema: JsonSchema | undefined = undefined;
+        let schema: JsonSchema | undefined;
 
         const isConsumerContext = resourceType === 'consumers' || resourceType === 'consumer_groups';
         if (isConsumerContext && pluginDef.consumer_schema) {
@@ -405,6 +415,36 @@ export class SchemaValidator {
 
         });
         return properties;
+    }
+
+    private isTemplatePlaceholder(val: unknown): boolean {
+        return typeof val === 'string' && /^\$\{\{[^}]+}}$/.test(val);
+    }
+
+    private getValueAtPath(data: unknown, instancePath: string): unknown {
+        if (!instancePath) return data;
+        const parts = instancePath.split('/').filter(p => p !== '');
+        let current: unknown = data;
+        for (const part of parts) {
+            if (current === null || current === undefined) return undefined;
+            if (Array.isArray(current)) {
+                const index = parseInt(part, 10);
+                if (isNaN(index)) return undefined;
+                current = current[index];
+            } else if (typeof current === 'object') {
+                current = (current as Record<string, unknown>)[part];
+            } else {
+                return undefined;
+            }
+        }
+        return current;
+    }
+
+    private filterTemplateErrors(errors: ErrorObject[], data: unknown): ErrorObject[] {
+        return errors.filter(err => {
+            const val = this.getValueAtPath(data, err.instancePath);
+            return !this.isTemplatePlaceholder(val);
+        });
     }
 
     private isJsonSchema(def: unknown): def is JsonSchema {

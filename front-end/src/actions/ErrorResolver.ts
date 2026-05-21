@@ -477,7 +477,7 @@ class ErrorResolver {
             case 'minItems':
                 return `'${prop}' must have at least ${err.params?.limit} items`;
             case 'pattern':
-                return `'${prop}' does not match required pattern`;
+                return `'${prop}' does not match required pattern: ${err.params?.pattern ?? 'unknown'}`;
             default:
                 return err.message ?? 'unknown validation error';
         }

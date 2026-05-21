@@ -77,7 +77,16 @@ export const ValidationLogs = ({ logs, onClear, config, onLogClick, highlightedL
                                 })()}
                                 <span>{log.timestamp}</span>
                             </div>
-                            <p className={styles.logFooter}>{log.formatErrorMessage() || 'No Message given'}</p>
+                            <p className={styles.logFooter}>
+                                {log.formatErrorMessage() || 'No Message given'}
+                                {/* REGEX101 LINK */}
+                                {(() => {
+                                    const pattern = log.errorObject?.keyword === 'pattern' ? log.errorObject.params?.pattern as string | undefined : undefined;
+                                    if (!pattern) return null;
+                                    const url = `https://regex101.com/?regex=${encodeURIComponent(pattern)}&flavor=pcre2`;
+                                    return <a href={url} target="_blank" rel="noopener noreferrer" className={styles.patternLink}>regex101</a>;
+                                })()}
+                            </p>
                         </div>
                     );
                 })}
