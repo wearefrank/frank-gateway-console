@@ -80,6 +80,70 @@ function buildLineSegments(line: string, showWhitespace: boolean): { text: strin
 }
 
 
+function handleTab(
+    value: string,
+    selectionStart: number,
+    selectionEnd: number,
+    dedent: boolean,
+): {newText: string; newStart: number; newEnd: number} {
+    const hasSelection = selectionStart !== selectionEnd;
+
+    if (!hasSelection) {
+        if (dedent) {
+            // remove up to 2 leading spaces on the current line
+            const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+            const spacesToRemove = Math.min(2, value.slice(lineStart).match(/^ */)?.[0].length ?? 0);
+            if (spacesToRemove === 0) return {newText: value, newStart: selectionStart, newEnd: selectionEnd};
+            const newText = value.slice(0, lineStart) + value.slice(lineStart + spacesToRemove);
+            const newPos = Math.max(lineStart, selectionStart - spacesToRemove);
+            return {newText, newStart: newPos, newEnd: newPos};
+        }
+        const newText = value.slice(0, selectionStart) + '  ' + value.slice(selectionEnd);
+        return {newText, newStart: selectionStart + 2, newEnd: selectionStart + 2};
+    }
+
+    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+    const lineEnd = value.indexOf('\n', selectionEnd - 1);
+    const blockEnd = lineEnd === -1 ? value.length : lineEnd;
+
+    const block = value.slice(lineStart, blockEnd);
+    const lines = block.split('\n');
+
+    let startDelta = 0;
+    let totalDelta = 0;
+
+    const newLines = lines.map((line, i) => {
+        if (dedent) {
+            const removed = Math.min(2, line.match(/^ */)?.[0].length ?? 0);
+            if (i === 0) startDelta = -removed;
+            totalDelta -= removed;
+            return line.slice(removed);
+        }
+        if (i === 0) startDelta = 2;
+        totalDelta += 2;
+        return '  ' + line;
+    });
+
+    const newBlock = newLines.join('\n');
+    const newText = value.slice(0, lineStart) + newBlock + value.slice(blockEnd);
+    const newStart = Math.max(lineStart, selectionStart + startDelta);
+    const newEnd = Math.max(newStart, selectionEnd + totalDelta);
+    return {newText, newStart, newEnd};
+}
+
+function handleEnter(
+    value: string,
+    selectionStart: number,
+    selectionEnd: number,
+): {newText: string; newCursor: number} {
+    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+    const currentLine = value.slice(lineStart, selectionStart);
+    const indent = currentLine.match(/^ */)?.[0] ?? '';
+    const extraIndent = currentLine.trimEnd().endsWith(':') ? '  ' : '';
+    const newText = value.slice(0, selectionStart) + '\n' + indent + extraIndent + value.slice(selectionEnd);
+    return {newText, newCursor: selectionStart + 1 + indent.length + extraIndent.length};
+}
+
 function toggleLineComments(
     value: string,
     selectionStart: number,
@@ -128,6 +192,7 @@ export const ConfigEditor = ({
                              }: ConfigEditorProps) => {
 
     const editorContainerRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if ((e.ctrlKey || e.metaKey) && e.key === '/') {
@@ -135,8 +200,23 @@ export const ConfigEditor = ({
             const {selectionStart, selectionEnd, value} = e.currentTarget;
             const {newText, newStart, newEnd} = toggleLineComments(value, selectionStart, selectionEnd);
             onConfigChange(newText);
-            // rAF runs after React re-renders the textarea, so the selection doesn't get wiped by the DOM update
-            requestAnimationFrame(() => e.currentTarget.setSelectionRange(newStart, newEnd));
+            requestAnimationFrame(() => textareaRef.current?.setSelectionRange(newStart, newEnd));
+        }
+
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const {selectionStart, selectionEnd, value} = e.currentTarget;
+            const {newText, newStart, newEnd} = handleTab(value, selectionStart, selectionEnd, e.shiftKey);
+            onConfigChange(newText);
+            requestAnimationFrame(() => textareaRef.current?.setSelectionRange(newStart, newEnd));
+        }
+
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const {selectionStart, selectionEnd, value} = e.currentTarget;
+            const {newText, newCursor} = handleEnter(value, selectionStart, selectionEnd);
+            onConfigChange(newText);
+            requestAnimationFrame(() => textareaRef.current?.setSelectionRange(newCursor, newCursor));
         }
     };
 
@@ -268,6 +348,7 @@ export const ConfigEditor = ({
 
                         {/* Actual Textarea */}
                         <textarea
+                            ref={textareaRef}
                             value={configText}
                             onChange={(e) => onConfigChange(e.target.value)}
                             onKeyDown={handleKeyDown}

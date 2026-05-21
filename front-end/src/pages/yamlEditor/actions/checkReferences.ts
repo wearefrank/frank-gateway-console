@@ -5,7 +5,8 @@ function getIds(config: ApisixConfig, category: string): Set<string> {
     const raw = (config as Record<string, unknown>)[category + 's'];
     if (!Array.isArray(raw)) return new Set();
     return new Set(
-        (raw as Record<string, unknown>[])
+        (raw as (Record<string, unknown> | null)[])
+            .filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object')
             .map(e => e['id'])
             .filter((id): id is string => typeof id === 'string'),
     );
@@ -13,7 +14,10 @@ function getIds(config: ApisixConfig, category: string): Set<string> {
 
 function getEntries(config: ApisixConfig, category: string): Record<string, unknown>[] {
     const raw = (config as Record<string, unknown>)[category + 's'];
-    return Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
+    if (!Array.isArray(raw)) return [];
+    return (raw as (Record<string, unknown> | null)[]).filter(
+        (e): e is Record<string, unknown> => e !== null && typeof e === 'object',
+    );
 }
 
 const DUPLICATE_CHECK_CATEGORIES: { cat: string; idField: string }[] = [
