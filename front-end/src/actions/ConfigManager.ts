@@ -1,5 +1,5 @@
 import {type ApisixConfig, type RawConfigValidation, type SchemaCatalog, SchemaValidator} from './SchemaValidation';
-import { getIdField } from '../config/categoryDefinitions';
+import { getDisplayId } from '../config/categoryDefinitions';
 import {ValidationLog} from './ValidationLogger';
 import ErrorResolver, {type ResolvedError} from './ErrorResolver';
 
@@ -75,14 +75,15 @@ export class ConfigManager {
         this.validator.setFillInDefaults(fillInDefaults);
     }
 
-    public getCategoryEntry(categoryName: string, id: string): Record<string, unknown> | null {
+    public getCategoryEntry(categoryName: string, displayId: string): Record<string, unknown> | null {
         if (!this.config) return null;
         let categoryData = (this.config as Record<string, unknown>)[categoryName + 's'];
         if (!Array.isArray(categoryData))
             categoryData = (this.config as Record<string, unknown>)[categoryName];
         if (!Array.isArray(categoryData)) return null;
-        const idField = getIdField(categoryName);
-        return categoryData.find((e: Record<string, unknown>) => e[idField] === id) ?? null;
+        return categoryData.find(
+            (e: Record<string, unknown>, i: number) => getDisplayId(categoryName, e, i) === displayId
+        ) ?? null;
     }
 
     public getCategoryEntries(categoryName: string): string[] {
@@ -93,11 +94,12 @@ export class ConfigManager {
         if (!Array.isArray(categoryData)) {
             categoryData = (this.config as Record<string, unknown>)[categoryName];
             if (!Array.isArray(categoryData)) {
-                return []
+                return [];
             }
         }
 
-        const idField = getIdField(categoryName);
-        return categoryData.map(cat => cat[idField])
+        return categoryData.map(
+            (e: Record<string, unknown>, i: number) => getDisplayId(categoryName, e, i)
+        );
     }
 }

@@ -105,12 +105,19 @@ function buildLineSegments(line: string, showWhitespace: boolean): { text: strin
             i++;
         } else if (line[i] === '$' && line[i + 1] === '{' && line[i + 2] === '{') {
             let end = i + 3;
+            let closed = false;
             while (end < line.length) {
-                if (line[end] === '}' && line[end + 1] === '}') { end += 2; break; }
+                if (line[end] === '}' && line[end + 1] === '}') { end += 2; closed = true; break; }
                 end++;
             }
-            segments.push({ text: line.slice(i, end), type: 'placeholder' });
-            i = end;
+            if (closed) {
+                segments.push({ text: line.slice(i, end), type: 'placeholder' });
+                i = end;
+            } else {
+                // No closing }} found — treat as normal text, not a placeholder.
+                push(line[i], 'normal');
+                i++;
+            }
         } else if (isKeyChar) {
             push(line[i], 'key');
             if (i === yamlKey!.end) pastKey = true;
@@ -310,8 +317,16 @@ export const ConfigEditor = ({
         return { errorLines: lines, errorLineLogMap: logMap };
     }, [parsedDoc, validationLogs]);
 
+    const lastScrolledKeyRef = useRef<number | null>(null);
+
     useEffect(() => {
         if (!scrollToTarget || !parsedDoc || !editorContainerRef.current) return;
+
+        // scrollToTarget.key increments each time a new scroll is requested.
+        // Guard against re-firing when parsedDoc changes (e.g. on every keystroke)
+        // while the same scroll target is still set.
+        if (lastScrolledKeyRef.current === scrollToTarget.key) return;
+        lastScrolledKeyRef.current = scrollToTarget.key;
 
         const {doc, lineCounter} = parsedDoc;
         const node = resolvePathToNode(doc, scrollToTarget.path);

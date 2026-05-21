@@ -5,7 +5,7 @@ import type {Edge} from '@xyflow/react';
 import {dump} from 'js-yaml';
 import type {ConfigNodeData} from './buildTopology';
 import {CATEGORY_COLOR, CATEGORY_LABEL} from './ConfigNode';
-import { getIdField, getDisplayId } from '../../config/categoryDefinitions';
+import { getDisplayId } from '../../config/categoryDefinitions';
 import styles from './TopologyPage.module.css';
 
 export type DetailCard = {
@@ -37,8 +37,7 @@ export const CardLayer: React.FC<CardLayerProps> = ({cards, edges, closeCard, on
                 const edgeCount = edges.filter(e => e.source === card.id || e.target === card.id).length;
                 const yamlText  = dump(entry, {indent: 2, noRefs: true});
 
-                const focusIdField = getIdField(card.data.category);
-                const focusId      = encodeURIComponent(String(entry[focusIdField] ?? ''));
+                const focusId = encodeURIComponent(getDisplayId(card.data.category, entry));
                 const configFocusHref = `/loadConfig?focusCategory=${card.data.category}&focusId=${focusId}`;
 
                 // Convert flow-space position to screen-space

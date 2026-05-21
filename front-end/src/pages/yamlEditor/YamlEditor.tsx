@@ -12,7 +12,7 @@ import { SchemaView } from './components/SchemaView';
 import { useConfigManager } from '../../hooks/useConfigManager';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { checkReferences } from './actions/checkReferences';
-import { getIdField } from '../../config/categoryDefinitions';
+import { getDisplayId } from '../../config/categoryDefinitions';
 
 
 const YamlEditor = () => {
@@ -26,6 +26,7 @@ const YamlEditor = () => {
     const [yamlValid, setYamlValid] = useState(true);
     const [fillDefault, setFillDefault] = useState(appSettings.ui.configFillDefault);
     const scrollKeyRef = useRef(0);
+    const scrolledFocusRef = useRef<string | null>(null);
     const [scrollToTarget, setScrollToTarget] = useState<{ path: string; key: number } | null>(null);
     const [rightTab, setRightTab] = useState<'validation' | 'references'>('validation');
     const [refLogs, setRefLogs] = useState<ValidationLog[]>([]);
@@ -152,12 +153,18 @@ const YamlEditor = () => {
         const focusId = searchParams.get('focusId');
         if (!config || !focusCategory || !focusId) return;
 
+        // Only scroll once per unique focus target. Without this guard, any
+        // config change (e.g. a keystroke) would re-trigger the scroll because
+        // `config` is a dependency needed to resolve the array index.
+        const focusKey = `${focusCategory}:${focusId}`;
+        if (scrolledFocusRef.current === focusKey) return;
+
         const key = focusCategory + 's';
         const entries = (config[key as keyof typeof config] as Record<string, unknown>[]) ?? [];
-        const idField = getIdField(focusCategory);
-        const index = entries.findIndex(e => String(e[idField]) === focusId);
+        const index = entries.findIndex((e, i) => getDisplayId(focusCategory, e, i) === focusId);
         if (index === -1) return;
 
+        scrolledFocusRef.current = focusKey;
         scrollKeyRef.current += 1;
         setScrollToTarget({ path: `/${key}/${index}`, key: scrollKeyRef.current });
     }, [config, searchParams]);
