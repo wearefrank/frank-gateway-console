@@ -5,7 +5,7 @@ import type {ApisixConfig} from '../../actions/SchemaValidation';
 import {Link, useSearchParams} from 'react-router-dom';
 import {useConfigManager} from '../../hooks/useConfigManager';
 import {SchemaFormGenerator, type SchemaField} from '../../actions/SchemaFormGenerator';
-import {useDesignerSettings} from '../../hooks/useDesignerSettings';
+import {useDesignerSettings, getMergedOverrides} from '../../hooks/useDesignerSettings';
 import {useFormByCategory} from '../../hooks/useFormByCategory';
 import {DesignerSettings} from './DesignerSettings';
 import {DesignerErrorLogs, type DesignerAction} from './DesignerErrorLogs';
@@ -80,6 +80,7 @@ export const ConfigDesigner = () => {
         : 'route';
 
     const [search, setSearch] = useState('');
+    const [domain, setDomain] = useState('');
     const {category, values, handleChange, handleCategorySwitch, loadValues} = useFormByCategory(initialCategory);
     const {configManager, schema, schemaLoading, config, configText, setConfig} = useConfigManager();
     const [designerSettings, setDesignerSettings] = useDesignerSettings();
@@ -148,6 +149,13 @@ export const ConfigDesigner = () => {
     const configHasErrors = configValidationLogs.some(l => l.type === 'error');
     const {statusClass, statusLabel} = getConfigStatus(configText ?? '', configStale, configHasErrors);
 
+    const domains = designerSettings.domains;
+    const baseOverrides = getMergedOverrides(designerSettings, category);
+    const selectedDomainConfig = domains.find(d => d.name === domain);
+    const overrideSettings = selectedDomainConfig
+        ? {...baseOverrides, id: {...(baseOverrides.id as object ?? {}), placeHolderOptions: selectedDomainConfig.placeholders}}
+        : baseOverrides;
+
     const handleManualCategorySwitch = useCallback((newCat: string) => {
         clearEditingEntry();
         handleCategorySwitch(newCat);
@@ -186,6 +194,14 @@ export const ConfigDesigner = () => {
                     value={category}
                     onChange={c => handleManualCategorySwitch(c as DesignerCategory)}
                 />
+                {domains.length > 0 && (
+                    <PillSelect
+                        label="Domain"
+                        options={[{value: '', label: 'none'}, ...domains.map(d => ({value: d.name, label: d.name}))]}
+                        value={domain}
+                        onChange={setDomain}
+                    />
+                )}
             </div>
 
             <div className={styles.layout}>
@@ -217,7 +233,7 @@ export const ConfigDesigner = () => {
                     values={values}
                     onChange={handleChange}
                     priorityList={priorityList}
-                    designerSettings={designerSettings}
+                    overrideSettings={overrideSettings}
                     editingEntry={editingEntry}
                     allErrors={allErrors}
                     builtObject={builtObject}
