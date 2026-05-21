@@ -28,6 +28,7 @@ const YamlEditor = () => {
     const [scrollToTarget, setScrollToTarget] = useState<{ path: string; key: number } | null>(null);
     const [rightTab, setRightTab] = useState<'validation' | 'references'>('validation');
     const [refLogs, setRefLogs] = useState<ValidationLog[]>([]);
+    const [highlightedLog, setHighlightedLog] = useState<ValidationLog | null>(null);
 
     const logger = useMemo(() => new ValidationLogger(), []);
 
@@ -180,6 +181,10 @@ const YamlEditor = () => {
                     onToggleWhitespace={() => setShowWhitespace(!showWhitespace)}
                     onNewConfig={handleNewConfig}
                     onToggleFillDefaults={toggleFillDefault}
+                    onLineClick={(log) => {
+                        setHighlightedLog(log);
+                        setRightTab('validation');
+                    }}
                     scrollToTarget={scrollToTarget}
                 />
 
@@ -189,7 +194,9 @@ const YamlEditor = () => {
                         onClear={clearLogs}
                         config={config}
                         headerExtra={tabToggle}
+                        highlightedLog={highlightedLog}
                         onLogClick={(log) => {
+                            setHighlightedLog(null);
                             if (log.path) {
                                 scrollKeyRef.current += 1;
                                 setScrollToTarget({ path: log.path, key: scrollKeyRef.current });

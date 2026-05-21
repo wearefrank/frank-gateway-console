@@ -14,6 +14,7 @@ interface ConfigEditorProps {
     onToggleWhitespace: () => void;
     onToggleFillDefaults: () => void;
     onNewConfig: () => void;
+    onLineClick?: (log: ValidationLog) => void;
     scrollToTarget?: { path: string; key: number } | null;
 }
 
@@ -188,6 +189,7 @@ export const ConfigEditor = ({
                                  onToggleWhitespace,
                                  onToggleFillDefaults,
                                  onNewConfig,
+                                 onLineClick,
                                  scrollToTarget
                              }: ConfigEditorProps) => {
 
@@ -226,32 +228,36 @@ export const ConfigEditor = ({
         catch { return null; }
     }, [configText]);
 
-    const errorLines = useMemo(() => {
+    const { errorLines, errorLineLogMap } = useMemo(() => {
         const lines = new Set<number>();
-        if (!parsedDoc) return lines;
+        const logMap = new Map<number, ValidationLog>();
+        if (!parsedDoc) return { errorLines: lines, errorLineLogMap: logMap };
 
         const {doc, lineCounter} = parsedDoc;
 
-        // Highlight YAML syntax errors (only the exact line)
+        // Highlight YAML syntax errors (only the exact line, no log to navigate to)
         for (const err of doc.errors) {
             if (err.pos && err.pos.length >= 1) {
                 lines.add(lineCounter.linePos(err.pos[0]).line);
             }
         }
 
-        // Highlight schema validation errors
+        // Highlight schema validation errors and map lines to logs
         validationLogs.forEach(log => {
             if ((log.type === 'error' || log.type === 'warning') && log.path) {
                 const node = resolvePathToNode(doc, log.path);
                 if (node && node.range) {
                     const startLine = lineCounter.linePos(node.range[0]).line;
                     const endLine = lineCounter.linePos(node.range[1]).line;
-                    for (let i = startLine; i <= endLine; i++) lines.add(i);
+                    for (let i = startLine; i <= endLine; i++) {
+                        lines.add(i);
+                        if (!logMap.has(i)) logMap.set(i, log);
+                    }
                 }
             }
         });
 
-        return lines;
+        return { errorLines: lines, errorLineLogMap: logMap };
     }, [parsedDoc, validationLogs]);
 
     useEffect(() => {
@@ -322,9 +328,23 @@ export const ConfigEditor = ({
                     {/* Line numbers gutter */}
                     {configText && (
                         <div className={styles.lineNumbers}>
-                            {configText.split('\n').map((_, index) => (
-                                <div key={index}>{index + 1}</div>
-                            ))}
+                            {configText.split('\n').map((_, index) => {
+                                const lineNum = index + 1;
+                                const log = errorLineLogMap.get(lineNum);
+                                if (log) {
+                                    return (
+                                        <div
+                                            key={index}
+                                            className={styles.lineNumberError}
+                                            title="Go to error"
+                                            onClick={() => onLineClick?.(log)}
+                                        >
+                                            {lineNum}
+                                        </div>
+                                    );
+                                }
+                                return <div key={index}>{lineNum}</div>;
+                            })}
                         </div>
                     )}
 

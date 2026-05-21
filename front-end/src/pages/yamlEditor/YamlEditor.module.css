@@ -103,6 +103,20 @@
     white-space: pre;
 }
 
+.lineNumberError {
+    pointer-events: auto;
+    cursor: pointer;
+    color: var(--error-color);
+    opacity: 1;
+    border-radius: 3px;
+    transition: background-color 0.15s;
+}
+
+.lineNumberError:hover {
+    background-color: color-mix(in srgb, var(--error-color) 20%, transparent);
+    text-decoration: underline;
+}
+
 .editorLayers {
     position: relative;
     display: grid;
@@ -198,6 +212,11 @@
 
 .logItemClickable:hover {
     filter: brightness(1.2);
+}
+
+.logItemHighlighted {
+    outline: 2px solid var(--error-color);
+    outline-offset: -2px;
 }
 
 .logHeader {
