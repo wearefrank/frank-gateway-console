@@ -59,6 +59,30 @@
     box-shadow: inset 0 0 0 1px var(--error-color);
 }
 
+.statusValid {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 99px;
+    background-color: color-mix(in srgb, var(--success-color, #4caf50) 15%, transparent);
+    color: var(--success-color, #4caf50);
+}
+
+.statusWarning {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 99px;
+    background-color: color-mix(in srgb, var(--warning-color, #ff9800) 15%, transparent);
+    color: var(--warning-color, #ff9800);
+}
+
+.statusError {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 99px;
+    background-color: color-mix(in srgb, var(--error-color, #f44336) 15%, transparent);
+    color: var(--error-color, #f44336);
+}
+
 .editorGrid {
     position: relative;
     display: grid;

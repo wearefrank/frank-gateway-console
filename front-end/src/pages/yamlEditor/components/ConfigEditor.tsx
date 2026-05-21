@@ -5,15 +5,14 @@ import styles from '../YamlEditor.module.css';
 
 interface ConfigEditorProps {
     configText: string;
-    viewMode: 'yaml' | 'json';
     showWhitespace: boolean;
     fillDefaults: boolean;
     validConfig: boolean;
+    yamlValid: boolean;
     validationLogs?: ValidationLog[];
     onConfigChange: (newValue: string) => void;
     onToggleWhitespace: () => void;
     onToggleFillDefaults: () => void;
-    onToggleViewMode: (mode: 'yaml' | 'json') => void;
     onNewConfig: () => void;
     scrollToTarget?: { path: string; key: number } | null;
 }
@@ -81,17 +80,49 @@ function buildLineSegments(line: string, showWhitespace: boolean): { text: strin
 }
 
 
+function toggleLineComments(
+    value: string,
+    selectionStart: number,
+    selectionEnd: number,
+): {newText: string; newStart: number; newEnd: number} {
+    // expand the selection to full lines so partial selections still affect the whole line
+    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+    const lineEnd = value.indexOf('\n', selectionEnd);
+    const blockEnd = lineEnd === -1 ? value.length : lineEnd;
+
+    const block = value.slice(lineStart, blockEnd);
+    const lines = block.split('\n');
+
+    // only uncomment if every non-empty line is already commented, otherwise comment all
+    const nonEmpty = lines.filter(l => l.trim() !== '');
+    const allCommented = nonEmpty.length > 0 && nonEmpty.every(l => /^\s*#/.test(l));
+
+    const newLines = lines.map(line => {
+        if (line.trim() === '') return line;
+        // keep leading whitespace when uncommenting so indentation is preserved
+        if (allCommented) return line.replace(/^(\s*)# ?/, '$1');
+        return '# ' + line;
+    });
+
+    const newBlock = newLines.join('\n');
+    const newText = value.slice(0, lineStart) + newBlock + value.slice(blockEnd);
+    // shift the selection by how many chars were added/removed so it doesn't jump around
+    const newStart = Math.max(lineStart, selectionStart + (newLines[0].length - lines[0].length));
+    const newEnd = Math.max(lineStart, selectionEnd + (newBlock.length - block.length));
+
+    return {newText, newStart, newEnd};
+}
+
 export const ConfigEditor = ({
                                  configText,
-                                 viewMode,
                                  showWhitespace,
                                  fillDefaults,
                                  validConfig,
+                                 yamlValid,
                                  validationLogs = [],
                                  onConfigChange,
                                  onToggleWhitespace,
                                  onToggleFillDefaults,
-                                 onToggleViewMode,
                                  onNewConfig,
                                  scrollToTarget
                              }: ConfigEditorProps) => {
@@ -101,44 +132,11 @@ export const ConfigEditor = ({
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if ((e.ctrlKey || e.metaKey) && e.key === '/') {
             e.preventDefault();
-
-            const textarea = e.currentTarget;
-            const { selectionStart, selectionEnd, value } = textarea;
-
-            const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
-            const lineEnd = value.indexOf('\n', selectionEnd);
-            const blockEnd = lineEnd === -1 ? value.length : lineEnd;
-
-            const block = value.slice(lineStart, blockEnd);
-            const lines = block.split('\n');
-
-            const nonEmpty = lines.filter(l => l.trim() !== '');
-            const allCommented = nonEmpty.length > 0 && nonEmpty.every(l => /^\s*#/.test(l));
-
-            const newLines = lines.map(line => {
-                if (line.trim() === '') return line;
-                if (allCommented) {
-                    return line.replace(/^(\s*)# ?/, '$1');
-                } else {
-                    const indentMatch = line.match(/^(\s*)/);
-                    const indent = indentMatch ? indentMatch[1] : '';
-                    return indent + '# ' + line.slice(indent.length);
-                }
-            });
-
-            const newBlock = newLines.join('\n');
-            const newText = value.slice(0, lineStart) + newBlock + value.slice(blockEnd);
-
-            const firstLineDelta = newLines[0].length - lines[0].length;
-            const totalDelta = newBlock.length - block.length;
-
+            const {selectionStart, selectionEnd, value} = e.currentTarget;
+            const {newText, newStart, newEnd} = toggleLineComments(value, selectionStart, selectionEnd);
             onConfigChange(newText);
-
-            requestAnimationFrame(() => {
-                const newStart = Math.max(lineStart, selectionStart + firstLineDelta);
-                const newEnd = Math.max(lineStart, selectionEnd + totalDelta);
-                textarea.setSelectionRange(newStart, newEnd);
-            });
+            // rAF runs after React re-renders the textarea, so the selection doesn't get wiped by the DOM update
+            requestAnimationFrame(() => e.currentTarget.setSelectionRange(newStart, newEnd));
         }
     };
 
@@ -191,11 +189,29 @@ export const ConfigEditor = ({
 
 
 
+    let statusClass = null;
+    let statusLabel = null;
+    if (configText) {
+        if (!yamlValid) {
+            statusClass = styles.statusError;
+            statusLabel = 'YAML error';
+        } else if (!validConfig) {
+            statusClass = styles.statusWarning;
+            statusLabel = 'Has errors';
+        } else {
+            statusClass = styles.statusValid;
+            statusLabel = 'Valid';
+        }
+    }
+
     return (
         <div
             className={`card flex flex-column ${styles.configCard} ${validConfig ? styles.editorContainer : styles.editorContainerInvalid}`}>
             <div className="card-header flex justify-between align-center">
-                Parsed Configuration
+                <div className="flex align-center gap-sm">
+                    Parsed Configuration
+                    {statusClass && <span className={statusClass}>{statusLabel}</span>}
+                </div>
                 <div className="flex align-center gap-sm">
                     <button
                         className={showWhitespace ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
@@ -213,18 +229,6 @@ export const ConfigEditor = ({
                         {fillDefaults ? 'Don\'t fill' : 'Fill'}
                     </button>
 
-                    <div className={`flex ${styles.toggleGroup}`}>
-                        <button
-                            className={viewMode === 'yaml' ? styles.toggleBtnActive : styles.toggleBtn}
-                            onClick={() => onToggleViewMode('yaml')}
-                        >YAML
-                        </button>
-                        <button
-                            className={viewMode === 'json' ? styles.toggleBtnActive : styles.toggleBtn}
-                            onClick={() => onToggleViewMode('json')}
-                        >JSON
-                        </button>
-                    </div>
                     <button
                         className={`text-small ${styles.btnIcon}`}
                         onClick={onNewConfig}

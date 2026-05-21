@@ -20,7 +20,6 @@ const YamlEditor = () => {
     const [searchParams] = useSearchParams();
 
     const [configText, setConfigText] = useState<string>(globalConfigText);
-    const [viewMode, setViewMode] = useState<'yaml' | 'json'>(appSettings.ui.configViewMode);
     const [showWhitespace, setShowWhitespace] = useState(true);
     const [logs, setLogs] = useState<ValidationLog[]>([]);
     const [yamlValid, setYamlValid] = useState(true);
@@ -93,26 +92,6 @@ const YamlEditor = () => {
         });
     }, [appSettings, setAppSettings]);
 
-    const toggleViewMode = (mode: 'yaml' | 'json') => {
-        if (mode === viewMode) return;
-        setViewMode(mode);
-        setAppSettings({ ...appSettings, ui: { ...appSettings.ui, configViewMode: mode } });
-        if (config) {
-            try {
-                const formatted = mode === 'json'
-                    ? JSON.stringify(config, null, 2)
-                    : yaml.dump(config);
-                setConfigText(formatted);
-                localStorage.setItem('apisix-config-text', formatted);
-            } catch {
-                setLogs(prev => [
-                    logger.add('error', `Failed to convert to ${mode.toUpperCase()}`),
-                    ...prev
-                ]);
-            }
-        }
-    };
-
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -122,9 +101,8 @@ const YamlEditor = () => {
             const content = event.target?.result as string;
             try {
                 const parsed = yaml.load(content) as ApisixConfig;
-                const formatted = viewMode === 'json' ? JSON.stringify(parsed, null, 2) : yaml.dump(parsed);
-                setGlobalConfig(parsed, formatted);
-                setConfigText(formatted);
+                setGlobalConfig(parsed, content);
+                setConfigText(content);
                 setLogs([]);
                 setYamlValid(true);
             } catch {
@@ -193,14 +171,13 @@ const YamlEditor = () => {
             <div className={`grid grid-2 ${styles.loaderGrid}`}>
                 <ConfigEditor
                     configText={configText}
-                    viewMode={viewMode}
                     showWhitespace={showWhitespace}
                     validConfig={validConfig}
+                    yamlValid={yamlValid}
                     fillDefaults={fillDefault}
                     validationLogs={displayLogs}
                     onConfigChange={handleConfigChange}
                     onToggleWhitespace={() => setShowWhitespace(!showWhitespace)}
-                    onToggleViewMode={toggleViewMode}
                     onNewConfig={handleNewConfig}
                     onToggleFillDefaults={toggleFillDefault}
                     scrollToTarget={scrollToTarget}
