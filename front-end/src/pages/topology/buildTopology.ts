@@ -80,6 +80,84 @@ function authPluginNames(entry: ResourceConfiguration): Set<string> {
     );
 }
 
+// ---------------------------------------------------------------------------
+// consumer-restriction support
+// ---------------------------------------------------------------------------
+//
+// The APISIX `consumer-restriction` plugin controls which consumers may access
+// a resource.  Its `type` field (default: "consumer") determines what the
+// `whitelist` / `blacklist` arrays contain:
+//
+//   "consumer"       – consumer usernames  (the only case we filter on here)
+//   "consumer_group" – consumer-group IDs  (not modelled in the topology yet)
+//   "service"        – service IDs         (not applicable to consumer edges)
+//   "route"          – route IDs           (not applicable to consumer edges)
+//
+// When `type` is anything other than "consumer" we conservatively treat the
+// restriction as absent so that no edges are incorrectly hidden.
+//
+// Rules applied per resource that carries the plugin:
+//   • whitelist present and non-empty → only listed consumers may connect
+//   • blacklist present and non-empty → all consumers except listed ones may connect
+//   • both absent / empty             → no restriction, all consumers may connect
+//   • both present                    → whitelist takes precedence (APISIX behaviour)
+
+type ConsumerRestrictionType = 'consumer' | 'consumer_group' | 'service' | 'route';
+
+interface ConsumerRestrictionConfig {
+    /** Restricts filtering to one of four target kinds. Defaults to "consumer". */
+    type?: ConsumerRestrictionType;
+    /** Explicit allow-list of consumer usernames (takes precedence over blacklist). */
+    whitelist?: string[];
+    /** Explicit deny-list of consumer usernames. */
+    blacklist?: string[];
+}
+
+/**
+ * Extracts the `consumer-restriction` plugin config from a resource entry,
+ * or returns `null` if the plugin is absent or has a non-consumer `type`.
+ */
+function getConsumerRestriction(entry: ResourceConfiguration): ConsumerRestrictionConfig | null {
+    const plugins = entry['plugins'];
+    if (!plugins || typeof plugins !== 'object' || Array.isArray(plugins)) return null;
+
+    const raw = (plugins as Record<string, unknown>)['consumer-restriction'];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+    const restriction = raw as ConsumerRestrictionConfig;
+
+    // Only the default "consumer" type carries consumer-username lists.
+    // For any other type we have no information to filter on, so we treat
+    // the restriction as absent and leave the edge visible.
+    if (restriction.type !== undefined && restriction.type !== 'consumer') return null;
+
+    return restriction;
+}
+
+/**
+ * Returns true when `consumerUsername` is permitted to reach a resource
+ * given that resource's consumer-restriction config.
+ *
+ * @param consumerUsername - the `username` field of the consumer entry
+ * @param restriction      - parsed restriction config, or null if absent
+ */
+function isConsumerPermitted(consumerUsername: string, restriction: ConsumerRestrictionConfig | null): boolean {
+    if (!restriction) return true;
+
+    // Whitelist takes precedence: consumer must be explicitly listed.
+    if (restriction.whitelist && restriction.whitelist.length > 0) {
+        return restriction.whitelist.includes(consumerUsername);
+    }
+
+    // Blacklist: consumer must NOT be listed.
+    if (restriction.blacklist && restriction.blacklist.length > 0) {
+        return !restriction.blacklist.includes(consumerUsername);
+    }
+
+    // Plugin present but no lists configured — no effective restriction.
+    return true;
+}
+
 export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = 'source'): { nodes: Node<ConfigNodeData>[]; edges: Edge[] } {
     const nodes: Node<ConfigNodeData>[] = [];
     const edges: Edge[] = [];
@@ -220,10 +298,19 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
         const consumerAuth = authPluginNames(consumer.data.entry);
         if (consumerAuth.size === 0) continue;
 
+        // Consumers are identified by `username`, not `id`.
+        const consumerUsername = String(consumer.data.entry['username'] ?? '');
+
         for (const target of authTargetNodes) {
             const targetAuth = authPluginNames(target.data.entry);
             const shared = [...consumerAuth].find(p => targetAuth.has(p));
             if (!shared) continue;
+
+            // Respect the `consumer-restriction` plugin on the target resource.
+            // If the consumer is not permitted, skip the edge entirely so the
+            // topology only shows connections that can actually carry traffic.
+            const restriction = getConsumerRestriction(target.data.entry);
+            if (!isConsumerPermitted(consumerUsername, restriction)) continue;
 
             const edgeId = `${consumer.id}->${target.id}`;
             const consumerEdgeColor = colorScheme === 'source'
