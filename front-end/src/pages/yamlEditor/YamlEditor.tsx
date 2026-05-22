@@ -1,8 +1,6 @@
 import React, {useState, useEffect, useMemo, useRef, useCallback, startTransition} from 'react';
-import yaml from 'js-yaml';
 import {useSearchParams} from 'react-router-dom';
 import styles from './YamlEditor.module.css';
-import { type ApisixConfig } from '../../actions/SchemaValidation';
 import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLogger';
 import { FileUpload } from './components/FileUpload';
 import { ConfigEditor } from './components/ConfigEditor';
@@ -16,16 +14,13 @@ import { getDisplayId } from '../../config/categoryDefinitions';
 
 
 const YamlEditor = () => {
-    const { configManager, config, configText: globalConfigText, schema, setConfig: setGlobalConfig, setConfigYamlValid } = useConfigManager();
+    const { configManager, config, configYamlValid, schema, setConfig: setGlobalConfig } = useConfigManager();
     const [appSettings, setAppSettings] = useAppSettings();
     const [searchParams] = useSearchParams();
 
-    const [configText, setConfigText] = useState<string>(
-        localStorage.getItem('apisix-config-text-raw') ?? globalConfigText
-    );
+    const [configText, setConfigText] = useState<string>(configManager.getRawText());
     const [showWhitespace, setShowWhitespace] = useState(true);
     const [logs, setLogs] = useState<ValidationLog[]>([]);
-    const [yamlValid, setYamlValid] = useState(true);
     const [fillDefault, setFillDefault] = useState(appSettings.ui.configFillDefault);
     const scrollKeyRef = useRef(0);
     const scrolledFocusRef = useRef<string | null>(null);
@@ -42,8 +37,8 @@ const YamlEditor = () => {
     }, [configText, logger]);
 
     const validConfig = useMemo(
-        () => yamlValid && !logs.some(l => l.type === 'error') && localErrors.length === 0,
-        [yamlValid, logs, localErrors]
+        () => configYamlValid && !logs.some(l => l.type === 'error') && localErrors.length === 0,
+        [configYamlValid, logs, localErrors]
     );
 
     const displayLogs = [
@@ -71,26 +66,7 @@ const YamlEditor = () => {
 
     const handleConfigChange = (newValue: string) => {
         setConfigText(newValue);
-
-        if (!newValue.trim()) {
-            localStorage.removeItem('apisix-config-text-raw');
-            setGlobalConfig(null, '');
-            setConfigYamlValid(true);
-            setYamlValid(true);
-            return;
-        }
-
-        localStorage.setItem('apisix-config-text-raw', newValue);
-
-        try {
-            const parsed = yaml.load(newValue) as ApisixConfig;
-            setGlobalConfig(parsed, newValue);
-            setConfigYamlValid(true);
-            setYamlValid(true);
-        } catch {
-            setConfigYamlValid(false);
-            setYamlValid(false);
-        }
+        setGlobalConfig(newValue);
     };
 
     const toggleFillDefault = useCallback(() => {
@@ -108,21 +84,12 @@ const YamlEditor = () => {
         const reader = new FileReader();
         reader.onload = (event) => {
             const content = event.target?.result as string;
-            try {
-                const parsed = yaml.load(content) as ApisixConfig;
-                localStorage.setItem('apisix-config-text-raw', content);
-                setGlobalConfig(parsed, content);
-                setConfigText(content);
+            setGlobalConfig(content);
+            setConfigText(content);
+            if (configManager.isYamlValid()) {
                 setLogs([]);
-                setConfigYamlValid(true);
-                setYamlValid(true);
-            } catch {
-                setLogs(prev => [
-                    logger.add('error', 'Failed to parse file.'),
-                    ...prev
-                ]);
-                setConfigYamlValid(false);
-                setYamlValid(false);
+            } else {
+                setLogs(prev => [logger.add('error', 'Failed to parse file.'), ...prev]);
             }
         };
         reader.readAsText(file);
@@ -131,17 +98,12 @@ const YamlEditor = () => {
     const clearLogs = () => setLogs([]);
 
     const handleNewConfig = () => {
-        localStorage.removeItem('apisix-config-text-raw');
-        setGlobalConfig(null, '');
+        setGlobalConfig('');
         setConfigText('');
-        setConfigYamlValid(true);
-        setYamlValid(true);
     };
 
     useEffect(() => {
         if (config && schema) {
-            configManager.setConfig(config);
-            configManager.setSchema(schema);
             configManager.setFillInDefaults(fillDefault);
 
             const validationLogs = configManager.validate();
@@ -193,7 +155,7 @@ const YamlEditor = () => {
                     configText={configText}
                     showWhitespace={showWhitespace}
                     validConfig={validConfig}
-                    yamlValid={yamlValid}
+                    yamlValid={configYamlValid}
                     fillDefaults={fillDefault}
                     validationLogs={displayLogs}
                     onConfigChange={handleConfigChange}

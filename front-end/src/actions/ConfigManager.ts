@@ -1,3 +1,4 @@
+import yaml from 'js-yaml';
 import {type ApisixConfig, type RawConfigValidation, type SchemaCatalog, SchemaValidator} from './SchemaValidation';
 import { getDisplayId } from '../config/categoryDefinitions';
 import {ValidationLog} from './ValidationLogger';
@@ -7,14 +8,56 @@ export class ConfigManager {
     private validator: SchemaValidator;
     private errorResolver = new ErrorResolver();
     private config: ApisixConfig | null = null;
+    private rawText: string = '';
+    private validText: string = '';
+    private yamlValid: boolean = true;
 
     constructor() {
         this.validator = new SchemaValidator();
+
+        const raw = localStorage.getItem('apisix-config-text-raw');
+        const saved = localStorage.getItem('apisix-config-text');
+
+        this.validText = saved ?? '';
+        this.rawText = raw ?? saved ?? '';
+
+        if (saved) {
+            try { this.config = yaml.load(saved) as ApisixConfig; } catch { /* ok */ }
+        }
+
+        if (raw) {
+            try { yaml.load(raw); this.yamlValid = true; } catch { this.yamlValid = false; }
+        }
     }
 
-    public setConfig(config: ApisixConfig) {
-        this.config = config;
+    public setRawText(text: string): void {
+        this.rawText = text;
+
+        if (!text.trim()) {
+            this.config = null;
+            this.validText = '';
+            this.yamlValid = true;
+            localStorage.removeItem('apisix-config-text');
+            localStorage.removeItem('apisix-config-text-raw');
+            return;
+        }
+
+        localStorage.setItem('apisix-config-text-raw', text);
+
+        try {
+            this.config = yaml.load(text) as ApisixConfig;
+            this.validText = text;
+            this.yamlValid = true;
+            localStorage.setItem('apisix-config-text', text);
+        } catch {
+            this.yamlValid = false;
+            // keep this.config and this.validText at last valid values
+        }
     }
+
+    public getRawText(): string { return this.rawText; }
+    public getValidText(): string { return this.validText; }
+    public isYamlValid(): boolean { return this.yamlValid; }
 
     public getConfig(): ApisixConfig | null {
         return this.config;

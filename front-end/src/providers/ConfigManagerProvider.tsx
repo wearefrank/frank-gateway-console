@@ -1,45 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConfigManager } from '../actions/ConfigManager';
-import yaml from 'js-yaml';
-import { type ApisixConfig } from '../actions/SchemaValidation';
 import { ConfigManagerContext, type ConfigManagerState } from '../hooks/useConfigManager';
 
 export const ConfigManagerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const configManager = useMemo(() => new ConfigManager(), []);
-
-    const [config, setConfigState] = useState<ApisixConfig | null>(() => {
-        const saved = localStorage.getItem('apisix-config-text');
-        if (saved) {
-            try { return yaml.load(saved) as ApisixConfig; } catch { return null; }
-        }
-        return null;
-    });
-    const [configText, setConfigText] = useState<string>(() => localStorage.getItem('apisix-config-text') ?? '');
-    const [configYamlValid, setConfigYamlValid] = useState<boolean>(() => {
-        const raw = localStorage.getItem('apisix-config-text-raw');
-        if (!raw) return true;
-        try { yaml.load(raw); return true; } catch { return false; }
-    });
+    const [version, setVersion] = useState(0);
     const [schema, setSchema] = useState<Record<string, unknown> | null>(null);
     const [schemaLoading, setSchemaLoading] = useState(false);
 
-    // Sync initial config to configManager
-    useEffect(() => {
-        if (config) configManager.setConfig(config);
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const bump = useCallback(() => setVersion(v => v + 1), []);
 
-    const setConfig = useCallback((newConfig: ApisixConfig | null, text: string) => {
-        setConfigState(newConfig);
-        setConfigText(text);
-        if (text) {
-            localStorage.setItem('apisix-config-text', text);
-        } else {
-            localStorage.removeItem('apisix-config-text');
-        }
-        if (newConfig) {
-            configManager.setConfig(newConfig);
-        }
-    }, [configManager]);
+    const setConfig = useCallback((text: string) => {
+        configManager.setRawText(text);
+        bump();
+    }, [configManager, bump]);
 
     const fetchSchema = useCallback(async () => {
         setSchemaLoading(true);
@@ -64,15 +38,14 @@ export const ConfigManagerProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const value: ConfigManagerState = useMemo(() => ({
         configManager,
-        config,
-        configText,
-        configYamlValid,
+        config: configManager.getConfig(),
+        configText: configManager.getValidText(),
+        configYamlValid: configManager.isYamlValid(),
         schema,
         schemaLoading,
         setConfig,
-        setConfigYamlValid,
         fetchSchema,
-    }), [configManager, config, configText, configYamlValid, schema, schemaLoading, setConfig, setConfigYamlValid, fetchSchema]);
+    }), [configManager, version, schema, schemaLoading, setConfig, fetchSchema]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <ConfigManagerContext.Provider value={value}>

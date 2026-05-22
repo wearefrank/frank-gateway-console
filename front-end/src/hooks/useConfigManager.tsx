@@ -9,8 +9,7 @@ export interface ConfigManagerState {
     configYamlValid: boolean;
     schema: Record<string, unknown> | null;
     schemaLoading: boolean;
-    setConfig: (config: ApisixConfig | null, text: string) => void;
-    setConfigYamlValid: (valid: boolean) => void;
+    setConfig: (text: string) => void;
     fetchSchema: () => Promise<void>;
 }
 

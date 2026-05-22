@@ -76,9 +76,9 @@
 .yamlPreviewCard {
 }
 
-.yamlPlaceholder {
-    color: #6bb5d6;
-}
+.commentText { color: var(--text-secondary); opacity: 0.7; }
+.keyText { color: #d4916a; }
+.placeholderText { color: #6bb5d6; }
 
 .patternLink {
     margin-left: 6px;

@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useRef} from 'react';
 import {ValidationLog} from '../../../actions/ValidationLogger';
-import {parseYamlDoc, resolvePathToNode} from '../yamlLineUtils';
+import {parseYamlDoc, resolvePathToNode, buildLineSegments} from '../yamlLineUtils';
 import styles from '../YamlEditor.module.css';
 
 interface ConfigEditorProps {
@@ -16,125 +16,6 @@ interface ConfigEditorProps {
     onNewConfig: () => void;
     onLineClick?: (log: ValidationLog) => void;
     scrollToTarget?: { path: string; key: number } | null;
-}
-
-type SegmentType = 'normal' | 'whitespace' | 'comment' | 'placeholder' | 'key';
-
-/**
- * find the first # in a line thats not inside ' ' or " "
- *
- * @param line - line/text to annalyze
- *
- * @returns returns the char number where the comments starts
- */
-function findCommentStart(line: string): number {
-    let inSingle = false;
-    let inDouble = false;
-
-    for (let i = 0; i < line.length; i++) {
-        const c = line[i];
-        if (c === "'" && !inDouble) inSingle = !inSingle;
-        else if (c === '"' && !inSingle) inDouble = !inDouble;
-        else if (c === '#' && !inSingle && !inDouble) return i;
-    }
-    return -1;
-}
-
-/**
- * Find the key span in a YAML line: returns start (first non-indent, non-list-marker char)
- * and end (index of the colon), or null if the line has no key-value pair.
- * Skips colons inside quoted strings and lines that are purely comments.
- */
-function findYamlKey(line: string, commentIdx: number): { start: number; end: number } | null {
-    let pos = 0;
-    while (pos < line.length && line[pos] === ' ') pos++;
-    if (line[pos] === '-' && (pos + 1 >= line.length || line[pos + 1] === ' ')) {
-        pos += 2;
-        while (pos < line.length && line[pos] === ' ') pos++;
-    }
-    const keyStart = pos;
-
-    let inSingle = false;
-    let inDouble = false;
-    while (pos < line.length) {
-        if (commentIdx !== -1 && pos >= commentIdx) break;
-        const c = line[pos];
-        if (c === "'" && !inDouble) { inSingle = !inSingle; pos++; continue; }
-        if (c === '"' && !inSingle) { inDouble = !inDouble; pos++; continue; }
-        if (!inSingle && !inDouble && c === ':') {
-            const next = line[pos + 1];
-            if (pos === line.length - 1 || next === ' ' || next === '\t') {
-                return { start: keyStart, end: pos };
-            }
-        }
-        pos++;
-    }
-    return null;
-}
-
-/**
- * Function to determine what color a line should be or to generate the whitespaces
- *
- * @param line           - line/text to annalyze
- * @param showWhitespace - bool if whitespaces should be generated
- */
-function buildLineSegments(line: string, showWhitespace: boolean): { text: string; type: SegmentType }[] {
-    const commentIdx = findCommentStart(line);
-    const leadingSpaces = line.match(/^ */)?.[0].length ?? 0;
-    const yamlKey = findYamlKey(line, commentIdx);
-    const segments: { text: string; type: SegmentType }[] = [];
-    let pastKey = false;
-
-    // append the new char to the same segment if they connect
-    const push = (char: string, type: SegmentType) => {
-        const last = segments[segments.length - 1];
-        if (last?.type === type) {
-            last.text += char;
-        } else {
-            segments.push({text: char, type});
-        }
-    };
-
-    let i = 0;
-    while (i < line.length) {
-        const isComment = commentIdx !== -1 && i >= commentIdx;
-        const isKeyChar = !pastKey && yamlKey !== null && i >= yamlKey.start && i <= yamlKey.end;
-
-        if (isComment) {
-            push(line[i], 'comment');
-            i++;
-        } else if (line[i] === '$' && line[i + 1] === '{' && line[i + 2] === '{') {
-            let end = i + 3;
-            let closed = false;
-            while (end < line.length) {
-                if (line[end] === '}' && line[end + 1] === '}') { end += 2; closed = true; break; }
-                end++;
-            }
-            if (closed) {
-                segments.push({ text: line.slice(i, end), type: 'placeholder' });
-                i = end;
-            } else {
-                // No closing }} found — treat as normal text, not a placeholder.
-                push(line[i], 'normal');
-                i++;
-            }
-        } else if (isKeyChar) {
-            push(line[i], 'key');
-            if (i === yamlKey!.end) pastKey = true;
-            i++;
-        } else if (showWhitespace && line[i] === ' ') {
-            const isLeading = i < leadingSpaces;
-            const indentMarker = i % 2 === 0 ? '·' : '│';
-            const marker = isLeading ? indentMarker : '·';
-            push(marker, 'whitespace');
-            i++;
-        } else {
-            push(line[i], 'normal');
-            i++;
-        }
-    }
-
-    return segments;
 }
 
 
