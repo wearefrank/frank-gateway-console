@@ -6,7 +6,6 @@ import { FileUpload } from './components/FileUpload';
 import { ConfigEditor } from './components/ConfigEditor';
 import { ValidationLogs } from './components/ValidationLogs';
 import { ReferencesPanel } from './components/ReferencesPanel';
-import { SchemaView } from './components/SchemaView';
 import { useConfigManager } from '../../hooks/useConfigManager';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { checkReferences } from './actions/checkReferences';
@@ -124,12 +123,15 @@ const YamlEditor = () => {
     useEffect(() => {
         const focusCategory = searchParams.get('focusCategory');
         const focusId = searchParams.get('focusId');
+        const focusNonce = searchParams.get('_n');
         if (!config || !focusCategory || !focusId) return;
 
         // Only scroll once per unique focus target. Without this guard, any
         // config change (e.g. a keystroke) would re-trigger the scroll because
         // `config` is a dependency needed to resolve the array index.
-        const focusKey = `${focusCategory}:${focusId}`;
+        // The nonce (_n) increments on each click so repeated clicks on the
+        // same entry always produce a new key and trigger a fresh scroll.
+        const focusKey = `${focusCategory}:${focusId}:${focusNonce}`;
         if (scrolledFocusRef.current === focusKey) return;
 
         const key = focusCategory + 's';
@@ -189,7 +191,7 @@ const YamlEditor = () => {
                 )}
             </div>
 
-            <SchemaView schema={schema} />
+            {/*<SchemaView schema={schema} />*/}
         </div>
     );
 };

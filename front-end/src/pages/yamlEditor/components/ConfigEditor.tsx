@@ -1,7 +1,9 @@
-import React, {useEffect, useMemo, useRef} from 'react';
+import React, {useMemo, useRef} from 'react';
 import {ValidationLog} from '../../../actions/ValidationLogger';
 import {parseYamlDoc, resolvePathToNode, buildLineSegments, buildCategoryLineMap} from '../yamlLineUtils';
 import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
+import { useVisibleCategory } from '../../../hooks/useVisibleCategory';
+import { useScrollToTarget } from '../../../hooks/useScrollToTarget';
 import styles from '../YamlEditor.module.css';
 
 interface ConfigEditorProps {
@@ -204,26 +206,8 @@ export const ConfigEditor = ({
         return buildCategoryLineMap(parsedDoc.doc, parsedDoc.lineCounter);
     }, [parsedDoc]);
 
-    const lastScrolledKeyRef = useRef<number | null>(null);
-
-    useEffect(() => {
-        if (!scrollToTarget || !parsedDoc || !editorContainerRef.current) return;
-
-        // scrollToTarget.key increments each time a new scroll is requested.
-        // Guard against re-firing when parsedDoc changes (e.g. on every keystroke)
-        // while the same scroll target is still set.
-        if (lastScrolledKeyRef.current === scrollToTarget.key) return;
-        lastScrolledKeyRef.current = scrollToTarget.key;
-
-        const {doc, lineCounter} = parsedDoc;
-        const node = resolvePathToNode(doc, scrollToTarget.path);
-
-        if (node && node.range) {
-            const targetLine = lineCounter.linePos(node.range[0]).line;
-            const lineHeight = parseFloat(getComputedStyle(editorContainerRef.current).lineHeight) || 21;
-            editorContainerRef.current.scrollTop = (targetLine - 1) * lineHeight;
-        }
-    }, [scrollToTarget, parsedDoc]);
+    const visibleCategory = useVisibleCategory(editorContainerRef, categoryLineMap);
+    useScrollToTarget(editorContainerRef, parsedDoc, scrollToTarget);
 
 
 
@@ -275,6 +259,14 @@ export const ConfigEditor = ({
                     </button>
                 </div>
             </div>
+            {configText && (
+                <div
+                    className={styles.categoryBanner}
+                    style={visibleCategory ? { borderLeftColor: CATEGORY_DEFINITIONS[visibleCategory]?.color } : undefined}
+                >
+                    {visibleCategory ? CATEGORY_DEFINITIONS[visibleCategory]?.label : ''}
+                </div>
+            )}
             <div className={styles.editorContainer} ref={editorContainerRef}>
                 <div className={styles.editorGrid}>
                     {/* Line numbers gutter */}

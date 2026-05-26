@@ -178,6 +178,10 @@ export function parseYamlDoc(configText: string): { doc: Document; lineCounter: 
     return {doc, lineCounter};
 }
 
+export function getLineHeight(el: HTMLElement): number {
+    return parseFloat(getComputedStyle(el).lineHeight) || 21;
+}
+
 export function resolvePathToNode(doc: Document, pathStr: string): Node | null {
     const parts: (string | number)[] = pathStr.split('/').filter(Boolean).map(p => {
         const num = parseInt(p, 10);
