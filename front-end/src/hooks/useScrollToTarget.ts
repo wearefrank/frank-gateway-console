@@ -1,4 +1,4 @@
-import { useRef, useEffect, RefObject } from 'react';
+import { useRef, useEffect, type RefObject } from 'react';
 import { Document, LineCounter } from 'yaml';
 import { resolvePathToNode, getLineHeight } from '../pages/yamlEditor/yamlLineUtils';
 

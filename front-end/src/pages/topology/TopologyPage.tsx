@@ -71,7 +71,7 @@ export const TopologyPage: React.FC = () => {
     const displayNodes = useMemo(() => {
         if (!connectedIds) return nodes;
         return nodes.map(n => {
-            if (!connectedIds.has(n.id))   return {...n, style: {...n.style, opacity: 0.12, filter: 'grayscale(0.6)'}};
+            if (!connectedIds.has(n.id))   return {...n, draggable: false, style: {...n.style, opacity: 0.12, filter: 'grayscale(0.6)'}};
             if (n.id === focusedNodeId)    return {...n, style: {...n.style, outline: '2px solid var(--accent-color)', borderRadius: '8px'}};
             return n;
         });
