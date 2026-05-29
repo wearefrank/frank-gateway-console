@@ -1,6 +1,6 @@
 package wearefrank.backend.controller;
 
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import wearefrank.backend.dto.ConfigVersionDto;
 import wearefrank.backend.service.VersioningService;
@@ -33,9 +33,8 @@ public class VersioningController {
         return versioningService.saveVersion(request.message(), request.content());
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteVersion(@PathVariable String id) {
-        versioningService.deleteVersion(id);
-        return ResponseEntity.noContent().build();
+    @GetMapping(value = "/file", produces = MediaType.TEXT_PLAIN_VALUE)
+    public String readCurrentFile() {
+        return versioningService.readCurrentFile();
     }
 }

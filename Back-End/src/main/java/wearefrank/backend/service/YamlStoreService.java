@@ -43,7 +43,7 @@ public class YamlStoreService {
                 boolean created = file.createNewFile();
                 if (created) {
                     String defaultHost = System.getenv().getOrDefault("APISIX_HOST", "http://127.0.0.1");
-                    YamlApisixConfig initial = new YamlApisixConfig(defaultHost, 9092, 9091, new ArrayList<>());
+                    YamlApisixConfig initial = new YamlApisixConfig(defaultHost, 9092, 9091, new ArrayList<>(), null, null, null, null);
                     writeConfig(initial);
                 }
             } catch (IOException e) {
@@ -52,13 +52,17 @@ public class YamlStoreService {
         }
     }
 
-    public void saveApisixConfig(String host, int controlPort, int metricsPort) {
+    public void saveApisixConfig(String host, int controlPort, int metricsPort, String githubToken, String githubRepo, String githubBranch, String githubFilePath) {
         YamlApisixConfig current = readConfig();
         YamlApisixConfig updated = new YamlApisixConfig(
                 host,
                 controlPort,
                 metricsPort,
-                current.routes() != null ? current.routes() : new ArrayList<>()
+                current.routes() != null ? current.routes() : new ArrayList<>(),
+                githubToken,
+                githubRepo,
+                githubBranch,
+                githubFilePath
         );
         writeConfig(updated);
     }

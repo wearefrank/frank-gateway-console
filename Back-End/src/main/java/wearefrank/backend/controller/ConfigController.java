@@ -25,13 +25,17 @@ public class ConfigController {
         return new ConfigDto.ApisixConfig(
                 config.host() != null ? config.host() : "http://127.0.0.1",
                 config.controlPort() != null ? config.controlPort() : 9092,
-                config.metricsPort() != null ? config.metricsPort() : 9091
+                config.metricsPort() != null ? config.metricsPort() : 9091,
+                config.githubToken(),
+                config.githubRepo(),
+                config.githubBranch(),
+                config.githubFilePath()
         );
     }
 
     @PostMapping
     public void saveConfig(@RequestBody ConfigDto.ApisixConfig config) {
-        yamlStoreService.saveApisixConfig(config.host(), config.controlPort(), config.metricsPort());
+        yamlStoreService.saveApisixConfig(config.host(), config.controlPort(), config.metricsPort(), config.githubToken(), config.githubRepo(), config.githubBranch(), config.githubFilePath());
     }
 
     @PostMapping("/check")

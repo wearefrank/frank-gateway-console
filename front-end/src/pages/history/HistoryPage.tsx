@@ -11,11 +11,14 @@ const CURRENT_SENTINEL = '__current__';
 export const HistoryPage: React.FC = () => {
     const navigate = useNavigate();
     const { configManager, setConfig } = useConfigManager();
-    const { versions, loading, error, saveVersion, deleteVersion, fetchVersionContent } = useVersionHistory();
+    const { versions, error, saveVersion, fetchVersionContent, loadFileContent } = useVersionHistory();
+    const versionList = versions ?? [];
 
     const [saveFormOpen, setSaveFormOpen] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
     const [saving, setSaving] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [loadingFile, setLoadingFile] = useState(false);
 
     const [fromId, setFromId] = useState<string>('');
     const [toId, setToId] = useState<string>(CURRENT_SENTINEL);
@@ -38,14 +41,14 @@ export const HistoryPage: React.FC = () => {
 
     const handleView = (version: VersionSummary) => {
         if (version.id === CURRENT_SENTINEL) {
-            const latestVersion = versions[0];
+            const latestVersion = versionList[0];
             if (latestVersion) {
                 loadDiff(latestVersion.id, CURRENT_SENTINEL);
             }
             return;
         }
-        const currentIndex = versions.findIndex(v => v.id === version.id);
-        const previousVersion = versions[currentIndex + 1];
+        const currentIndex = versionList.findIndex(v => v.id === version.id);
+        const previousVersion = versionList[currentIndex + 1];
         if (previousVersion) {
             loadDiff(previousVersion.id, version.id);
         } else {
@@ -64,15 +67,17 @@ export const HistoryPage: React.FC = () => {
         }
     };
 
-    const handleDelete = async (id: string) => {
-        await deleteVersion(id);
-        if (fromId === id) {
-            setFromId('');
-            setFromContent(null);
-        }
-        if (toId === id) {
-            setToId('');
-            setToContent(null);
+    const handleLoadFromRepo = async () => {
+        setLoadError(null);
+        setLoadingFile(true);
+        try {
+            const content = await loadFileContent();
+            setConfig(content);
+            navigate('/yamlEditor');
+        } catch (e) {
+            setLoadError(e instanceof Error ? e.message : 'Failed to load file');
+        } finally {
+            setLoadingFile(false);
         }
     };
 
@@ -104,8 +109,8 @@ export const HistoryPage: React.FC = () => {
             setFromContent(resolvedFrom);
             setToContent(resolvedTo);
 
-            const fromVersion = versions.find(v => v.id === newFromId);
-            const toVersion = versions.find(v => v.id === newToId);
+            const fromVersion = versionList.find(v => v.id === newFromId);
+            const toVersion = versionList.find(v => v.id === newToId);
             const fromLabel = newFromId === CURRENT_SENTINEL
                 ? 'Current (unsaved)'
                 : fromVersion ? fromVersion.id.slice(0, 7) + (fromVersion.message ? ` ${fromVersion.message}` : '') : '(empty)';
@@ -130,19 +135,32 @@ export const HistoryPage: React.FC = () => {
                 <div className={`card flex flex-column ${styles.leftPanel}`}>
                     <div className="card-header flex justify-between align-center">
                         <span>Version History</span>
-                        <button
-                            className="btn-primary text-small"
-                            onClick={() => setSaveFormOpen(open => !open)}
-                        >
-                            Save Version
-                        </button>
+                        <div className="flex gap-sm">
+                            <button
+                                className="text-small"
+                                onClick={handleLoadFromRepo}
+                                disabled={loadingFile}
+                            >
+                                {loadingFile ? 'Loading...' : 'Load from repo'}
+                            </button>
+                            <button
+                                className="btn-primary text-small"
+                                onClick={() => setSaveFormOpen(open => !open)}
+                            >
+                                Commit
+                            </button>
+                        </div>
                     </div>
+                    {loadError && (
+                        <div className={`text-error text-small ${styles.statusMsg}`}>{loadError}</div>
+                    )}
 
                     {saveFormOpen && (
                         <div className={styles.saveForm}>
+                            <span className={`text-muted text-small`}>This will create a git commit in the configured repository.</span>
                             <input
                                 type="text"
-                                placeholder="Describe this snapshot..."
+                                placeholder="Commit message..."
                                 value={saveMessage}
                                 onChange={e => setSaveMessage(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') handleSaveSubmit(); }}
@@ -155,7 +173,7 @@ export const HistoryPage: React.FC = () => {
                                     onClick={handleSaveSubmit}
                                     disabled={saving}
                                 >
-                                    {saving ? 'Saving...' : 'Save'}
+                                    {saving ? 'Committing...' : 'Commit'}
                                 </button>
                                 <button className="text-small" onClick={() => { setSaveFormOpen(false); setSaveMessage(''); }}>
                                     Cancel
@@ -164,23 +182,22 @@ export const HistoryPage: React.FC = () => {
                         </div>
                     )}
 
-                    {loading && <div className={`text-muted text-small ${styles.statusMsg}`}>Loading versions...</div>}
                     {error && <div className={`text-error text-small ${styles.statusMsg}`}>{error}</div>}
 
-                    {!loading && (
-                        <VersionList
-                            versions={[{ id: CURRENT_SENTINEL, message: 'Current (unsaved)', createdAt: '' }, ...versions]}
-                            currentSentinel={CURRENT_SENTINEL}
-                            onView={handleView}
-                            onRestore={handleRestore}
-                            onDelete={handleDelete}
-                        />
-                    )}
+                    <VersionList
+                        versions={[{ id: CURRENT_SENTINEL, message: 'Current (unsaved)', createdAt: '' }, ...versionList]}
+                        currentSentinel={CURRENT_SENTINEL}
+                        loading={versions === null}
+                        busy={diffLoading}
+                        onView={handleView}
+                        onRestore={handleRestore}
+                    />
                 </div>
 
                 <div className={`card flex flex-column ${styles.rightPanel}`}>
                     <div className="card-header flex align-center gap-sm flex-wrap">
                         <span>Compare</span>
+                        {diffLoading && <span className={`text-muted text-small ${styles.loadingIndicator}`}>Loading...</span>}
                         <select
                             className={`text-small ${styles.compareSelect}`}
                             value={fromId}
@@ -188,7 +205,7 @@ export const HistoryPage: React.FC = () => {
                         >
                             <option value="">-- From --</option>
                             <option value={CURRENT_SENTINEL}>Current (unsaved)</option>
-                            {versions.map(v => (
+                            {versionList.map(v => (
                                 <option key={v.id} value={v.id}>
                                     {v.id.slice(0, 7)}{v.message ? ` ${v.message}` : ''}
                                 </option>
@@ -202,7 +219,7 @@ export const HistoryPage: React.FC = () => {
                         >
                             <option value="">-- To --</option>
                             <option value={CURRENT_SENTINEL}>Current (unsaved)</option>
-                            {versions.map(v => (
+                            {versionList.map(v => (
                                 <option key={v.id} value={v.id}>
                                     {v.id.slice(0, 7)}{v.message ? ` ${v.message}` : ''}
                                 </option>

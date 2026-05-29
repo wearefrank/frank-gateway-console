@@ -173,29 +173,32 @@ const YamlEditor = () => {
             <FileUpload onFileUpload={handleFileUpload} />
 
             {saveVersionOpen && (
-                <div className={`flex align-center gap-sm mb-4 ${styles.saveVersionForm}`}>
-                    <input
-                        type="text"
-                        placeholder="Describe this snapshot..."
-                        value={saveVersionMessage}
-                        onChange={e => setSaveVersionMessage(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') handleSaveVersionSubmit(); }}
-                        className={styles.saveVersionInput}
-                        autoFocus
-                    />
-                    <button
-                        className="btn-primary text-small"
-                        onClick={handleSaveVersionSubmit}
-                        disabled={savingVersion}
-                    >
-                        {savingVersion ? 'Saving...' : 'Save'}
-                    </button>
-                    <button
-                        className="text-small"
-                        onClick={() => { setSaveVersionOpen(false); setSaveVersionMessage(''); }}
-                    >
-                        Cancel
-                    </button>
+                <div className={`flex flex-column gap-sm mb-4 ${styles.saveVersionForm}`}>
+                    <span className="text-muted text-small">This will create a git commit in the configured repository.</span>
+                    <div className="flex align-center gap-sm flex-wrap">
+                        <input
+                            type="text"
+                            placeholder="Commit message..."
+                            value={saveVersionMessage}
+                            onChange={e => setSaveVersionMessage(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleSaveVersionSubmit(); }}
+                            className={styles.saveVersionInput}
+                            autoFocus
+                        />
+                        <button
+                            className="btn-primary text-small"
+                            onClick={handleSaveVersionSubmit}
+                            disabled={savingVersion}
+                        >
+                            {savingVersion ? 'Committing...' : 'Commit'}
+                        </button>
+                        <button
+                            className="text-small"
+                            onClick={() => { setSaveVersionOpen(false); setSaveVersionMessage(''); }}
+                        >
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             )}
 

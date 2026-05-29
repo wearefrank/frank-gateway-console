@@ -8,12 +8,16 @@ interface ApisixConfigData {
     host: string;
     controlPort: number;
     metricsPort: number;
+    githubToken: string;
+    githubRepo: string;
+    githubBranch: string;
+    githubFilePath: string;
 }
 
 export const Config = () => {
     const configFetch = useFetch<ApisixConfigData>('/config');
 
-    const [configState, setConfigState] = useState<ApisixConfigData>({ host: "http://127.0.0.1", controlPort: 9092, metricsPort: 9091 });
+    const [configState, setConfigState] = useState<ApisixConfigData>({ host: "http://127.0.0.1", controlPort: 9092, metricsPort: 9091, githubToken: '', githubRepo: '', githubBranch: '', githubFilePath: '' });
 
     useEffect(() => {
         if (configFetch.data) {
@@ -21,6 +25,10 @@ export const Config = () => {
                 host: configFetch.data.host || "http://127.0.0.1",
                 controlPort: configFetch.data.controlPort ?? 9092,
                 metricsPort: configFetch.data.metricsPort ?? 9091,
+                githubToken: configFetch.data.githubToken || '',
+                githubRepo: configFetch.data.githubRepo || '',
+                githubBranch: configFetch.data.githubBranch || '',
+                githubFilePath: configFetch.data.githubFilePath || '',
             });
         }
     }, [configFetch.data]);
@@ -77,6 +85,46 @@ export const Config = () => {
                 onTestConnection={handleTest}
                 onSave={handleSaveApisix}
             />
+
+            <h2>GitHub Versioning</h2>
+            <p className={styles.sectionHint}>Link to the GitHub repo where your APISIX config lives. Version history reads from and commits to that repo directly.</p>
+            <div className={styles.fieldGroup}>
+                <label>Personal Access Token</label>
+                <input
+                    type="password"
+                    placeholder="ghp_..."
+                    value={configState.githubToken}
+                    onChange={e => setConfigState(prev => ({ ...prev, githubToken: e.target.value }))}
+                />
+            </div>
+            <div className={styles.fieldGroup}>
+                <label>Repository</label>
+                <input
+                    type="text"
+                    placeholder="owner/repo-name or https://github.com/owner/repo"
+                    value={configState.githubRepo}
+                    onChange={e => setConfigState(prev => ({ ...prev, githubRepo: e.target.value }))}
+                />
+            </div>
+            <div className={styles.fieldGroup}>
+                <label>Branch</label>
+                <input
+                    type="text"
+                    placeholder="main"
+                    value={configState.githubBranch}
+                    onChange={e => setConfigState(prev => ({ ...prev, githubBranch: e.target.value }))}
+                />
+            </div>
+            <div className={styles.fieldGroup}>
+                <label>Config File Path</label>
+                <input
+                    type="text"
+                    placeholder="config/apisix.yaml"
+                    value={configState.githubFilePath}
+                    onChange={e => setConfigState(prev => ({ ...prev, githubFilePath: e.target.value }))}
+                />
+            </div>
+            <button className="btn-primary" onClick={handleSaveApisix}>Save Settings</button>
 
         </div>
     );

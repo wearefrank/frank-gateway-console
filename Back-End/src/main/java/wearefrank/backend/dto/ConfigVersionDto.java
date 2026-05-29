@@ -9,6 +9,6 @@ public record ConfigVersionDto(
         String createdAt,
         String content
 ) {
-    public record Summary(String id, String message, String createdAt) {}
+    public record Summary(String id, String message, String createdAt, String commitUrl) {}
     public record SaveRequest(String message, String content) {}
 }

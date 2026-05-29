@@ -5,6 +5,10 @@ public record ConfigDto() {
     public record ApisixConfig(
             String host,
             int controlPort,
-            int metricsPort
+            int metricsPort,
+            String githubToken,
+            String githubRepo,
+            String githubBranch,
+            String githubFilePath
     ) {}
 }

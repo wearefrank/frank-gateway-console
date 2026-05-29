@@ -69,6 +69,11 @@
     max-width: 200px;
 }
 
+.loadingIndicator {
+    margin-left: auto;
+    opacity: 0.7;
+}
+
 .diffArea {
     flex: 1;
     overflow: hidden;

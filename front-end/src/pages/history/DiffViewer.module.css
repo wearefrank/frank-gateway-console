@@ -20,6 +20,21 @@
     flex-shrink: 0;
 }
 
+.toggleButton {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.toggleButton:hover {
+    background-color: color-mix(in srgb, currentColor 8%, transparent);
+}
+
 .diffArrow {
     color: var(--text-secondary);
 }
@@ -63,6 +78,40 @@
     background-color: transparent;
 }
 
+.hunkHeader {
+    padding: 2px 8px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background-color: color-mix(in srgb, var(--accent-color, #4a90d9) 10%, transparent);
+    border-top: 1px solid var(--border-dim);
+    border-bottom: 1px solid var(--border-dim);
+    user-select: none;
+}
+
+.lineNum {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    opacity: 0.5;
+    user-select: none;
+    padding: 0 4px;
+    border-right: 1px solid var(--border-dim);
+    gap: 2px;
+}
+
+.lineNumSlot {
+    display: inline-block;
+    min-width: 3ch;
+    text-align: right;
+}
+
+.lineNumDivider {
+    opacity: 0.4;
+    font-size: 0.7em;
+}
+
 .gutter {
     width: 1.5ch;
     flex-shrink: 0;
@@ -79,4 +128,22 @@
     padding: 0 8px;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.whitespaceText {
+    color: var(--text-secondary);
+    opacity: 0.35;
+}
+
+.commentText {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.keyText {
+    color: #d4916a;
+}
+
+.placeholderText {
+    color: #6bb5d6;
 }

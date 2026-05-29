@@ -265,7 +265,7 @@ export const ConfigEditor = ({
                             className={`text-small ${styles.btnIcon}`}
                             onClick={onSaveVersion}
                         >
-                            Save Version
+                            Commit
                         </button>
                     )}
                 </div>
