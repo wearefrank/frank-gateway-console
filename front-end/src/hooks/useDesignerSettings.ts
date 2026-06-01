@@ -2,6 +2,8 @@ export type { DesignerOverrideSettings, DomainConfig, DesignerSettings } from '.
 import type { DesignerSettings } from '../settings/AppSettings';
 import { useAppSettings } from './useAppSettings';
 
+// deep-merges global overrides with per-category overrides for the active category
+// per-category values win; fields not overridden per-category fall through to global
 export function getMergedOverrides(settings: DesignerSettings, category: string): Record<string, unknown> {
     const {global, perCategory} = settings.overrideSettings;
     const categoryOverrides = perCategory[category] ?? {};
@@ -30,6 +32,7 @@ export function withCategoryOverride(settings: DesignerSettings, category: strin
     };
 }
 
+// extracts unique placeholder names from a template string like "{subdomain}-{service}-upstream"
 export function parsePlaceholders(template: string): string[] {
     return [...new Set([...template.matchAll(/\{([^}]+)}/g)].map(m => m[1]))];
 }

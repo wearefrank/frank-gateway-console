@@ -46,6 +46,7 @@ public class MetricsService {
         return prometheusClient.query(query);
     }
 
+    // startTime=null → last hour, startTime=0 → from the oldest data in Prometheus TSDB
     public String prometheusRangeQuery(String query, Long startTime, String step) {
         long now = System.currentTimeMillis() / 1000;
         long resolvedStart;
@@ -60,6 +61,7 @@ public class MetricsService {
         return prometheusClient.rangeQuery(query, resolvedStart, now, resolvedStep);
     }
 
+    // raw text/plain scrape - passed through unchanged for the frontend to display
     public String getPrometheusRaw() {
         return apisixClient.metricsGet("/apisix/prometheus/metrics");
     }
@@ -69,6 +71,7 @@ public class MetricsService {
         return parseMetrics(raw);
     }
 
+    // extracts the handful of metrics the dashboard actually needs from the raw Prometheus text format
     private MetricsDto parseMetrics(String raw) {
         long totalRequests = parseSimpleGauge(raw, "apisix_http_requests_total");
         Map<String, Long> connections = parseLabelledGauge(raw, "apisix_nginx_http_current_connections", "state");
@@ -77,6 +80,8 @@ public class MetricsService {
         return new MetricsDto(totalRequests, connections, version, hostname);
     }
 
+    // matches a bare gauge line: "metric_name 123.0"
+    // truncates the decimal part since all relevant APISIX counters are integers
     private long parseSimpleGauge(String raw, String metricName) {
         Pattern p = Pattern.compile("^" + Pattern.quote(metricName) + "\\s+(\\S+)$", Pattern.MULTILINE);
         Matcher m = p.matcher(raw);
@@ -86,6 +91,7 @@ public class MetricsService {
         return 0;
     }
 
+    // matches labelled gauge lines: "metric_name{..., labelKey="value", ...} 42"
     private Map<String, Long> parseLabelledGauge(String raw, String metricName, String labelKey) {
         Map<String, Long> result = new HashMap<>();
         Pattern p = Pattern.compile(
@@ -99,6 +105,7 @@ public class MetricsService {
         return result;
     }
 
+    // extracts a single label value from any line for that metric (e.g. version string from apisix_node_info)
     private String parseLabelValue(String raw, String metricName, String labelKey) {
         Pattern p = Pattern.compile(
                 Pattern.quote(metricName) + "\\{[^}]*" + Pattern.quote(labelKey) + "=\"([^\"]+)\"",

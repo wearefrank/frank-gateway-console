@@ -15,6 +15,8 @@ export class ConfigManager {
     constructor() {
         this.validator = new SchemaValidator();
 
+        // two storage keys: 'raw' holds whatever the user typed, 'valid' holds the last
+        // successfully parsed version so we can always show something useful in the UI
         const raw = localStorage.getItem('apisix-config-text-raw');
         const saved = localStorage.getItem('apisix-config-text');
 
@@ -33,6 +35,7 @@ export class ConfigManager {
     public setRawText(text: string): void {
         this.rawText = text;
 
+        // clearing the editor resets everything, including both storage keys
         if (!text.trim()) {
             this.config = null;
             this.validText = '';
@@ -88,6 +91,7 @@ export class ConfigManager {
             return [new ValidationLog('error', `Validation failure: ${msg}`)];
         }
 
+        // convert/sort raw AJV output into flat ValidationLog[] for the UI to render
         const logs: ValidationLog[] = [];
 
         if (raw.valid && raw.errorCollections.length === 0) {
@@ -106,6 +110,7 @@ export class ConfigManager {
         return logs;
     }
 
+    // prefix the error paths with the category name so clicking an error scrolls to the right spot in the editor
     public validateCategory(category: string, data: Record<string, unknown>): ResolvedError[] {
         const collections = this.validator.validateCategory(category, data);
         return this.errorResolver.resolve(collections).map(err => ({
@@ -118,6 +123,7 @@ export class ConfigManager {
         this.validator.setFillInDefaults(fillInDefaults);
     }
 
+    // try both plural ("routes") and singular ("route") key forms since the YAML can use either
     public getCategoryEntry(categoryName: string, displayId: string): Record<string, unknown> | null {
         if (!this.config) return null;
         let categoryData = (this.config as Record<string, unknown>)[categoryName + 's'];
@@ -132,6 +138,7 @@ export class ConfigManager {
     public getCategoryEntries(categoryName: string): string[] {
         if (!this.config) return [];
 
+        // same plural/singular fallback as getCategoryEntry
         let categoryData = (this.config as Record<string, unknown>)[categoryName+'s'];
 
         if (!Array.isArray(categoryData)) {

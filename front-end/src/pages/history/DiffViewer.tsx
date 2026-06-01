@@ -33,6 +33,8 @@ interface SplitRow {
     hunkHeader?: string;
 }
 
+// builds paired left/right rows for the split view
+// removed and added lines that appear together are zipped side by side (not stacked)
 function buildSplitRows(
     patch: ReturnType<typeof structuredPatch>,
     showFullFile: boolean
@@ -54,6 +56,7 @@ function buildSplitRows(
         const removedBuf: { lineNum: number; text: string }[] = [];
         const addedBuf: { lineNum: number; text: string }[] = [];
 
+        // flush accumulates removed/added runs into aligned pairs before moving to the next context line
         const flushBuffers = () => {
             const maxLen = Math.max(removedBuf.length, addedBuf.length);
             for (let i = 0; i < maxLen; i++) {
@@ -212,6 +215,8 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     const [showFullFile, setShowFullFile] = useState(false);
     const [splitMode, setSplitMode] = useState(false);
 
+    // recompute the patch whenever the content or context setting changes
+    // passing MAX_SAFE_INTEGER as context forces every line into one hunk (full-file mode)
     const patch = useMemo(() => {
         if (!fromContent || !toContent) return null;
         const context = showFullFile ? Number.MAX_SAFE_INTEGER : 4;

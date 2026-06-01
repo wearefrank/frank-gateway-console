@@ -1,6 +1,6 @@
-import React, {useMemo, useRef} from 'react';
+import React, {useMemo, useRef, useCallback} from 'react';
 import {ValidationLog} from '../../../actions/ValidationLogger';
-import {parseYamlDoc, resolvePathToNode, buildLineSegments, buildCategoryLineMap} from '../yamlLineUtils';
+import {parseYamlDoc, resolvePathToNode, buildLineSegments, buildCategoryLineMap, getLineHeight} from '../yamlLineUtils';
 import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
 import { useVisibleCategory } from '../../../hooks/useVisibleCategory';
 import { useScrollToTarget } from '../../../hooks/useScrollToTarget';
@@ -16,7 +16,6 @@ interface ConfigEditorProps {
     onConfigChange: (newValue: string) => void;
     onToggleWhitespace: () => void;
     onToggleFillDefaults: () => void;
-    onNewConfig: () => void;
     onLineClick?: (log: ValidationLog) => void;
     scrollToTarget?: { path: string; key: number } | null;
     onSaveVersion?: () => void;
@@ -130,7 +129,6 @@ export const ConfigEditor = ({
                                  onConfigChange,
                                  onToggleWhitespace,
                                  onToggleFillDefaults,
-                                 onNewConfig,
                                  onLineClick,
                                  scrollToTarget,
                                  onSaveVersion,
@@ -140,6 +138,8 @@ export const ConfigEditor = ({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+
+        // Comment out shortcut
         if ((e.ctrlKey || e.metaKey) && e.key === '/') {
             e.preventDefault();
             const {selectionStart, selectionEnd, value} = e.currentTarget;
@@ -148,6 +148,7 @@ export const ConfigEditor = ({
             requestAnimationFrame(() => textareaRef.current?.setSelectionRange(newStart, newEnd));
         }
 
+        // indenting
         if (e.key === 'Tab') {
             e.preventDefault();
             const {selectionStart, selectionEnd, value} = e.currentTarget;
@@ -156,6 +157,7 @@ export const ConfigEditor = ({
             requestAnimationFrame(() => textareaRef.current?.setSelectionRange(newStart, newEnd));
         }
 
+        // newline + indenting
         if (e.key === 'Enter') {
             e.preventDefault();
             const {selectionStart, selectionEnd, value} = e.currentTarget;
@@ -171,6 +173,7 @@ export const ConfigEditor = ({
         catch { return null; }
     }, [configText]);
 
+    // editor text highlighting
     const { errorLines, errorLineLogMap } = useMemo(() => {
         const lines = new Set<number>();
         const logMap = new Map<number, ValidationLog>();
@@ -208,10 +211,23 @@ export const ConfigEditor = ({
         return buildCategoryLineMap(parsedDoc.doc, parsedDoc.lineCounter);
     }, [parsedDoc]);
 
+    const categoryStartLines = useMemo(() => {
+        const starts = new Map<string, number>();
+        for (const [line, cat] of categoryLineMap) {
+            const existing = starts.get(cat);
+            if (existing === undefined || line < existing) starts.set(cat, line);
+        }
+        return starts;
+    }, [categoryLineMap]);
+
+    const handleJumpToCategory = useCallback((category: string) => {
+        const line = categoryStartLines.get(category);
+        if (line === undefined || !editorContainerRef.current) return;
+        editorContainerRef.current.scrollTop = (line - 1) * getLineHeight(editorContainerRef.current);
+    }, [categoryStartLines, editorContainerRef]);
+
     const visibleCategory = useVisibleCategory(editorContainerRef, categoryLineMap);
     useScrollToTarget(editorContainerRef, parsedDoc, scrollToTarget);
-
-
 
     let statusClass = null;
     let statusLabel = null;
@@ -231,53 +247,66 @@ export const ConfigEditor = ({
     return (
         <div
             className={`card flex flex-column ${styles.configCard} ${validConfig ? styles.editorContainer : styles.editorContainerInvalid}`}>
-            <div className="card-header flex justify-between align-center">
-                <div className="flex align-center gap-sm">
-                    Parsed Configuration
-                    {statusClass && <span className={statusClass}>{statusLabel}</span>}
-                </div>
-                <div className="flex align-center gap-sm">
-                    <button
-                        className={showWhitespace ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
-                        onClick={onToggleWhitespace}
-                        title="Show Whitespace"
-                    >
-                        {showWhitespace ? 'Hide Whitespaces' : 'Show Whitespaces'}
-                    </button>
+            <div className="card-header flex align-center gap-sm">
+                Parsed Configuration
+                {statusClass && <span className={statusClass}>{statusLabel}</span>}
+            </div>
+            {/* toolbar just below the header eg: "hide whitespaces" */}
+            <div className={styles.editorToolbar}>
+                <button
+                    className={showWhitespace ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
+                    onClick={onToggleWhitespace}
+                    title="Show Whitespace"
+                >
+                    {showWhitespace ? 'Hide Whitespaces' : 'Show Whitespaces'}
+                </button>
 
-                    <button
-                        className={fillDefaults ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
-                        onClick={onToggleFillDefaults}
-                        title="Fill in Defaults"
-                    >
-                        {fillDefaults ? 'Don\'t fill' : 'Fill'}
-                    </button>
+                <button
+                    className={fillDefaults ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
+                    onClick={onToggleFillDefaults}
+                    title="Fill in Defaults"
+                >
+                    {fillDefaults ? 'Don\'t fill' : 'Fill'}
+                </button>
 
+                {onSaveVersion && (
                     <button
                         className={`text-small ${styles.btnIcon}`}
-                        onClick={onNewConfig}
+                        onClick={onSaveVersion}
                     >
-                        New
+                        Commit
                     </button>
-
-                    {onSaveVersion && (
-                        <button
-                            className={`text-small ${styles.btnIcon}`}
-                            onClick={onSaveVersion}
-                        >
-                            Commit
-                        </button>
-                    )}
-                </div>
+                )}
             </div>
+            {/* Category banner */}
             {configText && (
                 <div
                     className={styles.categoryBanner}
                     style={visibleCategory ? { borderLeftColor: CATEGORY_DEFINITIONS[visibleCategory]?.color } : undefined}
                 >
-                    {visibleCategory ? CATEGORY_DEFINITIONS[visibleCategory]?.label : ''}
+                    <span>{visibleCategory ? CATEGORY_DEFINITIONS[visibleCategory]?.label : ''}</span>
+                    {categoryStartLines.size > 0 && (
+                        <div className={styles.categoryNavPills}>
+                            {[...categoryStartLines.keys()].map(cat => {
+                                // we only wanna show known and present categories
+                                const def = CATEGORY_DEFINITIONS[cat];
+                                const isActive = cat === visibleCategory;
+                                return (
+                                    <button
+                                        key={cat}
+                                        className={isActive ? styles.categoryNavPillActive : styles.categoryNavPill}
+                                        style={{ '--pill-color': def?.color } as React.CSSProperties}
+                                        onClick={() => handleJumpToCategory(cat)}
+                                    >
+                                        {def?.label ?? cat}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
+            {/* YAML editor */}
             <div className={styles.editorContainer} ref={editorContainerRef}>
                 <div className={styles.editorGrid}>
                     {/* Line numbers gutter */}

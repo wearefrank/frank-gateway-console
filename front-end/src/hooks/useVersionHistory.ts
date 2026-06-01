@@ -42,6 +42,7 @@ interface UseVersionHistory {
     loadFileContent: () => Promise<string>;
 }
 
+// module-level cache so the list and content survive component remounts without a refetch
 let cachedVersions: VersionSummary[] | null = null;
 let cachedLatestId: string | null = null;
 const cachedContent = new Map<string, string>();
@@ -52,11 +53,13 @@ export function useVersionHistory(): UseVersionHistory {
     const controllerRef = useRef<AbortController | null>(null);
 
     const fetchVersions = useCallback(async () => {
+        // abort any in-flight request before starting a new one
         controllerRef.current?.abort();
         const controller = new AbortController();
         controllerRef.current = controller;
         try {
             const data = await client<VersionSummary[]>('/versions', { signal: controller.signal, headers: getGithubHeaders() });
+            // only update state when the list actually changed (avoids unnecessary re-renders)
             const latestId = data[0]?.id ?? null;
             if (latestId !== cachedLatestId) {
                 cachedVersions = data;
@@ -76,6 +79,7 @@ export function useVersionHistory(): UseVersionHistory {
 
     useEffect(() => {
         fetchVersions();
+        // poll every 60 s so the list stays fresh in long-running sessions
         const interval = setInterval(fetchVersions, 60_000);
         return () => {
             controllerRef.current?.abort();
@@ -85,6 +89,7 @@ export function useVersionHistory(): UseVersionHistory {
 
     const saveVersion = async (message: string, content: string): Promise<void> => {
         const newVersion = await client<VersionSummary>('/versions', { body: { message, content }, headers: getGithubHeaders() });
+        // optimistically prepend the new version, then refetch to confirm
         cachedVersions = [newVersion, ...(cachedVersions ?? [])];
         cachedLatestId = newVersion.id;
         setVersions([...cachedVersions]);
@@ -92,6 +97,7 @@ export function useVersionHistory(): UseVersionHistory {
     };
 
     const fetchVersionContent = async (id: string): Promise<string> => {
+        // content never changes for a given commit sha, so it's safe to cache indefinitely
         const hit = cachedContent.get(id);
         if (hit !== undefined) return hit;
         const detail = await client<VersionDetail>(`/versions/${id}`, { method: 'GET', headers: getGithubHeaders() });
@@ -99,6 +105,7 @@ export function useVersionHistory(): UseVersionHistory {
         return detail.content;
     };
 
+    // loads the current HEAD file directly from the repo (not a specific commit)
     const loadFileContent = async (): Promise<string> => {
         const response = await fetch('/api/versions/file', { headers: getGithubHeaders() });
         if (!response.ok) {

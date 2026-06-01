@@ -35,6 +35,7 @@ const YamlEditor = () => {
 
     const logger = useMemo(() => new ValidationLogger(), []);
 
+    // APISIX standalone mode requires a #END marker at the end of the file
     const localErrors = useMemo<ValidationLog[]>(() => {
         if (!configText.trim() || configText.trimEnd().endsWith('#END')) return [];
         return [logger.add('error', 'Config is missing the #END marker at the end')];
@@ -45,6 +46,7 @@ const YamlEditor = () => {
         [configYamlValid, logs, localErrors]
     );
 
+    // merged log list: local errors first (e.g. missing #END), then schema errors, then reference warnings
     const displayLogs = [
         ...localErrors,
         ...(localErrors.length > 0 ? logs.filter(l => l.type !== 'success') : logs),
@@ -101,11 +103,6 @@ const YamlEditor = () => {
 
     const clearLogs = () => setLogs([]);
 
-    const handleNewConfig = () => {
-        setGlobalConfig('');
-        setConfigText('');
-    };
-
     const handleSaveVersionClick = () => {
         setSaveVersionOpen(open => !open);
     };
@@ -140,6 +137,7 @@ const YamlEditor = () => {
         startTransition(() => setRefLogs(refLogs));
     }, [config]);
 
+    // scroll the editor to a specific entry when navigated here from another page (e.g. topology view)
     useEffect(() => {
         const focusCategory = searchParams.get('focusCategory');
         const focusId = searchParams.get('focusId');
@@ -165,7 +163,7 @@ const YamlEditor = () => {
     }, [config, searchParams]);
 
     return (
-        <div className="container">
+        <div className={styles.loaderPage}>
             <div className={`flex justify-between align-center mb-4 pb-3 ${styles.loaderHeader}`}>
                 <h2 className="mb-1">YAML Editor</h2>
             </div>
@@ -212,9 +210,8 @@ const YamlEditor = () => {
                     validationLogs={displayLogs}
                     onConfigChange={handleConfigChange}
                     onToggleWhitespace={() => setShowWhitespace(!showWhitespace)}
-                    onNewConfig={handleNewConfig}
                     onToggleFillDefaults={toggleFillDefault}
-                    onLineClick={(log) => {
+                    onLineClick={log => {
                         setHighlightedLog(log);
                         setRightTab('validation');
                     }}

@@ -15,6 +15,8 @@ export const ConfigManagerProvider: React.FC<{ children: React.ReactNode }> = ({
         bump();
     }, [configManager, bump]);
 
+    // fetches the full APISIX schema from the backend and pushes it into the validator
+    // called on mount and can be called again after the user updates connection settings
     const fetchSchema = useCallback(async () => {
         setSchemaLoading(true);
         try {
@@ -36,6 +38,8 @@ export const ConfigManagerProvider: React.FC<{ children: React.ReactNode }> = ({
         fetchSchema().catch(() => {});
     }, [fetchSchema]);
 
+    // `version` is a bump counter - it's not in the value object but its presence in the dep array
+    // forces a new context value whenever setConfig is called, triggering consumers to re-render
     const value: ConfigManagerState = useMemo(() => ({
         configManager,
         config: configManager.getConfig(),

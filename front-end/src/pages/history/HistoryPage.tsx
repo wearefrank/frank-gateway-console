@@ -5,7 +5,8 @@ import { VersionList } from './VersionList';
 import { DiffViewer } from './DiffViewer';
 import styles from './HistoryPage.module.css';
 
-const CURRENT_SENTINEL = '__current__';
+// sentinel value used in place of a real commit sha to represent the in-memory (unsaved) state
+const CURRENT_VERSION = '__current__';
 const GITHUB_STORAGE_KEY = 'github-settings';
 
 interface GithubSettings {
@@ -45,6 +46,7 @@ export const HistoryPage: React.FC = () => {
     };
 
     const saveSettings = () => {
+        // invalidate the version cache when the repo/branch/path changes so we don't show stale data
         const repoChanged = githubDraft.githubRepo !== githubSettings.githubRepo
             || githubDraft.githubBranch !== githubSettings.githubBranch
             || githubDraft.githubFilePath !== githubSettings.githubFilePath;
@@ -63,7 +65,7 @@ export const HistoryPage: React.FC = () => {
     };
 
     const [fromId, setFromId] = useState<string>('');
-    const [toId, setToId] = useState<string>(CURRENT_SENTINEL);
+    const [toId, setToId] = useState<string>(CURRENT_VERSION);
     const [fromContent, setFromContent] = useState<string | null>(null);
     const [toContent, setToContent] = useState<string | null>(null);
     const [fromLabel, setFromLabel] = useState('');
@@ -82,14 +84,14 @@ export const HistoryPage: React.FC = () => {
     };
 
     const handleView = (version: VersionSummary) => {
-        if (version.id === CURRENT_SENTINEL) {
+        if (version.id === CURRENT_VERSION) {
             const latestVersion = versionList[0];
             if (latestVersion) {
-                loadDiff(latestVersion.id, CURRENT_SENTINEL);
+                loadDiff(latestVersion.id, CURRENT_VERSION);
             }
             return;
         }
-        loadDiff(version.id, CURRENT_SENTINEL);
+        loadDiff(version.id, CURRENT_VERSION);
     };
 
     const handleSwapDiff = () => {
@@ -98,6 +100,7 @@ export const HistoryPage: React.FC = () => {
         }
     };
 
+    // if there is existing content, show a confirmation step before overwriting it
     const handleRestore = (version: VersionSummary) => {
         const hasConfig = configManager.getRawText().trim().length > 0;
         if (hasConfig) {
@@ -113,9 +116,10 @@ export const HistoryPage: React.FC = () => {
         try {
             const content = await fetchVersionContent(version.id);
             setConfig(content);
-            if (fromId === CURRENT_SENTINEL) {
+            // keep the diff view in sync if the restored content was one of the compared sides
+            if (fromId === CURRENT_VERSION) {
                 setFromContent(content);
-            } else if (toId === CURRENT_SENTINEL) {
+            } else if (toId === CURRENT_VERSION) {
                 setToContent(content);
             }
         } finally {
@@ -133,7 +137,7 @@ export const HistoryPage: React.FC = () => {
             setFromLabel('Repo (HEAD)');
             setToLabel('Current (unsaved)');
             setFromId('__repo__');
-            setToId(CURRENT_SENTINEL);
+            setToId(CURRENT_VERSION);
         } catch (e) {
             setLoadError(e instanceof Error ? e.message : 'Failed to load file');
         } finally {
@@ -141,6 +145,7 @@ export const HistoryPage: React.FC = () => {
         }
     };
 
+    // fetches both sides of the diff; CURRENT_SENTINEL resolves to the in-memory editor text
     const loadDiff = async (newFromId: string, newToId: string) => {
         setFromId(newFromId);
         setToId(newToId);
@@ -154,13 +159,13 @@ export const HistoryPage: React.FC = () => {
             let resolvedFrom: string | null = null;
             let resolvedTo: string | null = null;
 
-            if (newFromId === CURRENT_SENTINEL) {
+            if (newFromId === CURRENT_VERSION) {
                 resolvedFrom = configManager.getRawText();
             } else if (newFromId) {
                 resolvedFrom = await fetchVersionContent(newFromId);
             }
 
-            if (newToId === CURRENT_SENTINEL) {
+            if (newToId === CURRENT_VERSION) {
                 resolvedTo = configManager.getRawText();
             } else if (newToId) {
                 resolvedTo = await fetchVersionContent(newToId);
@@ -169,13 +174,14 @@ export const HistoryPage: React.FC = () => {
             setFromContent(resolvedFrom);
             setToContent(resolvedTo);
 
+            // build readable labels like "a1b2c3d my commit message"
             const fromVersion = versionList.find(v => v.id === newFromId);
             const toVersion = versionList.find(v => v.id === newToId);
-            const fromLabel = newFromId === CURRENT_SENTINEL
+            const fromLabel = newFromId === CURRENT_VERSION
                 ? 'Current (unsaved)'
                 : fromVersion ? fromVersion.id.slice(0, 7) + (fromVersion.message ? ` ${fromVersion.message}` : '') : '(empty)';
             setFromLabel(fromLabel);
-            setToLabel(newToId === CURRENT_SENTINEL ? 'Current (unsaved)' : toVersion ? toVersion.id.slice(0, 7) + (toVersion.message ? ` ${toVersion.message}` : '') : '');
+            setToLabel(newToId === CURRENT_VERSION ? 'Current (unsaved)' : toVersion ? toVersion.id.slice(0, 7) + (toVersion.message ? ` ${toVersion.message}` : '') : '');
         } finally {
             setDiffLoading(false);
         }
@@ -314,8 +320,8 @@ export const HistoryPage: React.FC = () => {
                     {error && <div className={`text-error text-small ${styles.statusMsg}`}>{error}</div>}
 
                     <VersionList
-                        versions={[{ id: CURRENT_SENTINEL, message: 'Current (unsaved)', createdAt: '' }, ...versionList]}
-                        currentSentinel={CURRENT_SENTINEL}
+                        versions={[{ id: CURRENT_VERSION, message: 'Current (unsaved)', createdAt: '' }, ...versionList]}
+                        currentSentinel={CURRENT_VERSION}
                         loading={versions === null}
                         busy={diffLoading}
                         pendingRestoreId={pendingRestoreVersion?.id}
@@ -336,7 +342,7 @@ export const HistoryPage: React.FC = () => {
                             onChange={handleFromChange}
                         >
                             <option value="">-- From --</option>
-                            <option value={CURRENT_SENTINEL}>Current (unsaved)</option>
+                            <option value={CURRENT_VERSION}>Current (unsaved)</option>
                             {versionList.map(v => (
                                 <option key={v.id} value={v.id}>
                                     {v.id.slice(0, 7)}{v.message ? ` ${v.message}` : ''}
@@ -350,7 +356,7 @@ export const HistoryPage: React.FC = () => {
                             onChange={handleToChange}
                         >
                             <option value="">-- To --</option>
-                            <option value={CURRENT_SENTINEL}>Current (unsaved)</option>
+                            <option value={CURRENT_VERSION}>Current (unsaved)</option>
                             {versionList.map(v => (
                                 <option key={v.id} value={v.id}>
                                     {v.id.slice(0, 7)}{v.message ? ` ${v.message}` : ''}
@@ -358,10 +364,10 @@ export const HistoryPage: React.FC = () => {
                             ))}
                         </select>
                         <button className={`text-small ${styles.swapBtn}`} onClick={handleSwapDiff} title="Swap direction">⇄</button>
-                        {toId === CURRENT_SENTINEL && fromId && fromId !== CURRENT_SENTINEL && (
+                        {toId === CURRENT_VERSION && fromId && fromId !== CURRENT_VERSION && (
                             <span className={`text-small text-muted`}>Changes since</span>
                         )}
-                        {fromId === CURRENT_SENTINEL && toId && toId !== CURRENT_SENTINEL && (
+                        {fromId === CURRENT_VERSION && toId && toId !== CURRENT_VERSION && (
                             <span className={`text-small text-muted`}>Restore preview</span>
                         )}
                     </div>

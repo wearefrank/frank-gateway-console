@@ -18,6 +18,8 @@ public class VersioningController {
         this.versioningService = versioningService;
     }
 
+    // GitHub settings are passed as request headers on every call rather than stored server-side,
+    // so the browser can persist them locally without the backend ever holding someone's token.
     @GetMapping
     public List<ConfigVersionDto.Summary> listVersions(
             @RequestHeader(value = "X-Github-Token", defaultValue = "") String token,
@@ -47,6 +49,7 @@ public class VersioningController {
         return versioningService.saveVersion(request.message(), request.content(), token, repo, branch, filePath);
     }
 
+    // returns plain text so the frontend can load the file content directly into the editor
     @GetMapping(value = "/file", produces = MediaType.TEXT_PLAIN_VALUE)
     public String readCurrentFile(
             @RequestHeader(value = "X-Github-Token", defaultValue = "") String token,
