@@ -124,6 +124,7 @@ function ArrayTextInput({field, value, onChange}: FieldProps) {
     const [inputValue, setInputValue] = useState<string>('');
     const [syncedValue, setSyncedValue] = useState<unknown>(value);
 
+    // sync local state when the parent value changes (e.g. loading an existing entry for editing)
     if (value !== syncedValue) {
         setSyncedValue(value);
         const loaded = Array.isArray(value) ? value.map((v, i) => ({ id: i, value: String(v) })) : [];
@@ -303,6 +304,7 @@ function MapField({field, value, onChange}: FieldProps) {
     );
     const [syncedValue, setSyncedValue] = useState<unknown>(value);
 
+    // same external-value sync pattern as ArrayTextInput
     if (value !== syncedValue) {
         setSyncedValue(value);
         const loaded = (value && typeof value === 'object' && !Array.isArray(value))
@@ -555,6 +557,7 @@ export function SchemaFormRenderer({fields, values, onChange, overrides, overrid
         return
     }
 
+    // filter by search term, then sort: priority fields first (in list order), remainder alphabetical
     const visibleFields = searchTerm
         ? fields.filter(f => fieldMatchesSearch(f, searchTerm, values[f.name]))
         : fields;

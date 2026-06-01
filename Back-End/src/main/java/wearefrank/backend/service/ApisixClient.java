@@ -19,6 +19,7 @@ public class ApisixClient {
         this.httpClient = httpClient;
     }
 
+    // reads from the Prometheus-compatible metrics port
     public String metricsGet(String path) {
         String url = yamlStoreService.getMetricsUrl() + path;
         try {
@@ -39,6 +40,7 @@ public class ApisixClient {
         }
     }
 
+    // reads from the APISIX control API - used for schema, routes, upstreams, health
     public String controlGet(String path) {
         String url = yamlStoreService.getControlUrl() + path;
 
@@ -62,6 +64,9 @@ public class ApisixClient {
             throw new RuntimeException("Failed to reach APISIX control API at " + url + ": " + e.getMessage(), e);
         }
     }
+
+    // status methods - used by the config controller to test connectivity before saving settings
+    // they return false instead of throwing so the UI can show a "offline" indicator gracefully
 
     public boolean checkControl(String host, int port) {
         String url = host + ":" + port + "/v1/schema";

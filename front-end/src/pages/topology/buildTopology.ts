@@ -29,7 +29,7 @@ export function getConnectedNodeIds(startId: string, edges: Edge[]): Set<string>
     return visited;
 }
 import type { ApisixConfig, ResourceConfiguration } from '../../actions/SchemaValidation';
-import { getIdField, getDisplayId } from '../../config/categoryDefinitions';
+import { CATEGORY_DEFINITIONS, CATEGORY_COLOR, AUTH_PLUGINS, getIdField, getDisplayId } from '../../config/categoryDefinitions';
 
 export type ColorScheme = 'source' | 'destination';
 
@@ -41,17 +41,7 @@ export interface ConfigNodeData extends Record<string, unknown> {
 const NODE_WIDTH  = 240;
 const NODE_HEIGHT = 170;
 
-// Source-scheme styles (color = source node)
-const ROUTE_EDGE_STYLE        = { stroke: '#3b82f6' };
-const ROUTE_PLUGIN_EDGE_STYLE = { stroke: '#3b82f6', strokeDasharray: '5 3' };
-const SERVICE_EDGE_STYLE      = { stroke: '#f97316' };
-
-// Destination-scheme styles (color = destination node)
-const DEST_UPSTREAM_EDGE_STYLE = { stroke: '#22c55e' };
-const DEST_SERVICE_EDGE_STYLE  = { stroke: '#f97316' };
-const DEST_PLUGIN_EDGE_STYLE   = { stroke: '#f59e0b', strokeDasharray: '5 3' };
-
-// Destination-scheme consumer edge colors (keyed by the target category)
+// Consumer edge colors per target category (dest-scheme). FK edge colors are computed from CATEGORY_COLOR.
 const DEST_CONSUMER_EDGE_COLORS: Record<string, string> = {
     route: '#3b82f6',
     service: '#f97316',
@@ -65,12 +55,7 @@ function nodeId(category: string, entry: ResourceConfiguration, index?: number):
     return `${category}-${getDisplayId(category, entry as Record<string, unknown>, index)}`;
 }
 
-// Auth plugins whose presence on both a consumer and another resource implies a connection
-const AUTH_PLUGINS = new Set([
-    'key-auth', 'basic-auth', 'jwt-auth', 'hmac-auth',
-    'wolf-rbac', 'openid-connect', 'cas-auth', 'forward-auth',
-    'opa', 'ldap-auth', 'multi-auth',
-]);
+// AUTH_PLUGINS is imported from categoryDefinitions — update it there to add/remove auth plugins.
 
 function authPluginNames(entry: ResourceConfiguration): Set<string> {
     const plugins = entry['plugins'];
@@ -213,85 +198,54 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
     for (const node of nodes) {
         const { category, entry } = node.data;
 
-        if (category === 'route') {
-            const upstreamTarget = resolveRef('upstream', entry['upstream_id']);
-            if (upstreamTarget) {
-                edges.push({
-                    id: `${node.id}->${upstreamTarget}`,
-                    source: node.id,
-                    target: upstreamTarget,
-                    sourceHandle: 'source-upstream',
-                    targetHandle: 'target-from-route',
-                    type: 'smoothstep',
-                    label: 'upstream',
-                    labelStyle: EDGE_LABEL_STYLE,
-                    labelBgStyle: EDGE_LABEL_BG_STYLE,
-                    animated: true,
-                    style: colorScheme === 'source' ? ROUTE_EDGE_STYLE : DEST_UPSTREAM_EDGE_STYLE,
-                });
-                g.setEdge(node.id, upstreamTarget);
-            }
-            const serviceTarget = resolveRef('service', entry['service_id']);
-            if (serviceTarget) {
-                edges.push({
-                    id: `${node.id}->${serviceTarget}`,
-                    source: node.id,
-                    target: serviceTarget,
-                    sourceHandle: 'source-service',
-                    targetHandle: 'target-from-route',
-                    type: 'smoothstep',
-                    label: 'service',
-                    labelStyle: EDGE_LABEL_STYLE,
-                    labelBgStyle: EDGE_LABEL_BG_STYLE,
-                    style: colorScheme === 'source' ? ROUTE_EDGE_STYLE : DEST_SERVICE_EDGE_STYLE,
-                });
-                g.setEdge(node.id, serviceTarget);
-            }
-            const pluginConfigSource = resolveRef('plugin_config', entry['plugin_config_id']);
-            if (pluginConfigSource) {
-                // plugin_config flows INTO the route (it's applied to the route, not an output)
-                edges.push({
-                    id: `${pluginConfigSource}->${node.id}`,
-                    source: pluginConfigSource,
-                    target: node.id,
-                    sourceHandle: 'source-to-route',
-                    targetHandle: 'target-from-plugin_config',
-                    type: 'smoothstep',
-                    label: 'plugin_config',
-                    labelStyle: EDGE_LABEL_STYLE,
-                    labelBgStyle: EDGE_LABEL_BG_STYLE,
-                    // source=plugin_config(teal), destination=route(blue)
-                    style: colorScheme === 'source' ? DEST_PLUGIN_EDGE_STYLE : ROUTE_PLUGIN_EDGE_STYLE,
-                });
-                g.setEdge(pluginConfigSource, node.id);
-            }
-        }
+        const def = CATEGORY_DEFINITIONS[category];
+        if (def) {
+            for (const ref of def.referenceFields) {
+                const resolvedId = resolveRef(ref.targetCategory, entry[ref.field]);
+                if (!resolvedId) continue;
 
-        if (category === 'service') {
-            const upstreamTarget = resolveRef('upstream', entry['upstream_id']);
-            if (upstreamTarget) {
-                edges.push({
-                    id: `${node.id}->${upstreamTarget}`,
-                    source: node.id,
-                    target: upstreamTarget,
-                    sourceHandle: 'source-upstream',
-                    targetHandle: 'target-from-service',
+                const isForward    = ref.edgeDirection === 'forward';
+                const edgeSource   = isForward ? node.id   : resolvedId;
+                const edgeTarget   = isForward ? resolvedId : node.id;
+                const sourceHandle = isForward ? `source-${ref.targetCategory}` : `source-to-${category}`;
+                const targetHandle = isForward ? `target-from-${category}`      : `target-from-${ref.targetCategory}`;
+
+                const sourceCategory = isForward ? category             : ref.targetCategory;
+                const destCategory   = isForward ? ref.targetCategory   : category;
+                const strokeColor    = colorScheme === 'source'
+                    ? (CATEGORY_COLOR[sourceCategory] ?? '#64748b')
+                    : (CATEGORY_COLOR[destCategory]   ?? '#64748b');
+
+                const edgeStyle: { stroke: string; strokeDasharray?: string } = { stroke: strokeColor };
+                if (ref.dashed) edgeStyle.strokeDasharray = '5 3';
+
+                const edgeEntry: Parameters<typeof edges.push>[0] = {
+                    id: `${edgeSource}->${edgeTarget}`,
+                    source: edgeSource,
+                    target: edgeTarget,
+                    sourceHandle,
+                    targetHandle,
                     type: 'smoothstep',
-                    label: 'upstream',
+                    label: ref.targetCategory,
                     labelStyle: EDGE_LABEL_STYLE,
                     labelBgStyle: EDGE_LABEL_BG_STYLE,
-                    animated: true,
-                    style: colorScheme === 'source' ? SERVICE_EDGE_STYLE : DEST_UPSTREAM_EDGE_STYLE,
-                });
-                g.setEdge(node.id, upstreamTarget);
+                    style: edgeStyle,
+                };
+                if (ref.animated) edgeEntry.animated = true;
+                edges.push(edgeEntry);
+                g.setEdge(edgeSource, edgeTarget);
             }
         }
     }
 
-    // Consumer edges: connect each consumer to every route/service/plugin_config
-    // that shares at least one auth plugin with it.
-    const consumerNodes = nodes.filter(n => n.data.category === 'consumer');
-    const authTargetCategories = new Set(['route', 'service', 'plugin_config']);
+    // Auth-sender edges: connect each category that has authTargetCategories defined
+    // to every matching target node that shares at least one auth plugin.
+    const consumerNodes = nodes.filter(
+        n => (CATEGORY_DEFINITIONS[n.data.category]?.authTargetCategories.length ?? 0) > 0
+    );
+    const authTargetCategories = new Set(
+        Object.values(CATEGORY_DEFINITIONS).flatMap(def => def.authTargetCategories)
+    );
     const authTargetNodes = nodes.filter(n => authTargetCategories.has(n.data.category));
 
     for (const consumer of consumerNodes) {
@@ -303,7 +257,16 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
 
         for (const target of authTargetNodes) {
             const targetAuth = authPluginNames(target.data.entry);
-            const shared = [...consumerAuth].find(p => targetAuth.has(p));
+
+            // For routes, also consider auth plugins inherited via plugin_config_id
+            let inheritedAuth = new Set<string>();
+            if (target.data.category === 'route') {
+                const pcNodeId = resolveRef('plugin_config', target.data.entry['plugin_config_id']);
+                const pcNode = pcNodeId ? nodes.find(n => n.id === pcNodeId) : null;
+                if (pcNode) inheritedAuth = authPluginNames(pcNode.data.entry);
+            }
+
+            const shared = [...consumerAuth].find(p => targetAuth.has(p) || inheritedAuth.has(p));
             if (!shared) continue;
 
             // Respect the `consumer-restriction` plugin on the target resource.
@@ -320,8 +283,8 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
                 id: edgeId,
                 source: consumer.id,
                 target: target.id,
-                sourceHandle: 'source-auth',
-                targetHandle: 'target-from-consumer',
+                sourceHandle: `source-auth-${target.data.category}`,
+                targetHandle: `target-from-${consumer.data.category}`,
                 type: 'smoothstep',
                 label: shared,
                 labelStyle: EDGE_LABEL_STYLE,

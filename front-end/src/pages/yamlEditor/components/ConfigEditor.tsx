@@ -1,6 +1,9 @@
-import React, {useEffect, useMemo, useRef} from 'react';
+import React, {useMemo, useRef, useCallback} from 'react';
 import {ValidationLog} from '../../../actions/ValidationLogger';
-import {parseYamlDoc, resolvePathToNode} from '../yamlLineUtils';
+import {parseYamlDoc, resolvePathToNode, buildLineSegments, buildCategoryLineMap, getLineHeight} from '../yamlLineUtils';
+import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
+import { useVisibleCategory } from '../../../hooks/useVisibleCategory';
+import { useScrollToTarget } from '../../../hooks/useScrollToTarget';
 import styles from '../YamlEditor.module.css';
 
 interface ConfigEditorProps {
@@ -13,128 +16,9 @@ interface ConfigEditorProps {
     onConfigChange: (newValue: string) => void;
     onToggleWhitespace: () => void;
     onToggleFillDefaults: () => void;
-    onNewConfig: () => void;
     onLineClick?: (log: ValidationLog) => void;
     scrollToTarget?: { path: string; key: number } | null;
-}
-
-type SegmentType = 'normal' | 'whitespace' | 'comment' | 'placeholder' | 'key';
-
-/**
- * find the first # in a line thats not inside ' ' or " "
- *
- * @param line - line/text to annalyze
- *
- * @returns returns the char number where the comments starts
- */
-function findCommentStart(line: string): number {
-    let inSingle = false;
-    let inDouble = false;
-
-    for (let i = 0; i < line.length; i++) {
-        const c = line[i];
-        if (c === "'" && !inDouble) inSingle = !inSingle;
-        else if (c === '"' && !inSingle) inDouble = !inDouble;
-        else if (c === '#' && !inSingle && !inDouble) return i;
-    }
-    return -1;
-}
-
-/**
- * Find the key span in a YAML line: returns start (first non-indent, non-list-marker char)
- * and end (index of the colon), or null if the line has no key-value pair.
- * Skips colons inside quoted strings and lines that are purely comments.
- */
-function findYamlKey(line: string, commentIdx: number): { start: number; end: number } | null {
-    let pos = 0;
-    while (pos < line.length && line[pos] === ' ') pos++;
-    if (line[pos] === '-' && (pos + 1 >= line.length || line[pos + 1] === ' ')) {
-        pos += 2;
-        while (pos < line.length && line[pos] === ' ') pos++;
-    }
-    const keyStart = pos;
-
-    let inSingle = false;
-    let inDouble = false;
-    while (pos < line.length) {
-        if (commentIdx !== -1 && pos >= commentIdx) break;
-        const c = line[pos];
-        if (c === "'" && !inDouble) { inSingle = !inSingle; pos++; continue; }
-        if (c === '"' && !inSingle) { inDouble = !inDouble; pos++; continue; }
-        if (!inSingle && !inDouble && c === ':') {
-            const next = line[pos + 1];
-            if (pos === line.length - 1 || next === ' ' || next === '\t') {
-                return { start: keyStart, end: pos };
-            }
-        }
-        pos++;
-    }
-    return null;
-}
-
-/**
- * Function to determine what color a line should be or to generate the whitespaces
- *
- * @param line           - line/text to annalyze
- * @param showWhitespace - bool if whitespaces should be generated
- */
-function buildLineSegments(line: string, showWhitespace: boolean): { text: string; type: SegmentType }[] {
-    const commentIdx = findCommentStart(line);
-    const leadingSpaces = line.match(/^ */)?.[0].length ?? 0;
-    const yamlKey = findYamlKey(line, commentIdx);
-    const segments: { text: string; type: SegmentType }[] = [];
-    let pastKey = false;
-
-    // append the new char to the same segment if they connect
-    const push = (char: string, type: SegmentType) => {
-        const last = segments[segments.length - 1];
-        if (last?.type === type) {
-            last.text += char;
-        } else {
-            segments.push({text: char, type});
-        }
-    };
-
-    let i = 0;
-    while (i < line.length) {
-        const isComment = commentIdx !== -1 && i >= commentIdx;
-        const isKeyChar = !pastKey && yamlKey !== null && i >= yamlKey.start && i <= yamlKey.end;
-
-        if (isComment) {
-            push(line[i], 'comment');
-            i++;
-        } else if (line[i] === '$' && line[i + 1] === '{' && line[i + 2] === '{') {
-            let end = i + 3;
-            let closed = false;
-            while (end < line.length) {
-                if (line[end] === '}' && line[end + 1] === '}') { end += 2; closed = true; break; }
-                end++;
-            }
-            if (closed) {
-                segments.push({ text: line.slice(i, end), type: 'placeholder' });
-                i = end;
-            } else {
-                // No closing }} found — treat as normal text, not a placeholder.
-                push(line[i], 'normal');
-                i++;
-            }
-        } else if (isKeyChar) {
-            push(line[i], 'key');
-            if (i === yamlKey!.end) pastKey = true;
-            i++;
-        } else if (showWhitespace && line[i] === ' ') {
-            const isLeading = i < leadingSpaces;
-            const indentMarker = i % 2 === 0 ? '·' : '│';
-            const marker = isLeading ? indentMarker : '·';
-            push(marker, 'whitespace');
-            i++;
-        } else {
-            push(line[i], 'normal');
-            i++;
-        }
-    }
-
-    return segments;
+    onSaveVersion?: () => void;
 }
 
 
@@ -245,15 +129,17 @@ export const ConfigEditor = ({
                                  onConfigChange,
                                  onToggleWhitespace,
                                  onToggleFillDefaults,
-                                 onNewConfig,
                                  onLineClick,
-                                 scrollToTarget
+                                 scrollToTarget,
+                                 onSaveVersion,
                              }: ConfigEditorProps) => {
 
     const editorContainerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+
+        // Comment out shortcut
         if ((e.ctrlKey || e.metaKey) && e.key === '/') {
             e.preventDefault();
             const {selectionStart, selectionEnd, value} = e.currentTarget;
@@ -262,6 +148,7 @@ export const ConfigEditor = ({
             requestAnimationFrame(() => textareaRef.current?.setSelectionRange(newStart, newEnd));
         }
 
+        // indenting
         if (e.key === 'Tab') {
             e.preventDefault();
             const {selectionStart, selectionEnd, value} = e.currentTarget;
@@ -270,6 +157,7 @@ export const ConfigEditor = ({
             requestAnimationFrame(() => textareaRef.current?.setSelectionRange(newStart, newEnd));
         }
 
+        // newline + indenting
         if (e.key === 'Enter') {
             e.preventDefault();
             const {selectionStart, selectionEnd, value} = e.currentTarget;
@@ -285,6 +173,7 @@ export const ConfigEditor = ({
         catch { return null; }
     }, [configText]);
 
+    // editor text highlighting
     const { errorLines, errorLineLogMap } = useMemo(() => {
         const lines = new Set<number>();
         const logMap = new Map<number, ValidationLog>();
@@ -317,28 +206,28 @@ export const ConfigEditor = ({
         return { errorLines: lines, errorLineLogMap: logMap };
     }, [parsedDoc, validationLogs]);
 
-    const lastScrolledKeyRef = useRef<number | null>(null);
+    const categoryLineMap = useMemo(() => {
+        if (!parsedDoc) return new Map<number, string>();
+        return buildCategoryLineMap(parsedDoc.doc, parsedDoc.lineCounter);
+    }, [parsedDoc]);
 
-    useEffect(() => {
-        if (!scrollToTarget || !parsedDoc || !editorContainerRef.current) return;
-
-        // scrollToTarget.key increments each time a new scroll is requested.
-        // Guard against re-firing when parsedDoc changes (e.g. on every keystroke)
-        // while the same scroll target is still set.
-        if (lastScrolledKeyRef.current === scrollToTarget.key) return;
-        lastScrolledKeyRef.current = scrollToTarget.key;
-
-        const {doc, lineCounter} = parsedDoc;
-        const node = resolvePathToNode(doc, scrollToTarget.path);
-
-        if (node && node.range) {
-            const targetLine = lineCounter.linePos(node.range[0]).line;
-            const lineHeight = parseFloat(getComputedStyle(editorContainerRef.current).lineHeight) || 21;
-            editorContainerRef.current.scrollTop = (targetLine - 1) * lineHeight;
+    const categoryStartLines = useMemo(() => {
+        const starts = new Map<string, number>();
+        for (const [line, cat] of categoryLineMap) {
+            const existing = starts.get(cat);
+            if (existing === undefined || line < existing) starts.set(cat, line);
         }
-    }, [scrollToTarget, parsedDoc]);
+        return starts;
+    }, [categoryLineMap]);
 
+    const handleJumpToCategory = useCallback((category: string) => {
+        const line = categoryStartLines.get(category);
+        if (line === undefined || !editorContainerRef.current) return;
+        editorContainerRef.current.scrollTop = (line - 1) * getLineHeight(editorContainerRef.current);
+    }, [categoryStartLines, editorContainerRef]);
 
+    const visibleCategory = useVisibleCategory(editorContainerRef, categoryLineMap);
+    useScrollToTarget(editorContainerRef, parsedDoc, scrollToTarget);
 
     let statusClass = null;
     let statusLabel = null;
@@ -358,36 +247,66 @@ export const ConfigEditor = ({
     return (
         <div
             className={`card flex flex-column ${styles.configCard} ${validConfig ? styles.editorContainer : styles.editorContainerInvalid}`}>
-            <div className="card-header flex justify-between align-center">
-                <div className="flex align-center gap-sm">
-                    Parsed Configuration
-                    {statusClass && <span className={statusClass}>{statusLabel}</span>}
-                </div>
-                <div className="flex align-center gap-sm">
-                    <button
-                        className={showWhitespace ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
-                        onClick={onToggleWhitespace}
-                        title="Show Whitespace"
-                    >
-                        {showWhitespace ? 'Hide Whitespaces' : 'Show Whitespaces'}
-                    </button>
+            <div className="card-header flex align-center gap-sm">
+                Parsed Configuration
+                {statusClass && <span className={statusClass}>{statusLabel}</span>}
+            </div>
+            {/* toolbar just below the header eg: "hide whitespaces" */}
+            <div className={styles.editorToolbar}>
+                <button
+                    className={showWhitespace ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
+                    onClick={onToggleWhitespace}
+                    title="Show Whitespace"
+                >
+                    {showWhitespace ? 'Hide Whitespaces' : 'Show Whitespaces'}
+                </button>
 
-                    <button
-                        className={fillDefaults ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
-                        onClick={onToggleFillDefaults}
-                        title="Fill in Defaults"
-                    >
-                        {fillDefaults ? 'Don\'t fill' : 'Fill'}
-                    </button>
+                <button
+                    className={fillDefaults ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
+                    onClick={onToggleFillDefaults}
+                    title="Fill in Defaults"
+                >
+                    {fillDefaults ? 'Don\'t fill' : 'Fill'}
+                </button>
 
+                {onSaveVersion && (
                     <button
                         className={`text-small ${styles.btnIcon}`}
-                        onClick={onNewConfig}
+                        onClick={onSaveVersion}
                     >
-                        New
+                        Commit
                     </button>
-                </div>
+                )}
             </div>
+            {/* Category banner */}
+            {configText && (
+                <div
+                    className={styles.categoryBanner}
+                    style={visibleCategory ? { borderLeftColor: CATEGORY_DEFINITIONS[visibleCategory]?.color } : undefined}
+                >
+                    <span>{visibleCategory ? CATEGORY_DEFINITIONS[visibleCategory]?.label : ''}</span>
+                    {categoryStartLines.size > 0 && (
+                        <div className={styles.categoryNavPills}>
+                            {[...categoryStartLines.keys()].map(cat => {
+                                // we only wanna show known and present categories
+                                const def = CATEGORY_DEFINITIONS[cat];
+                                const isActive = cat === visibleCategory;
+                                return (
+                                    <button
+                                        key={cat}
+                                        className={isActive ? styles.categoryNavPillActive : styles.categoryNavPill}
+                                        style={{ '--pill-color': def?.color } as React.CSSProperties}
+                                        onClick={() => handleJumpToCategory(cat)}
+                                    >
+                                        {def?.label ?? cat}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+            {/* YAML editor */}
             <div className={styles.editorContainer} ref={editorContainerRef}>
                 <div className={styles.editorGrid}>
                     {/* Line numbers gutter */}
@@ -412,6 +331,26 @@ export const ConfigEditor = ({
                             })}
                         </div>
                     )}
+
+                    {/* Category color strip */}
+                    {configText && (
+                        <div className={styles.categoryStrip}>
+                            {configText.split('\n').map((_, index) => {
+                                const category = categoryLineMap.get(index + 1);
+                                const color = category ? CATEGORY_DEFINITIONS[category]?.color : undefined;
+                                return (
+                                    <div
+                                        key={index}
+                                        className={styles.categoryStripLine}
+                                        style={color ? { backgroundColor: color } : undefined}
+                                    />
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* Spacer between category strip and editor */}
+                    {configText && <div />}
 
                     {/* Editor layers (stacked via grid-area) */}
                     <div className={styles.editorLayers}>

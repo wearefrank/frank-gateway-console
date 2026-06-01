@@ -14,12 +14,6 @@ export const ColorSchemeContext = createContext<ColorScheme>('source');
 
 // Handle styling helpers
 
-const H_BLUE   = '#3b82f6';
-const H_GREEN  = '#22c55e';
-const H_ORANGE = '#f97316';
-const H_TEAL   = '#f59e0b';
-const H_PURPLE = '#8b5cf6';
-
 const HANDLE_SIZE   = 12;
 const HANDLE_OFFSET = 1;
 
@@ -47,19 +41,106 @@ const COUNT_LABEL_STYLE: React.CSSProperties = {
     userSelect: 'none',
 };
 
-// Handle count / tooltip helpers used inside ConfigNode
+// ---------------------------------------------------------------------------
+// Data-driven handle system — derived from CATEGORY_DEFINITIONS
+// ---------------------------------------------------------------------------
 
-const SOURCE_HANDLE_TO_FIELD: Record<string, string> = {
-    'source-upstream': 'upstream_id',
-    'source-service':  'service_id',
-};
+interface HandleSpec {
+    handleId: string;
+    /** Category at the other end of the edge, used for color computation. */
+    otherCategory: string;
+    /** Shown when no edge is currently connected. */
+    tooltipHint: string;
+    /** FK field on this node (source handles): show its current value in the tooltip. */
+    field?: string;
+    /** Auth-edge source handles: show the consumer's plugin names in the tooltip. */
+    isAuthEdge?: boolean;
+}
+
+interface CategoryHandles {
+    sources: HandleSpec[];
+    targets: HandleSpec[];
+}
+
+function buildCategoryHandles(): Record<string, CategoryHandles> {
+    const result: Record<string, CategoryHandles> = {};
+    for (const cat of Object.keys(CATEGORY_DEFINITIONS)) {
+        result[cat] = { sources: [], targets: [] };
+    }
+
+    for (const [cat, def] of Object.entries(CATEGORY_DEFINITIONS)) {
+        for (const ref of def.referenceFields) {
+            if (ref.edgeDirection === 'forward') {
+                result[cat].sources.push({
+                    handleId: `source-${ref.targetCategory}`,
+                    otherCategory: ref.targetCategory,
+                    tooltipHint: `set ${ref.field} to connect`,
+                    field: ref.field,
+                });
+                if (result[ref.targetCategory]) {
+                    result[ref.targetCategory].targets.push({
+                        handleId: `target-from-${cat}`,
+                        otherCategory: cat,
+                        tooltipHint: `set ${cat}'s ${ref.field} to connect`,
+                    });
+                }
+            } else {
+                // reverse: edge runs targetCategory → cat; cat holds the FK field
+                result[cat].targets.push({
+                    handleId: `target-from-${ref.targetCategory}`,
+                    otherCategory: ref.targetCategory,
+                    tooltipHint: `set ${ref.field} to connect`,
+                    field: ref.field,
+                });
+                if (result[ref.targetCategory]) {
+                    result[ref.targetCategory].sources.push({
+                        handleId: `source-to-${cat}`,
+                        otherCategory: cat,
+                        tooltipHint: '',
+                    });
+                }
+            }
+        }
+
+        for (const targetCat of def.authTargetCategories) {
+            result[cat].sources.push({
+                handleId: `source-auth-${targetCat}`,
+                otherCategory: targetCat,
+                tooltipHint: `add auth plugin to connect to ${targetCat}s`,
+                isAuthEdge: true,
+            });
+            if (result[targetCat] && !result[targetCat].targets.some(t => t.handleId === `target-from-${cat}`)) {
+                result[targetCat].targets.push({
+                    handleId: `target-from-${cat}`,
+                    otherCategory: cat,
+                    tooltipHint: `${cat}: add matching auth plugin`,
+                    isAuthEdge: true,
+                });
+            }
+        }
+    }
+
+    return result;
+}
+
+const CATEGORY_HANDLES = buildCategoryHandles();
+
+// Maps 'source-{targetCategory}' handle IDs to FK field names for target-handle tooltip building.
+// Covers all forward-direction references; adding a new one to categoryDefinitions.ts is sufficient.
+const SOURCE_HANDLE_TO_FIELD: Record<string, string> = Object.fromEntries(
+    Object.values(CATEGORY_DEFINITIONS).flatMap(def =>
+        def.referenceFields
+            .filter(r => r.edgeDirection === 'forward')
+            .map(r => [`source-${r.targetCategory}`, r.field])
+    )
+);
 
 function parseSourceNodeId(nid: string): {category: string; id: string} {
     const sep = nid.indexOf('-');
     return {category: nid.slice(0, sep), id: nid.slice(sep + 1)};
 }
 
-// Per-category handle JSX
+// Data-driven handle renderer — all handles are generated from CATEGORY_HANDLES
 
 function getHandles(
     category: string,
@@ -68,110 +149,62 @@ function getHandles(
     counts: Record<string, number>,
     tooltips: Record<string, string>,
 ): React.ReactNode {
+    const spec = CATEGORY_HANDLES[category];
+    if (!spec || (spec.targets.length === 0 && spec.sources.length === 0)) return null;
+
     const src = colorScheme === 'source';
+    const thisColor = CATEGORY_COLOR[category] ?? '#64748b';
+
     const n = (id: string) => {
         const c = counts[id] ?? 0;
         return c > 0 ? <span style={COUNT_LABEL_STYLE}>{c}</span> : null;
     };
 
-    switch (category) {
-        case 'route': {
-            const upstreamId     = entry['upstream_id'];
-            const serviceId      = entry['service_id'];
-            const pluginConfigId = entry['plugin_config_id'];
-            return (
-                <>
-                    <Handle type="target" position={Position.Top} id="target-from-plugin_config"
-                            style={handleStyle('30%', src ? H_TEAL : H_BLUE, 'top', src ? undefined : H_TEAL)}
-                            data-tooltip={pluginConfigId ? `plugin_config_id: '${pluginConfigId}'` : 'set plugin_config_id to connect'}>
-                        {n('target-from-plugin_config')}
-                    </Handle>
-                    <Handle type="target" position={Position.Top} id="target-from-consumer"
-                            style={handleStyle('70%', src ? H_PURPLE : H_BLUE, 'top', src ? undefined : H_PURPLE)}
-                            data-tooltip="consumer: add matching auth plugin">
-                        {n('target-from-consumer')}
-                    </Handle>
-                    <Handle type="source" position={Position.Bottom} id="source-upstream"
-                            style={handleStyle('30%', src ? H_BLUE : H_GREEN, 'bottom', src ? H_GREEN : undefined)}
-                            data-tooltip={upstreamId ? `upstream_id: '${upstreamId}'` : 'set upstream_id to connect'}>
-                        {n('source-upstream')}
-                    </Handle>
-                    <Handle type="source" position={Position.Bottom} id="source-service"
-                            style={handleStyle('70%', src ? H_BLUE : H_ORANGE, 'bottom', src ? H_ORANGE : undefined)}
-                            data-tooltip={serviceId ? `service_id: '${serviceId}'` : 'set service_id to connect'}>
-                        {n('source-service')}
-                    </Handle>
-                </>
-            );
+    const plugins = entry['plugins'];
+    const pluginKeys = plugins && typeof plugins === 'object' && !Array.isArray(plugins)
+        ? Object.keys(plugins as Record<string, unknown>)
+        : [];
+
+    const targetHandles = spec.targets.map((h, i) => {
+        const left = `${(i + 1) * 100 / (spec.targets.length + 1)}%`;
+        const otherColor = CATEGORY_COLOR[h.otherCategory] ?? '#64748b';
+        const bg   = src ? otherColor : thisColor;
+        const ring = src ? undefined  : otherColor;
+        return (
+            <Handle key={h.handleId} type="target" position={Position.Top}
+                    id={h.handleId}
+                    style={handleStyle(left, bg, 'top', ring)}
+                    data-tooltip={tooltips[h.handleId] || h.tooltipHint}>
+                {n(h.handleId)}
+            </Handle>
+        );
+    });
+
+    const sourceHandles = spec.sources.map((h, i) => {
+        const left = `${(i + 1) * 100 / (spec.sources.length + 1)}%`;
+        const otherColor = CATEGORY_COLOR[h.otherCategory] ?? '#64748b';
+        const bg   = src ? thisColor  : otherColor;
+        const ring = src ? otherColor : undefined;
+        let tooltip: string;
+        if (h.field) {
+            const val = entry[h.field];
+            tooltip = val ? `${h.field}: '${val}'` : h.tooltipHint;
+        } else if (h.isAuthEdge) {
+            tooltip = pluginKeys.length > 0 ? `plugins: ${pluginKeys.join(', ')}` : h.tooltipHint;
+        } else {
+            tooltip = h.tooltipHint;
         }
-        case 'service': {
-            const upstreamId = entry['upstream_id'];
-            return (
-                <>
-                    <Handle type="target" position={Position.Top} id="target-from-route"
-                            style={handleStyle('35%', src ? H_BLUE : H_ORANGE, 'top', src ? undefined : H_BLUE)}
-                            data-tooltip={tooltips['target-from-route'] || "set route's service_id to connect"}>
-                        {n('target-from-route')}
-                    </Handle>
-                    <Handle type="target" position={Position.Top} id="target-from-consumer"
-                            style={handleStyle('65%', src ? H_PURPLE : H_ORANGE, 'top', src ? undefined : H_PURPLE)}
-                            data-tooltip="consumer: add matching auth plugin">
-                        {n('target-from-consumer')}
-                    </Handle>
-                    <Handle type="source" position={Position.Bottom} id="source-upstream"
-                            style={handleStyle('50%', src ? H_ORANGE : H_GREEN, 'bottom', src ? H_GREEN : undefined)}
-                            data-tooltip={upstreamId ? `upstream_id: '${upstreamId}'` : 'set upstream_id to connect'}>
-                        {n('source-upstream')}
-                    </Handle>
-                </>
-            );
-        }
-        case 'consumer': {
-            const plugins    = entry['plugins'];
-            const pluginKeys = plugins && typeof plugins === 'object' && !Array.isArray(plugins)
-                ? Object.keys(plugins as Record<string, unknown>).join(', ')
-                : '';
-            return (
-                <Handle type="source" position={Position.Bottom} id="source-auth"
-                        style={handleStyle('50%', H_PURPLE, 'bottom')}
-                        data-tooltip={pluginKeys ? `plugins: ${pluginKeys}` : 'add auth plugin (e.g. key-auth) to connect'}>
-                    {n('source-auth')}
-                </Handle>
-            );
-        }
-        case 'upstream':
-            return (
-                <>
-                    <Handle type="target" position={Position.Top} id="target-from-route"
-                            style={handleStyle('30%', src ? H_BLUE : H_GREEN, 'top', src ? undefined : H_BLUE)}
-                            data-tooltip={tooltips['target-from-route'] || "set route's upstream_id to connect"}>
-                        {n('target-from-route')}
-                    </Handle>
-                    <Handle type="target" position={Position.Top} id="target-from-service"
-                            style={handleStyle('70%', src ? H_ORANGE : H_GREEN, 'top', src ? undefined : H_ORANGE)}
-                            data-tooltip={tooltips['target-from-service'] || "set service's upstream_id to connect"}>
-                        {n('target-from-service')}
-                    </Handle>
-                </>
-            );
-        case 'plugin_config':
-            return (
-                <>
-                    <Handle type="target" position={Position.Top} id="target-from-consumer"
-                            style={handleStyle('50%', src ? H_PURPLE : H_TEAL, 'top', src ? undefined : H_PURPLE)}
-                            data-tooltip="consumer: add matching auth plugin">
-                        {n('target-from-consumer')}
-                    </Handle>
-                    <Handle type="source" position={Position.Bottom} id="source-to-route"
-                            style={handleStyle('50%', src ? H_TEAL : H_BLUE, 'bottom', src ? H_BLUE : undefined)}>
-                        {n('source-to-route')}
-                    </Handle>
-                </>
-            );
-        default:
-            // ssl, global_rule - standalone, no connections
-            return null;
-    }
+        return (
+            <Handle key={h.handleId} type="source" position={Position.Bottom}
+                    id={h.handleId}
+                    style={handleStyle(left, bg, 'bottom', ring)}
+                    data-tooltip={tooltip}>
+                {n(h.handleId)}
+            </Handle>
+        );
+    });
+
+    return <>{targetHandles}{sourceHandles}</>;
 }
 
 // Helper: upstream node addresses for display
@@ -187,8 +220,20 @@ function upstreamAddresses(nodes: unknown): string[] {
     return [];
 }
 
-const CATEGORIES_WITH_INPUTS  = new Set(['route', 'service', 'plugin_config', 'upstream']);
-const CATEGORIES_WITH_OUTPUTS = new Set(['route', 'service', 'consumer', 'plugin_config']);
+const CATEGORIES_WITH_INPUTS = new Set(
+    Object.entries(CATEGORY_DEFINITIONS).flatMap(([cat, def]) => [
+        ...def.referenceFields.filter(r => r.edgeDirection === 'forward').map(r => r.targetCategory),
+        ...def.referenceFields.filter(r => r.edgeDirection === 'reverse').map(() => cat),
+        ...def.authTargetCategories,
+    ])
+);
+const CATEGORIES_WITH_OUTPUTS = new Set(
+    Object.entries(CATEGORY_DEFINITIONS).flatMap(([cat, def]) => [
+        ...(def.referenceFields.length > 0 ? [cat] : []),
+        ...def.referenceFields.filter(r => r.edgeDirection === 'reverse').map(r => r.targetCategory),
+        ...(def.authTargetCategories.length > 0 ? [cat] : []),
+    ])
+);
 
 // ConfigNode — the custom ReactFlow node
 

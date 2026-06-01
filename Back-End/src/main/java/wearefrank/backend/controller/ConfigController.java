@@ -19,6 +19,7 @@ public class ConfigController {
         this.apisixClient = apisixClient;
     }
 
+    // apply null fallbacks so the frontend always gets a usable response even on a fresh install
     @GetMapping
     public ConfigDto.ApisixConfig getConfig() {
         YamlApisixConfig config = yamlStoreService.getFullConfig();
@@ -34,11 +35,13 @@ public class ConfigController {
         yamlStoreService.saveApisixConfig(config.host(), config.controlPort(), config.metricsPort());
     }
 
+    // POST /check - tests a candidate config before saving, body carries the settings to test
     @PostMapping("/check")
     public boolean checkConnection(@RequestBody ConfigDto.ApisixConfig payload) {
         return apisixClient.checkControl(payload.host(), payload.controlPort());
     }
 
+    // GET /check - tests the currently stored config, api=control (default) or api=metrics
     @GetMapping("/check")
     public boolean checkStoredConnection(@RequestParam(defaultValue = "control") String api) {
         YamlApisixConfig config = yamlStoreService.getFullConfig();

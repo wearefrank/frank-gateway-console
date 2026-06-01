@@ -7,13 +7,13 @@ interface ConfigManagerLike {
 interface EntryEditorProps {
     category: string;
     configManager: ConfigManagerLike;
-    handleCategorySwitch: (cat: string) => void;
+    switchCategoryForLoad: (cat: string) => void;
     loadValues: (values: Record<string, unknown>) => void;
     initialCategory: string;
     focusId: string | null;
 }
 
-export function useEntryEditor({category, configManager, handleCategorySwitch, loadValues, initialCategory, focusId}: EntryEditorProps) {
+export function useEntryEditor({category, configManager, switchCategoryForLoad, loadValues, initialCategory, focusId}: EntryEditorProps) {
     const [editingEntry, setEditingEntry] = useState<{category: string; id: string} | null>(null);
     const hasAutoLoaded = useRef(false);
 
@@ -21,11 +21,11 @@ export function useEntryEditor({category, configManager, handleCategorySwitch, l
         const entry = configManager.getCategoryEntry(cat, id);
         if (!entry) return;
 
-        if (cat !== category) handleCategorySwitch(cat);
+        if (cat !== category) switchCategoryForLoad(cat);
 
         loadValues(entry);
         setEditingEntry({category: cat, id});
-    }, [category, configManager, handleCategorySwitch, loadValues]);
+    }, [category, configManager, switchCategoryForLoad, loadValues]);
 
     const handleNewEntry = useCallback(() => {
         setEditingEntry(null);

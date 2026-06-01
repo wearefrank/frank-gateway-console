@@ -55,6 +55,9 @@ export class SchemaValidator {
     // cache of plugin schemas, keyed by plugin name
     private pluginSchemasCache: Map<string, ValidateFunction> = new Map();
 
+    // cache of the compiled root validator - reset when schema changes
+    private compiledRootValidator: ValidateFunction | null = null;
+
     constructor() {
         this.ajv = new Ajv({
             allErrors: true,
@@ -85,17 +88,22 @@ export class SchemaValidator {
             return { valid: false, errorCollections: [], warningErrors: [], warnings: [] };
         }
 
+        // mutate definitions to inject the detectPlugins keyword on every `plugins` property
         this.injectPluginDetectionProperties(definitions);
 
         // we get the proper plugin schema and give it to the validator
         const properties = this.buildValidationProperties(definitions);
 
-        const validate = this.ajv.compile({
-            type: 'object',
-            properties,
-            definitions,
-            additionalProperties: false,
-        });
+        // compile once and reuse - reset by setSchema() or setConfig() when input changes
+        if (!this.compiledRootValidator) {
+            this.compiledRootValidator = this.ajv.compile({
+                type: 'object',
+                properties,
+                definitions,
+                additionalProperties: false,
+            });
+        }
+        const validate = this.compiledRootValidator;
 
         const payloadToValidate = structuredClone(this.config);
 
@@ -103,6 +111,8 @@ export class SchemaValidator {
             return { valid: true, errorCollections: [...this.pluginErrorBatch], warningErrors: [], warnings: [...this.pluginWarningBatch] };
         }
 
+        // additionalProperties errors are shown as warnings - they are common in APISIX configs
+        // that carry fields not yet in the schema (e.g. future APISIX versions)
         const warningErrors: ErrorObject[] = [];
         const schemaErrors: ErrorObject[] = [];
 
@@ -275,6 +285,8 @@ export class SchemaValidator {
             return null;
         }
 
+        // consumers and consumer_groups require the consumer_schema variant when one exists
+        // because the allowed plugin config differs from the route context
         let schema: JsonSchema | undefined;
 
         const isConsumerContext = resourceType === 'consumers' || resourceType === 'consumer_groups';
@@ -343,6 +355,9 @@ export class SchemaValidator {
     }
 
     public setConfig(config: ApisixConfig) {
+        if (this.config !== config) {
+            this.compiledRootValidator = null;
+        }
         this.config = config;
     }
 
@@ -352,6 +367,8 @@ export class SchemaValidator {
 
     public setSchema(schema: SchemaCatalog | null) {
         this.schema = schema;
+        this.compiledRootValidator = null;
+        this.pluginSchemasCache.clear();
     }
 
     public getSchema(): SchemaCatalog | null {

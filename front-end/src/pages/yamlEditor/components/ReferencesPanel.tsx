@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useConfigManager } from '../../../hooks/useConfigManager';
-import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_DEFINITIONS, getIdField, getDisplayId } from '../../../config/categoryDefinitions';
+import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_DEFINITIONS, getDisplayId } from '../../../config/categoryDefinitions';
 import loaderStyles from '../YamlEditor.module.css';
 import styles from './ReferencesPanel.module.css';
 
@@ -13,6 +13,7 @@ export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ headerExtra })
     const { config } = useConfigManager();
     const [, setSearchParams] = useSearchParams();
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
+    const scrollNonceRef = useRef(0);
 
     const handleCopy = (value: string, key: string) => {
         navigator.clipboard.writeText(value)
@@ -23,11 +24,10 @@ export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ headerExtra })
             .catch(() => {});
     };
 
-    const handleFocus = (category: string, entry: Record<string, unknown>) => {
-        const idField = getIdField(category);
-        const idValue = entry[idField];
-        if (idValue === undefined || idValue === null) return;
-        setSearchParams({ focusCategory: category, focusId: String(idValue) });
+    const handleFocus = (category: string, entry: Record<string, unknown>, index: number) => {
+        const focusId = getDisplayId(category, entry, index);
+        scrollNonceRef.current += 1;
+        setSearchParams({ focusCategory: category, focusId, _n: String(scrollNonceRef.current) });
     };
 
     const sections = Object.entries(CATEGORY_DEFINITIONS).flatMap(([cat, def]) => {
@@ -66,7 +66,7 @@ export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ headerExtra })
                                     <div key={i} className={styles.entryBlock}>
                                         <button
                                             className={styles.entryName}
-                                            onClick={() => handleFocus(category, entry)}
+                                            onClick={() => handleFocus(category, entry, i)}
                                             title="Click to scroll to this entry in the editor"
                                         >
                                             {displayName}
@@ -75,7 +75,6 @@ export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ headerExtra })
                                             const val = entry[field];
                                             if (val === undefined || val === null) return null;
                                             const strVal = String(val);
-                                            if (strVal === displayName) return null;
                                             const copyKey = `${category}-${i}-${field}`;
                                             return (
                                                 <div key={field} className={styles.entryRow}>

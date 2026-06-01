@@ -52,6 +52,7 @@ public class YamlStoreService {
         }
     }
 
+    // read-modify-write: preserve the existing routes list when updating connection settings
     public void saveApisixConfig(String host, int controlPort, int metricsPort) {
         YamlApisixConfig current = readConfig();
         YamlApisixConfig updated = new YamlApisixConfig(
@@ -67,6 +68,7 @@ public class YamlStoreService {
         return readConfig();
     }
 
+    // fall back to safe defaults if the stored values are null (e.g. older config file missing a field)
     public String getControlUrl() {
         YamlApisixConfig config = getFullConfig();
         String host = config.host() != null ? config.host() : "http://127.0.0.1";

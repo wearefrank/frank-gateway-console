@@ -25,9 +25,17 @@ export function useFormByCategory(initialCategory: string) {
         setCategory(newCategory);
     }, [category, values]);
 
+    // Switches category and saves current values, but does NOT restore saved values
+    // for the new category. Use this when you are about to call loadValues() immediately
+    // after, to avoid a race between the two setValues calls.
+    const switchCategoryForLoad = useCallback((newCategory: string) => {
+        setCategoryValMap(prev => ({...prev, [category]: values}));
+        setCategory(newCategory);
+    }, [category, values]);
+
     const loadValues = useCallback((newValues: Record<string, unknown>) => {
         setValues(newValues);
     }, []);
 
-    return {category, values, handleChange, handleCategorySwitch, loadValues};
+    return {category, values, handleChange, handleCategorySwitch, switchCategoryForLoad, loadValues};
 }

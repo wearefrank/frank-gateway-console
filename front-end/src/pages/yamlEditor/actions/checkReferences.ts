@@ -1,14 +1,15 @@
 import { ValidationLog } from '../../../actions/ValidationLogger';
 import type { ApisixConfig } from '../../../actions/SchemaValidation';
-import { CATEGORY_DEFINITIONS, getIdField } from '../../../config/categoryDefinitions';
+import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
 
 function getIds(config: ApisixConfig, category: string): Set<string> {
     const raw = (config as Record<string, unknown>)[category + 's'];
     if (!Array.isArray(raw)) return new Set();
+    const idField = CATEGORY_DEFINITIONS[category]?.idField ?? 'id';
     return new Set(
         (raw as (Record<string, unknown> | null)[])
             .filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object')
-            .map(e => e['id'])
+            .map(e => e[idField])
             .filter((id): id is string => typeof id === 'string'),
     );
 }
@@ -22,7 +23,7 @@ function getEntries(config: ApisixConfig, category: string): Record<string, unkn
 }
 
 const DUPLICATE_CHECK_CATEGORIES: { cat: string; idField: string }[] = [
-    ...Object.keys(CATEGORY_DEFINITIONS).map(cat => ({ cat, idField: getIdField(cat) })),
+    ...Object.entries(CATEGORY_DEFINITIONS).map(([cat, def]) => ({ cat, idField: def.idField })),
     { cat: 'stream_route', idField: 'id' },
 ];
 
@@ -56,44 +57,29 @@ function checkDuplicateIds(config: ApisixConfig): ValidationLog[] {
 export function checkReferences(config: ApisixConfig): ValidationLog[] {
     const logs: ValidationLog[] = [];
 
-    const upstreamIds     = getIds(config, 'upstream');
-    const serviceIds      = getIds(config, 'service');
-    const pluginConfigIds = getIds(config, 'plugin_config');
+    // Cache of valid ID sets per category, built on first access
+    const idSetCache = new Map<string, Set<string>>();
+    const getTargetIds = (category: string): Set<string> => {
+        if (!idSetCache.has(category)) idSetCache.set(category, getIds(config, category));
+        return idSetCache.get(category)!;
+    };
 
-    for (const [i, route] of getEntries(config, 'route').entries()) {
-        const routeId = typeof route['id'] === 'string' ? route['id'] : `[${i}]`;
-
-        if (typeof route['upstream_id'] === 'string' && !upstreamIds.has(route['upstream_id'])) {
-            logs.push(new ValidationLog(
-                'warning',
-                `Route "${routeId}": upstream_id "${route['upstream_id']}" not found in upstreams`,
-                `/routes/${i}/upstream_id`,
-            ));
-        }
-        if (typeof route['service_id'] === 'string' && !serviceIds.has(route['service_id'])) {
-            logs.push(new ValidationLog(
-                'warning',
-                `Route "${routeId}": service_id "${route['service_id']}" not found in services`,
-                `/routes/${i}/service_id`,
-            ));
-        }
-        if (typeof route['plugin_config_id'] === 'string' && !pluginConfigIds.has(route['plugin_config_id'])) {
-            logs.push(new ValidationLog(
-                'warning',
-                `Route "${routeId}": plugin_config_id "${route['plugin_config_id']}" not found in plugin_configs`,
-                `/routes/${i}/plugin_config_id`,
-            ));
-        }
-    }
-
-    for (const [i, service] of getEntries(config, 'service').entries()) {
-        const serviceId = typeof service['id'] === 'string' ? service['id'] : `[${i}]`;
-        if (typeof service['upstream_id'] === 'string' && !upstreamIds.has(service['upstream_id'])) {
-            logs.push(new ValidationLog(
-                'warning',
-                `Service "${serviceId}": upstream_id "${service['upstream_id']}" not found in upstreams`,
-                `/services/${i}/upstream_id`,
-            ));
+    for (const [category, def] of Object.entries(CATEGORY_DEFINITIONS)) {
+        if (def.referenceFields.length === 0) continue;
+        const entries = getEntries(config, category);
+        for (const [i, entry] of entries.entries()) {
+            const entryId = typeof entry[def.idField] === 'string' ? entry[def.idField] as string : `[${i}]`;
+            for (const ref of def.referenceFields) {
+                const val = entry[ref.field];
+                if (typeof val !== 'string') continue;
+                if (!getTargetIds(ref.targetCategory).has(val)) {
+                    logs.push(new ValidationLog(
+                        'warning',
+                        `${def.label} "${entryId}": ${ref.field} "${val}" not found in ${ref.targetCategory}s`,
+                        `/${category}s/${i}/${ref.field}`,
+                    ));
+                }
+            }
         }
     }
 

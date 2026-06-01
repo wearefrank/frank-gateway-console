@@ -1,0 +1,145 @@
+.page {
+    max-width: 100% !important;
+    padding-top: 24px;
+    padding-bottom: 24px;
+}
+
+.pageHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.settingsCard {
+    margin-bottom: 16px;
+    padding: 0;
+}
+
+.settingsFields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px 14px 8px;
+}
+
+.settingsLabel {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--text-secondary);
+}
+
+.settingsFooter {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 14px 12px;
+    gap: 8px;
+}
+
+@media (max-width: 768px) {
+    .settingsFields {
+        grid-template-columns: 1fr;
+    }
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 16px;
+    height: calc(100vh - 120px);
+    min-height: 400px;
+}
+
+@media (max-width: 900px) {
+    .layout {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+}
+
+.leftPanel {
+    padding: 0;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.rightPanel {
+    padding: 0;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-bottom: 1px solid var(--border-dim);
+    background: var(--bg-secondary);
+}
+
+.toolbar button {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.saveForm {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-dim);
+    background: var(--bg-secondary);
+}
+
+.saveInput {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    background: var(--bg-primary);
+    color: inherit;
+    font-size: 0.85rem;
+}
+
+.saveInput:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.statusMsg {
+    padding: 10px 14px;
+}
+
+
+
+.swapBtn {
+    padding: 2px 6px;
+    font-size: 0.85rem;
+}
+
+.compareSelect {
+    padding: 3px 6px;
+    border: 1px solid var(--border-dim);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: inherit;
+    font-family: monospace;
+    max-width: 200px;
+}
+
+.loadingIndicator {
+    margin-left: auto;
+    opacity: 0.7;
+}
+
+.diffArea {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}

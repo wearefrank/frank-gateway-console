@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Link} from 'react-router-dom';
 import {ReactFlow, Background, Controls, MiniMap, Panel, useNodesState, useEdgesState} from '@xyflow/react';
 import type {Node} from '@xyflow/react';
@@ -24,8 +24,32 @@ export const TopologyPage: React.FC = () => {
         closeCard, closeAllCards, onHeaderMouseDown, onResizeMouseDown,
     } = useDetailCards();
 
-    // Double-click: cancel the pending single-click card open, then toggle focus
+    // Refs for manual double-click detection (needed because draggable:false nodes
+    // suppress ReactFlow's onNodeDoubleClick in some versions)
+    const lastClickRef  = useRef<{id: string; time: number} | null>(null);
+    const dblHandledRef = useRef<{id: string; time: number} | null>(null);
+
+    // Detects double-clicks manually so focus-toggle works even for draggable:false nodes.
+    // Single click passes through to handleNodeClick (opens card via 220ms timer).
+    const handleNodeClickOrDbl = useCallback((e: React.MouseEvent, node: Node<ConfigNodeData>) => {
+        const now  = Date.now();
+        const last = lastClickRef.current;
+        if (last && last.id === node.id && now - last.time < 300) {
+            cancelPendingClick();
+            lastClickRef.current  = null;
+            dblHandledRef.current = {id: node.id, time: now};
+            setFocusedNodeId(prev => prev === node.id ? null : node.id);
+            return;
+        }
+        lastClickRef.current = {id: node.id, time: now};
+        handleNodeClick(e, node);
+    }, [handleNodeClick, cancelPendingClick]);
+
+    // Native double-click fallback for draggable nodes; skipped if manual detection already handled it.
     const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node<ConfigNodeData>) => {
+        const now     = Date.now();
+        const handled = dblHandledRef.current;
+        if (handled && handled.id === node.id && now - handled.time < 100) return;
         cancelPendingClick();
         setFocusedNodeId(prev => prev === node.id ? null : node.id);
     }, [cancelPendingClick]);
@@ -71,7 +95,7 @@ export const TopologyPage: React.FC = () => {
     const displayNodes = useMemo(() => {
         if (!connectedIds) return nodes;
         return nodes.map(n => {
-            if (!connectedIds.has(n.id))   return {...n, style: {...n.style, opacity: 0.12, filter: 'grayscale(0.6)'}};
+            if (!connectedIds.has(n.id))   return {...n, draggable: false, style: {...n.style, opacity: 0.12, filter: 'grayscale(0.6)'}};
             if (n.id === focusedNodeId)    return {...n, style: {...n.style, outline: '2px solid var(--accent-color)', borderRadius: '8px'}};
             return n;
         });
@@ -112,7 +136,7 @@ export const TopologyPage: React.FC = () => {
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     nodeTypes={nodeTypes}
-                    onNodeClick={handleNodeClick}
+                    onNodeClick={handleNodeClickOrDbl}
                     onNodeDoubleClick={handleNodeDoubleClick}
                     onPaneClick={() => setFocusedNodeId(null)}
                     onMove={handleViewportMove}

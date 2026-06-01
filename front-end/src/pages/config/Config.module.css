@@ -5,3 +5,25 @@
 .errorText {
     color: var(--error-color);
 }
+
+.sectionHint {
+    color: var(--text-muted, #888);
+    font-size: 0.85rem;
+    margin-bottom: 0.75rem;
+}
+
+.fieldGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.75rem;
+}
+
+.fieldGroup label {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.fieldGroup input {
+    width: 100%;
+}

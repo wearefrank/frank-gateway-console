@@ -1,29 +1,30 @@
 import React, {useState, useEffect, useMemo, useRef, useCallback, startTransition} from 'react';
-import yaml from 'js-yaml';
 import {useSearchParams} from 'react-router-dom';
 import styles from './YamlEditor.module.css';
-import { type ApisixConfig } from '../../actions/SchemaValidation';
 import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLogger';
 import { FileUpload } from './components/FileUpload';
 import { ConfigEditor } from './components/ConfigEditor';
 import { ValidationLogs } from './components/ValidationLogs';
 import { ReferencesPanel } from './components/ReferencesPanel';
-import { SchemaView } from './components/SchemaView';
 import { useConfigManager } from '../../hooks/useConfigManager';
 import { useAppSettings } from '../../hooks/useAppSettings';
+import { useVersionHistory } from '../../hooks/useVersionHistory';
 import { checkReferences } from './actions/checkReferences';
 import { getDisplayId } from '../../config/categoryDefinitions';
 
 
 const YamlEditor = () => {
-    const { configManager, config, configText: globalConfigText, schema, setConfig: setGlobalConfig } = useConfigManager();
+    const { configManager, config, configYamlValid, schema, setConfig: setGlobalConfig } = useConfigManager();
     const [appSettings, setAppSettings] = useAppSettings();
+    const { saveVersion } = useVersionHistory();
+    const [saveVersionOpen, setSaveVersionOpen] = useState(false);
+    const [saveVersionMessage, setSaveVersionMessage] = useState('');
+    const [savingVersion, setSavingVersion] = useState(false);
     const [searchParams] = useSearchParams();
 
-    const [configText, setConfigText] = useState<string>(globalConfigText);
+    const [configText, setConfigText] = useState<string>(configManager.getRawText());
     const [showWhitespace, setShowWhitespace] = useState(true);
     const [logs, setLogs] = useState<ValidationLog[]>([]);
-    const [yamlValid, setYamlValid] = useState(true);
     const [fillDefault, setFillDefault] = useState(appSettings.ui.configFillDefault);
     const scrollKeyRef = useRef(0);
     const scrolledFocusRef = useRef<string | null>(null);
@@ -34,16 +35,18 @@ const YamlEditor = () => {
 
     const logger = useMemo(() => new ValidationLogger(), []);
 
+    // APISIX standalone mode requires a #END marker at the end of the file
     const localErrors = useMemo<ValidationLog[]>(() => {
         if (!configText.trim() || configText.trimEnd().endsWith('#END')) return [];
         return [logger.add('error', 'Config is missing the #END marker at the end')];
     }, [configText, logger]);
 
     const validConfig = useMemo(
-        () => yamlValid && !logs.some(l => l.type === 'error') && localErrors.length === 0,
-        [yamlValid, logs, localErrors]
+        () => configYamlValid && !logs.some(l => l.type === 'error') && localErrors.length === 0,
+        [configYamlValid, logs, localErrors]
     );
 
+    // merged log list: local errors first (e.g. missing #END), then schema errors, then reference warnings
     const displayLogs = [
         ...localErrors,
         ...(localErrors.length > 0 ? logs.filter(l => l.type !== 'success') : logs),
@@ -69,22 +72,7 @@ const YamlEditor = () => {
 
     const handleConfigChange = (newValue: string) => {
         setConfigText(newValue);
-
-        if (!newValue.trim()) {
-            setGlobalConfig(null, '');
-            setYamlValid(true);
-            return;
-        }
-
-        try {
-            const parsed = yaml.load(newValue) as ApisixConfig;
-            setGlobalConfig(parsed, newValue);
-            setYamlValid(true);
-        } catch {
-            // Still save the text locally for editing, but don't update global config
-            localStorage.setItem('apisix-config-text', newValue);
-            setYamlValid(false);
-        }
+        setGlobalConfig(newValue);
     };
 
     const toggleFillDefault = useCallback(() => {
@@ -102,18 +90,12 @@ const YamlEditor = () => {
         const reader = new FileReader();
         reader.onload = (event) => {
             const content = event.target?.result as string;
-            try {
-                const parsed = yaml.load(content) as ApisixConfig;
-                setGlobalConfig(parsed, content);
-                setConfigText(content);
+            setGlobalConfig(content);
+            setConfigText(content);
+            if (configManager.isYamlValid()) {
                 setLogs([]);
-                setYamlValid(true);
-            } catch {
-                setLogs(prev => [
-                    logger.add('error', 'Failed to parse file.'),
-                    ...prev
-                ]);
-                setYamlValid(false);
+            } else {
+                setLogs(prev => [logger.add('error', 'Failed to parse file.'), ...prev]);
             }
         };
         reader.readAsText(file);
@@ -121,16 +103,23 @@ const YamlEditor = () => {
 
     const clearLogs = () => setLogs([]);
 
-    const handleNewConfig = () => {
-        setGlobalConfig(null, '');
-        setConfigText('');
-        setYamlValid(true);
+    const handleSaveVersionClick = () => {
+        setSaveVersionOpen(open => !open);
+    };
+
+    const handleSaveVersionSubmit = async () => {
+        setSavingVersion(true);
+        try {
+            await saveVersion(saveVersionMessage, configManager.getRawText());
+            setSaveVersionOpen(false);
+            setSaveVersionMessage('');
+        } finally {
+            setSavingVersion(false);
+        }
     };
 
     useEffect(() => {
         if (config && schema) {
-            configManager.setConfig(config);
-            configManager.setSchema(schema);
             configManager.setFillInDefaults(fillDefault);
 
             const validationLogs = configManager.validate();
@@ -148,15 +137,19 @@ const YamlEditor = () => {
         startTransition(() => setRefLogs(refLogs));
     }, [config]);
 
+    // scroll the editor to a specific entry when navigated here from another page (e.g. topology view)
     useEffect(() => {
         const focusCategory = searchParams.get('focusCategory');
         const focusId = searchParams.get('focusId');
+        const focusNonce = searchParams.get('_n');
         if (!config || !focusCategory || !focusId) return;
 
         // Only scroll once per unique focus target. Without this guard, any
         // config change (e.g. a keystroke) would re-trigger the scroll because
         // `config` is a dependency needed to resolve the array index.
-        const focusKey = `${focusCategory}:${focusId}`;
+        // The nonce (_n) increments on each click so repeated clicks on the
+        // same entry always produce a new key and trigger a fresh scroll.
+        const focusKey = `${focusCategory}:${focusId}:${focusNonce}`;
         if (scrolledFocusRef.current === focusKey) return;
 
         const key = focusCategory + 's';
@@ -170,30 +163,60 @@ const YamlEditor = () => {
     }, [config, searchParams]);
 
     return (
-        <div className="container">
+        <div className={styles.loaderPage}>
             <div className={`flex justify-between align-center mb-4 pb-3 ${styles.loaderHeader}`}>
                 <h2 className="mb-1">YAML Editor</h2>
             </div>
 
             <FileUpload onFileUpload={handleFileUpload} />
 
+            {saveVersionOpen && (
+                <div className={`flex flex-column gap-sm mb-4 ${styles.saveVersionForm}`}>
+                    <span className="text-muted text-small">This will create a git commit in the configured repository.</span>
+                    <div className="flex align-center gap-sm flex-wrap">
+                        <input
+                            type="text"
+                            placeholder="Commit message..."
+                            value={saveVersionMessage}
+                            onChange={e => setSaveVersionMessage(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleSaveVersionSubmit(); }}
+                            className={styles.saveVersionInput}
+                            autoFocus
+                        />
+                        <button
+                            className="btn-primary text-small"
+                            onClick={handleSaveVersionSubmit}
+                            disabled={savingVersion}
+                        >
+                            {savingVersion ? 'Committing...' : 'Commit'}
+                        </button>
+                        <button
+                            className="text-small"
+                            onClick={() => { setSaveVersionOpen(false); setSaveVersionMessage(''); }}
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className={`grid grid-2 ${styles.loaderGrid}`}>
                 <ConfigEditor
                     configText={configText}
                     showWhitespace={showWhitespace}
                     validConfig={validConfig}
-                    yamlValid={yamlValid}
+                    yamlValid={configYamlValid}
                     fillDefaults={fillDefault}
                     validationLogs={displayLogs}
                     onConfigChange={handleConfigChange}
                     onToggleWhitespace={() => setShowWhitespace(!showWhitespace)}
-                    onNewConfig={handleNewConfig}
                     onToggleFillDefaults={toggleFillDefault}
-                    onLineClick={(log) => {
+                    onLineClick={log => {
                         setHighlightedLog(log);
                         setRightTab('validation');
                     }}
                     scrollToTarget={scrollToTarget}
+                    onSaveVersion={handleSaveVersionClick}
                 />
 
                 {rightTab === 'validation' ? (
@@ -216,7 +239,7 @@ const YamlEditor = () => {
                 )}
             </div>
 
-            <SchemaView schema={schema} />
+            {/*<SchemaView schema={schema} />*/}
         </div>
     );
 };

@@ -22,6 +22,8 @@ public class AppConfig {
     @Bean
     public HttpClient httpClient() {
         try {
+            // trust all TLS certificates so the app can talk to APISIX instances that use self-signed certs
+            // Might need to be changed but not sure how this would usually fit in
             TrustManager[] trustAllCerts = new TrustManager[]{
                 new X509TrustManager() {
                     public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }

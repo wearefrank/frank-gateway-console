@@ -27,6 +27,8 @@ function parseTemplate(template: string): TemplatePart[] {
     });
 }
 
+// deconstructs an existing id string back into per-placeholder segment values
+// if the string doesn't match the template structure we fall back to empty segments
 function parseIdValue(existing: unknown, parts: TemplatePart[]): Record<string, string> {
     const empty = Object.fromEntries(
         parts
@@ -41,6 +43,7 @@ function parseIdValue(existing: unknown, parts: TemplatePart[]): Record<string, 
         if (part.kind === "static") {
             if (rem.startsWith(part.text)) rem = rem.slice(part.text.length);
         } else {
+            // look ahead to find where this placeholder ends (at the next static separator)
             const nextStatic = parts
                 .slice(i + 1)
                 .find((p): p is Extract<TemplatePart, { kind: "static" }> => p.kind === "static");
@@ -51,6 +54,7 @@ function parseIdValue(existing: unknown, parts: TemplatePart[]): Record<string, 
             }
         }
     });
+    // verify round-trip to catch cases where the stored value doesn't match the template
     const reassembled = parts.map((p) => (p.kind === "static" ? p.text : result[p.name] ?? "")).join("");
     return reassembled === existing ? result : empty;
 }
@@ -146,6 +150,8 @@ function TemplatedIdField({
         segmentsRef.current = segments;
     });
 
+    // when available options change (e.g. domain switch), clear any segment value
+    // that is no longer in the new option list so the id stays consistent
     useEffect(() => {
         const current = segmentsRef.current;
         const updated = { ...current };

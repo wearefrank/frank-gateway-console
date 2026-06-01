@@ -29,11 +29,13 @@ public class PrometheusClient {
         this.objectMapper = objectMapper;
     }
 
+    // instant query - returns a single snapshot value per series
     public String query(String promql) {
         String url = baseUrl + "/api/v1/query?query=" + URLEncoder.encode(promql, StandardCharsets.UTF_8);
         return get(url);
     }
 
+    // range query - returns a time-series matrix between startEpoch and endEpoch with the given step interval
     public String rangeQuery(String promql, long startEpoch, long endEpoch, String step) {
         String url = baseUrl + "/api/v1/query_range"
                 + "?query=" + URLEncoder.encode(promql, StandardCharsets.UTF_8)

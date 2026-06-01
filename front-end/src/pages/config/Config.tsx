@@ -4,16 +4,16 @@ import {ApisixSettings} from "../../components/Config/ApisixConnectionSettings.t
 import {Link} from "react-router-dom";
 import styles from './Config.module.css';
 
-interface ApisixConfigData {
+interface ApisixConnectionData {
     host: string;
     controlPort: number;
     metricsPort: number;
 }
 
 export const Config = () => {
-    const configFetch = useFetch<ApisixConfigData>('/config');
+    const configFetch = useFetch<ApisixConnectionData>('/config');
 
-    const [configState, setConfigState] = useState<ApisixConfigData>({ host: "http://127.0.0.1", controlPort: 9092, metricsPort: 9091 });
+    const [configState, setConfigState] = useState<ApisixConnectionData>({ host: "http://127.0.0.1", controlPort: 9092, metricsPort: 9091 });
 
     useEffect(() => {
         if (configFetch.data) {
@@ -36,7 +36,7 @@ export const Config = () => {
             if (!response.ok) throw new Error('Failed to save');
 
             configFetch.refetch();
-            alert("APISIX settings saved!");
+            alert("Settings saved!");
         } catch (e) {
             console.error(e);
             alert("Error saving: " + e);
@@ -77,6 +77,8 @@ export const Config = () => {
                 onTestConnection={handleTest}
                 onSave={handleSaveApisix}
             />
+
+            <button className="btn-primary" onClick={handleSaveApisix}>Save Settings</button>
 
         </div>
     );

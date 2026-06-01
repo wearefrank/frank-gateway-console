@@ -75,7 +75,7 @@ interface ConfigEditorProps {
     category: string;
     config: ApisixConfig | null;
     configText: string;
-    setConfig: (config: ApisixConfig, text: string) => void;
+    setConfig: (text: string) => void;
     editingEntry: {category: string; id: string} | null;
     onEditSaved: () => void;
 }
@@ -100,7 +100,7 @@ export function useConfigEditor({builtObject, category, config, configText, setC
             ? appendItemToYaml(configText, key, builtObject)
             : dump(newJson, {indent: 2, noRefs: true});
 
-        setConfig(newJson, newText);
+        setConfig(newText);
         flash('Added!');
     }, [builtObject, category, config, configText, setConfig, flash]);
 
@@ -116,7 +116,7 @@ export function useConfigEditor({builtObject, category, config, configText, setC
             ? replaceItemInYaml(configText, categoryKey as string, idKey, editingEntry.id, builtObject)
             : dump(newJson, {indent: 2, noRefs: true});
 
-        setConfig(newJson, newText);
+        setConfig(newText);
         onEditSaved();
         flash('Saved!');
     }, [editingEntry, builtObject, config, configText, setConfig, onEditSaved, flash]);
