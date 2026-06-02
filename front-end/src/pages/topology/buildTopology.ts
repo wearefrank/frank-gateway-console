@@ -1,4 +1,4 @@
-import dagre from '@dagrejs/dagre';
+import ELK from 'elkjs/lib/elk.bundled.js';
 import type { Node, Edge } from '@xyflow/react';
 
 /**
@@ -143,14 +143,54 @@ function isConsumerPermitted(consumerUsername: string, restriction: ConsumerRest
     return true;
 }
 
+// Singleton ELK instance — reused across layout calls to avoid re-init overhead.
+const elk = new ELK();
+
+/**
+ * Runs ELK's layered (Sugiyama) algorithm on a set of unpositioned nodes and
+ * edges, and returns the same nodes with their `position` fields filled in.
+ *
+ * This is async — call it from a useEffect, not a useMemo.
+ */
+export async function applyElkLayout(
+    nodes: Node<ConfigNodeData>[],
+    edges: Edge[],
+): Promise<Node<ConfigNodeData>[]> {
+    const graph = await elk.layout({
+        id: 'root',
+        layoutOptions: {
+            // Sugiyama-style layered layout — best for hierarchical DAGs like this topology
+            'elk.algorithm':                                     'layered',
+            'elk.direction':                                     'DOWN',
+            // Vertical gap between consecutive layers (e.g. routes → services)
+            'elk.layered.spacing.nodeNodeBetweenLayers':         '90',
+            // Horizontal gap between nodes in the same layer
+            'elk.spacing.nodeNode':                              '60',
+            // LAYER_SWEEP minimises edge crossings between layers
+            'elk.layered.crossingMinimization.strategy':         'LAYER_SWEEP',
+            // BRANDES_KOEPF gives balanced, readable x-positions
+            'elk.layered.nodePlacement.strategy':                'BRANDES_KOEPF',
+            'elk.layered.nodePlacement.bk.fixedAlignment':       'BALANCED',
+            // Keep disconnected subgraphs (e.g. global_rule island) apart
+            'elk.separateConnectedComponents':                   'true',
+            'elk.spacing.componentComponent':                    '100',
+            // Higher thoroughness = fewer crossings, acceptable for this graph size
+            'elk.layered.thoroughness':                          '7',
+        },
+        children: nodes.map(n => ({ id: n.id, width: NODE_WIDTH, height: NODE_HEIGHT })),
+        edges: edges.map(e => ({ id: e.id, sources: [e.source], targets: [e.target] })),
+    });
+
+    const posMap = new Map(
+        (graph.children ?? []).map(n => [n.id, { x: n.x ?? 0, y: n.y ?? 0 }]),
+    );
+
+    return nodes.map(n => ({ ...n, position: posMap.get(n.id) ?? { x: 0, y: 0 } }));
+}
+
 export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = 'source'): { nodes: Node<ConfigNodeData>[]; edges: Edge[] } {
     const nodes: Node<ConfigNodeData>[] = [];
     const edges: Edge[] = [];
-
-    // Build a dagre graph for automatic layout
-    const g = new dagre.graphlib.Graph();
-    g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 });
-    g.setDefaultEdgeLabel(() => ({}));
 
     const categories = [
         'consumer', 'ssl',
@@ -186,11 +226,9 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
             nodes.push({
                 id,
                 type: 'configNode',
-                position: { x: 0, y: 0 }, // overwritten after dagre.layout()
+                position: { x: 0, y: 0 }, // positions applied later by applyElkLayout()
                 data: { category, entry },
             });
-
-            g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT });
         }
     }
 
@@ -233,7 +271,6 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
                 };
                 if (ref.animated) edgeEntry.animated = true;
                 edges.push(edgeEntry);
-                g.setEdge(edgeSource, edgeTarget);
             }
         }
     }
@@ -291,16 +328,7 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
                 labelBgStyle: EDGE_LABEL_BG_STYLE,
                 style: { stroke: consumerEdgeColor, strokeDasharray: '3 3' },
             });
-            g.setEdge(consumer.id, target.id);
         }
-    }
-
-    // Run dagre layout and apply computed positions
-    dagre.layout(g);
-
-    for (const node of nodes) {
-        const pos = g.node(node.id);
-        node.position = { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 };
     }
 
     return { nodes, edges };
