@@ -219,7 +219,25 @@ export const ConfigDesigner = () => {
             </div>
 
             <div className={styles.layout}>
-                <div className={styles.leftColumn}>
+                <ConfigFormCard
+                    category={category}
+                    fields={fields}
+                    values={values}
+                    onChange={handleChange}
+                    priorityList={priorityList}
+                    overrideSettings={overrideSettings}
+                    editingEntry={editingEntry}
+                    allErrors={allErrors}
+                    builtObject={builtObject}
+                    search={search}
+                    onSearchChange={setSearch}
+                    onAddToConfig={handleAddToConfig}
+                    onSaveEdit={handleSaveEdit}
+                    onNewEntry={handleNewEntry}
+                    confirmation={confirmation}
+                />
+
+                <div className={styles.rightColumn}>
                     <div className={`card ${styles.yamlPreviewCard}`}>
                         <div className="card-header">YAML Preview</div>
                         <pre className={styles.yamlPreviewContent}>
@@ -260,24 +278,6 @@ export const ConfigDesigner = () => {
                         onLoad={handleLoadEntry}
                     />
                 </div>
-
-                <ConfigFormCard
-                    category={category}
-                    fields={fields}
-                    values={values}
-                    onChange={handleChange}
-                    priorityList={priorityList}
-                    overrideSettings={overrideSettings}
-                    editingEntry={editingEntry}
-                    allErrors={allErrors}
-                    builtObject={builtObject}
-                    search={search}
-                    onSearchChange={setSearch}
-                    onAddToConfig={handleAddToConfig}
-                    onSaveEdit={handleSaveEdit}
-                    onNewEntry={handleNewEntry}
-                    confirmation={confirmation}
-                />
             </div>
         </div>
     );
