@@ -8,6 +8,8 @@ import styles from './HistoryPage.module.css';
 // sentinel value used in place of a real commit sha to represent the in-memory (unsaved) state
 const CURRENT_VERSION = '__current__';
 const GITHUB_STORAGE_KEY = 'github-settings';
+const GITLAB_STORAGE_KEY = 'gitlab-settings';
+const PROVIDER_STORAGE_KEY = 'git-provider';
 
 interface GithubSettings {
     githubToken: string;
@@ -16,12 +18,33 @@ interface GithubSettings {
     githubFilePath: string;
 }
 
+interface GitlabSettings {
+    gitlabToken: string;
+    gitlabHost: string;
+    gitlabProject: string;
+    gitlabBranch: string;
+    gitlabFilePath: string;
+}
+
 function loadGithubSettings(): GithubSettings {
     try {
         const stored = localStorage.getItem(GITHUB_STORAGE_KEY);
         if (stored) return JSON.parse(stored);
     } catch {}
     return { githubToken: '', githubRepo: '', githubBranch: '', githubFilePath: '' };
+}
+
+function loadGitlabSettings(): GitlabSettings {
+    try {
+        const stored = localStorage.getItem(GITLAB_STORAGE_KEY);
+        if (stored) return JSON.parse(stored);
+    } catch {}
+    return { gitlabToken: '', gitlabHost: '', gitlabProject: '', gitlabBranch: '', gitlabFilePath: '' };
+}
+
+function loadProvider(): 'github' | 'gitlab' {
+    const stored = localStorage.getItem(PROVIDER_STORAGE_KEY);
+    return stored === 'gitlab' ? 'gitlab' : 'github';
 }
 
 export const HistoryPage: React.FC = () => {
@@ -37,21 +60,39 @@ export const HistoryPage: React.FC = () => {
     const [pendingRestoreVersion, setPendingRestoreVersion] = useState<VersionSummary | null>(null);
 
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [provider, setProvider] = useState<'github' | 'gitlab'>(loadProvider);
+    const [providerDraft, setProviderDraft] = useState<'github' | 'gitlab'>(loadProvider);
     const [githubSettings, setGithubSettings] = useState<GithubSettings>(loadGithubSettings);
     const [githubDraft, setGithubDraft] = useState<GithubSettings>(loadGithubSettings);
+    const [gitlabSettings, setGitlabSettings] = useState<GitlabSettings>(loadGitlabSettings);
+    const [gitlabDraft, setGitlabDraft] = useState<GitlabSettings>(loadGitlabSettings);
 
     const openSettings = () => {
         setGithubDraft(githubSettings);
+        setGitlabDraft(gitlabSettings);
+        setProviderDraft(provider);
         setSettingsOpen(true);
     };
 
     const saveSettings = () => {
-        // invalidate the version cache when the repo/branch/path changes so we don't show stale data
-        const repoChanged = githubDraft.githubRepo !== githubSettings.githubRepo
+        const githubRepoChanged = githubDraft.githubRepo !== githubSettings.githubRepo
             || githubDraft.githubBranch !== githubSettings.githubBranch
             || githubDraft.githubFilePath !== githubSettings.githubFilePath;
+        const gitlabRepoChanged = gitlabDraft.gitlabProject !== gitlabSettings.gitlabProject
+            || gitlabDraft.gitlabBranch !== gitlabSettings.gitlabBranch
+            || gitlabDraft.gitlabFilePath !== gitlabSettings.gitlabFilePath
+            || gitlabDraft.gitlabHost !== gitlabSettings.gitlabHost;
+        const providerChanged = providerDraft !== provider;
+        const repoChanged = providerChanged
+            || (providerDraft === 'github' && githubRepoChanged)
+            || (providerDraft === 'gitlab' && gitlabRepoChanged);
+
+        setProvider(providerDraft);
         setGithubSettings(githubDraft);
+        setGitlabSettings(gitlabDraft);
         localStorage.setItem(GITHUB_STORAGE_KEY, JSON.stringify(githubDraft));
+        localStorage.setItem(GITLAB_STORAGE_KEY, JSON.stringify(gitlabDraft));
+        localStorage.setItem(PROVIDER_STORAGE_KEY, providerDraft);
         setSettingsOpen(false);
         if (repoChanged) {
             clearCache();
@@ -61,6 +102,8 @@ export const HistoryPage: React.FC = () => {
 
     const cancelSettings = () => {
         setGithubDraft(githubSettings);
+        setGitlabDraft(gitlabSettings);
+        setProviderDraft(provider);
         setSettingsOpen(false);
     };
 
@@ -73,6 +116,7 @@ export const HistoryPage: React.FC = () => {
     const [diffLoading, setDiffLoading] = useState(false);
 
     const handleSaveSubmit = async () => {
+        setLoadError(null);
         setSaving(true);
         try {
             await saveVersion(saveMessage, configManager.getRawText());
@@ -111,6 +155,7 @@ export const HistoryPage: React.FC = () => {
     };
 
     const confirmRestore = async (version: VersionSummary) => {
+        setLoadError(null);
         setPendingRestoreVersion(null);
         setDiffLoading(true);
         try {
@@ -145,8 +190,9 @@ export const HistoryPage: React.FC = () => {
         }
     };
 
-    // fetches both sides of the diff; CURRENT_SENTINEL resolves to the in-memory editor text
+    // fetches both sides of the diff; CURRENT_VERSION resolves to the in-memory editor text
     const loadDiff = async (newFromId: string, newToId: string) => {
+        setLoadError(null);
         setFromId(newFromId);
         setToId(newToId);
         setFromContent(null);
@@ -177,10 +223,10 @@ export const HistoryPage: React.FC = () => {
             // build readable labels like "a1b2c3d my commit message"
             const fromVersion = versionList.find(v => v.id === newFromId);
             const toVersion = versionList.find(v => v.id === newToId);
-            const fromLabel = newFromId === CURRENT_VERSION
+            const newFromLabel = newFromId === CURRENT_VERSION
                 ? 'Current (unsaved)'
                 : fromVersion ? fromVersion.id.slice(0, 7) + (fromVersion.message ? ` ${fromVersion.message}` : '') : '(empty)';
-            setFromLabel(fromLabel);
+            setFromLabel(newFromLabel);
             setToLabel(newToId === CURRENT_VERSION ? 'Current (unsaved)' : toVersion ? toVersion.id.slice(0, 7) + (toVersion.message ? ` ${toVersion.message}` : '') : '');
         } finally {
             setDiffLoading(false);
@@ -195,65 +241,146 @@ export const HistoryPage: React.FC = () => {
         loadDiff(fromId, e.target.value);
     };
 
+    const providerLabel = provider === 'github' ? 'GitHub' : 'GitLab';
+    const providerBadgeClass = provider === 'github' ? styles.providerBadgeGithub : styles.providerBadgeGitlab;
+
     return (
         <div className={`container ${styles.page}`}>
             <div className={styles.pageHeader}>
                 <h1>Version History</h1>
-                <button
-                    className="text-small"
-                    onClick={() => settingsOpen ? cancelSettings() : openSettings()}
-                >
-                    Settings
-                </button>
+                <div className="flex align-center gap-sm">
+                    <span className={`text-small ${styles.providerBadge} ${providerBadgeClass}`}>
+                        {providerLabel}
+                    </span>
+                    <button
+                        className="text-small"
+                        onClick={() => settingsOpen ? cancelSettings() : openSettings()}
+                    >
+                        Settings
+                    </button>
+                </div>
             </div>
 
             {settingsOpen && (
                 <div className={`card ${styles.settingsCard}`}>
                     <div className="card-header">
-                        <span>GitHub Settings</span>
+                        <span>Git Settings</span>
+                        <div className={styles.providerTabs}>
+                            <button
+                                className={`text-small ${styles.providerTab} ${providerDraft === 'github' ? styles.providerTabActive : ''}`}
+                                onClick={() => setProviderDraft('github')}
+                            >
+                                GitHub
+                            </button>
+                            <button
+                                className={`text-small ${styles.providerTab} ${providerDraft === 'gitlab' ? styles.providerTabActive : ''}`}
+                                onClick={() => setProviderDraft('gitlab')}
+                            >
+                                GitLab
+                            </button>
+                        </div>
                     </div>
-                    <div className={styles.settingsFields}>
-                        <label className={styles.settingsLabel}>
-                            <span className="text-small">Repository</span>
-                            <input
-                                className={styles.saveInput}
-                                type="text"
-                                placeholder="owner/repo or https://github.com/owner/repo"
-                                value={githubDraft.githubRepo}
-                                onChange={e => setGithubDraft(prev => ({ ...prev, githubRepo: e.target.value }))}
-                            />
-                        </label>
-                        <label className={styles.settingsLabel}>
-                            <span className="text-small">Branch</span>
-                            <input
-                                className={styles.saveInput}
-                                type="text"
-                                placeholder="e.g. main"
-                                value={githubDraft.githubBranch}
-                                onChange={e => setGithubDraft(prev => ({ ...prev, githubBranch: e.target.value }))}
-                            />
-                        </label>
-                        <label className={styles.settingsLabel}>
-                            <span className="text-small">Config file path</span>
-                            <input
-                                className={styles.saveInput}
-                                type="text"
-                                placeholder="e.g. config/apisix.yaml"
-                                value={githubDraft.githubFilePath}
-                                onChange={e => setGithubDraft(prev => ({ ...prev, githubFilePath: e.target.value }))}
-                            />
-                        </label>
-                        <label className={styles.settingsLabel}>
-                            <span className="text-small">Personal access token</span>
-                            <input
-                                className={styles.saveInput}
-                                type="password"
-                                placeholder="ghp_..."
-                                value={githubDraft.githubToken}
-                                onChange={e => setGithubDraft(prev => ({ ...prev, githubToken: e.target.value }))}
-                            />
-                        </label>
-                    </div>
+
+                    {providerDraft === 'github' && (
+                        <div className={styles.settingsFields}>
+                            <label className={styles.settingsLabel}>
+                                <span className="text-small">Repository</span>
+                                <input
+                                    className={styles.saveInput}
+                                    type="text"
+                                    placeholder="owner/repo or https://github.com/owner/repo"
+                                    value={githubDraft.githubRepo}
+                                    onChange={e => setGithubDraft(prev => ({ ...prev, githubRepo: e.target.value }))}
+                                />
+                            </label>
+                            <label className={styles.settingsLabel}>
+                                <span className="text-small">Branch</span>
+                                <input
+                                    className={styles.saveInput}
+                                    type="text"
+                                    placeholder="e.g. main"
+                                    value={githubDraft.githubBranch}
+                                    onChange={e => setGithubDraft(prev => ({ ...prev, githubBranch: e.target.value }))}
+                                />
+                            </label>
+                            <label className={styles.settingsLabel}>
+                                <span className="text-small">Config file path</span>
+                                <input
+                                    className={styles.saveInput}
+                                    type="text"
+                                    placeholder="e.g. config/apisix.yaml"
+                                    value={githubDraft.githubFilePath}
+                                    onChange={e => setGithubDraft(prev => ({ ...prev, githubFilePath: e.target.value }))}
+                                />
+                            </label>
+                            <label className={styles.settingsLabel}>
+                                <span className="text-small">Personal access token</span>
+                                <input
+                                    className={styles.saveInput}
+                                    type="password"
+                                    placeholder="ghp_..."
+                                    value={githubDraft.githubToken}
+                                    onChange={e => setGithubDraft(prev => ({ ...prev, githubToken: e.target.value }))}
+                                />
+                            </label>
+                        </div>
+                    )}
+
+                    {providerDraft === 'gitlab' && (
+                        <div className={styles.settingsFields}>
+                            <label className={`${styles.settingsLabel} ${styles.settingsLabelFull}`}>
+                                <span className="text-small">Instance URL</span>
+                                <input
+                                    className={styles.saveInput}
+                                    type="text"
+                                    placeholder="https://gitlab.com"
+                                    value={gitlabDraft.gitlabHost}
+                                    onChange={e => setGitlabDraft(prev => ({ ...prev, gitlabHost: e.target.value }))}
+                                />
+                            </label>
+                            <label className={styles.settingsLabel}>
+                                <span className="text-small">Project path</span>
+                                <input
+                                    className={styles.saveInput}
+                                    type="text"
+                                    placeholder="owner/project"
+                                    value={gitlabDraft.gitlabProject}
+                                    onChange={e => setGitlabDraft(prev => ({ ...prev, gitlabProject: e.target.value }))}
+                                />
+                            </label>
+                            <label className={styles.settingsLabel}>
+                                <span className="text-small">Branch</span>
+                                <input
+                                    className={styles.saveInput}
+                                    type="text"
+                                    placeholder="e.g. main"
+                                    value={gitlabDraft.gitlabBranch}
+                                    onChange={e => setGitlabDraft(prev => ({ ...prev, gitlabBranch: e.target.value }))}
+                                />
+                            </label>
+                            <label className={styles.settingsLabel}>
+                                <span className="text-small">Config file path</span>
+                                <input
+                                    className={styles.saveInput}
+                                    type="text"
+                                    placeholder="e.g. config/apisix.yaml"
+                                    value={gitlabDraft.gitlabFilePath}
+                                    onChange={e => setGitlabDraft(prev => ({ ...prev, gitlabFilePath: e.target.value }))}
+                                />
+                            </label>
+                            <label className={styles.settingsLabel}>
+                                <span className="text-small">Personal access token</span>
+                                <input
+                                    className={styles.saveInput}
+                                    type="password"
+                                    placeholder="glpat-..."
+                                    value={gitlabDraft.gitlabToken}
+                                    onChange={e => setGitlabDraft(prev => ({ ...prev, gitlabToken: e.target.value }))}
+                                />
+                            </label>
+                        </div>
+                    )}
+
                     <div className={styles.settingsFooter}>
                         <span className={`text-muted text-small`}>Settings are saved in your browser only. Do not use on shared or public devices.</span>
                         <div className="flex gap-sm">
