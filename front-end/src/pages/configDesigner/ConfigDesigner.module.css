@@ -245,6 +245,37 @@
     margin-bottom: 0.25rem;
 }
 
+.tabbedContainer {
+    border: 1px solid var(--border-dim);
+    border-radius: 8px;
+}
+
+.tabNav {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.tabButton {
+    padding: 4px 12px;
+    background-color: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.activeTabButton {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--border-dim);
+}
+
+.tabContent {
+    padding: 16px;
+}
+
 @media (max-width: 768px) {
     .layout {
         grid-template-columns: 1fr;

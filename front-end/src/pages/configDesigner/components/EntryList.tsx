@@ -14,7 +14,7 @@ interface EntryListProps {
 
 export function EntryList({configManager, editingEntry, onLoad}: EntryListProps) {
     return (
-        <div className="card">
+        <>
             <div className="card-title">Entries per category</div>
             {DESIGNER_CATEGORIES.map((cat) => {
                 const entries = configManager.getCategoryEntries(cat);
@@ -40,6 +40,6 @@ export function EntryList({configManager, editingEntry, onLoad}: EntryListProps)
                     </Fragment>
                 );
             })}
-        </div>
+        </>
     );
 }

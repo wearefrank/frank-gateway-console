@@ -12,7 +12,6 @@ interface DesignerSettingsProps {
 }
 
 export function DesignerSettings({category, fields, settings, onSettingsChange}: DesignerSettingsProps) {
-    const [collapsed, setCollapsed] = useState(true);
     const [inputValue, setInputValue] = useState('');
 
     const priorityMap = settings.priorityMap;
@@ -52,50 +51,42 @@ export function DesignerSettings({category, fields, settings, onSettingsChange}:
     }
 
     return (
-        <div className="card">
-            <div className={`card-header ${styles.header}`} onClick={() => setCollapsed(c => !c)}>
-                Settings
-                <span className={styles.chevron}>{collapsed ? 'Open' : 'Close'}</span>
+        <div>
+            <p className={styles.sectionLabel}>Pinned fields for <strong>{category}</strong></p>
+            <ul className={styles.priorityList}>
+                {currentList.length === 0 && (
+                    <li className={styles.emptyState}>No pinned fields — add one below</li>
+                )}
+                {currentList.map((name, i) => (
+                    <li key={name} className={styles.priorityItem}>
+                        <span className={styles.fieldName}>{name}</span>
+                        <div className={styles.itemActions}>
+                            <button type="button" disabled={i === 0}
+                                    onClick={() => handleMoveUp(i)}>up</button>
+                            <button type="button" disabled={i === currentList.length - 1}
+                                    onClick={() => handleMoveDown(i)}>down</button>
+                            <button type="button" className={styles.removeButton}
+                                    onClick={() => handleRemove(name)}>x</button>
+                        </div>
+                    </li>
+                ))}
+            </ul>
+            <div className={styles.addRow}>
+                <input
+                    type="text"
+                    list={listId}
+                    value={inputValue}
+                    placeholder="Add a field..."
+                    onChange={e => setInputValue(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                />
+                <datalist id={listId}>
+                    {availableFields.map(f => <option key={f} value={f}/>)}
+                </datalist>
+                <button type="button" onClick={handleAdd} disabled={!isValidInput}>
+                    Add
+                </button>
             </div>
-            {!collapsed && (
-                <div className={styles.body}>
-                    <p className={styles.sectionLabel}>Pinned fields for <strong>{category}</strong></p>
-                    <ul className={styles.priorityList}>
-                        {currentList.length === 0 && (
-                            <li className={styles.emptyState}>No pinned fields — add one below</li>
-                        )}
-                        {currentList.map((name, i) => (
-                            <li key={name} className={styles.priorityItem}>
-                                <span className={styles.fieldName}>{name}</span>
-                                <div className={styles.itemActions}>
-                                    <button type="button" disabled={i === 0}
-                                            onClick={() => handleMoveUp(i)}>up</button>
-                                    <button type="button" disabled={i === currentList.length - 1}
-                                            onClick={() => handleMoveDown(i)}>down</button>
-                                    <button type="button" className={styles.removeButton}
-                                            onClick={() => handleRemove(name)}>x</button>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
-                    <div className={styles.addRow}>
-                        <input
-                            type="text"
-                            list={listId}
-                            value={inputValue}
-                            placeholder="Add a field..."
-                            onChange={e => setInputValue(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && handleAdd()}
-                        />
-                        <datalist id={listId}>
-                            {availableFields.map(f => <option key={f} value={f}/>)}
-                        </datalist>
-                        <button type="button" onClick={handleAdd} disabled={!isValidInput}>
-                            Add
-                        </button>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

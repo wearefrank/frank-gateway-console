@@ -81,6 +81,8 @@ export const ConfigDesigner = () => {
 
     const [search, setSearch] = useState('');
     const [domain, setDomain] = useState('');
+    const [activeTab, setActiveTab] = useState<'entries' | 'settings' | null>('entries');
+
 
     // Form state per category - switching categories preserves values for each.
     const {category, values, handleChange, handleCategorySwitch, switchCategoryForLoad, loadValues} = useFormByCategory(initialCategory);
@@ -189,6 +191,10 @@ export const ConfigDesigner = () => {
         if (action.type === 'set-search') setSearch(action.term);
     }, [handleChange, values]);
 
+    const handleTabClick = (tab: 'entries' | 'settings') => {
+        setActiveTab(prev => prev === tab ? null : tab);
+    };
+
     const priorityList = designerSettings.priorityMap[category] ?? [];
 
     if (schemaLoading) return <div>Loading....</div>;
@@ -265,18 +271,41 @@ export const ConfigDesigner = () => {
 
                     <DesignerErrorLogs resolvedErrors={allErrors} onAction={handleErrorAction} />
 
-                    <DesignerSettings
-                        category={category}
-                        fields={fields}
-                        settings={designerSettings}
-                        onSettingsChange={setDesignerSettings}
-                    />
-
-                    <EntryList
-                        configManager={configManager}
-                        editingEntry={editingEntry}
-                        onLoad={handleLoadEntry}
-                    />
+                    <div className={styles.tabbedContainer}>
+                        <div className={styles.tabNav}>
+                            <button
+                                className={`${styles.tabButton} ${activeTab === 'entries' ? styles.activeTabButton : ''}`}
+                                onClick={() => handleTabClick('entries')}
+                            >
+                                Entries
+                            </button>
+                            <button
+                                className={`${styles.tabButton} ${activeTab === 'settings' ? styles.activeTabButton : ''}`}
+                                onClick={() => handleTabClick('settings')}
+                            >
+                                Settings
+                            </button>
+                        </div>
+                        {activeTab && (
+                            <div className={styles.tabContent}>
+                                {activeTab === 'entries' && (
+                                    <EntryList
+                                        configManager={configManager}
+                                        editingEntry={editingEntry}
+                                        onLoad={handleLoadEntry}
+                                    />
+                                )}
+                                {activeTab === 'settings' && (
+                                    <DesignerSettings
+                                        category={category}
+                                        fields={fields}
+                                        settings={designerSettings}
+                                        onSettingsChange={setDesignerSettings}
+                                    />
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
