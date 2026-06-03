@@ -1,7 +1,6 @@
 /* Page layout */
 
 .loaderPage {
-    max-width: 1200px;
     margin: 0 auto;
     padding: 20px 20px 0;
 }
@@ -11,10 +10,23 @@
 }
 
 .loaderGrid {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 20px;
     position: sticky;
     top: var(--header-height);
     height: calc(100vh - var(--header-height));
-    grid-auto-rows: 1fr;
+}
+
+.loaderGrid > :first-child {
+    flex: 0 0 auto;
+    min-width: 400px;
+}
+
+.loaderGrid > :not(:first-child) {
+    flex: 0 0 460px;
+    width: 460px;
 }
 
 .loaderGrid > :global(.card) {

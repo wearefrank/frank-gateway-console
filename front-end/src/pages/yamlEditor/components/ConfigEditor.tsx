@@ -1,4 +1,4 @@
-import React, {useMemo, useRef, useCallback} from 'react';
+import React, {useMemo, useRef, useCallback, useState, useLayoutEffect} from 'react';
 import {ValidationLog} from '../../../actions/ValidationLogger';
 import {parseYamlDoc, resolvePathToNode, buildLineSegments, buildCategoryLineMap, getLineHeight} from '../yamlLineUtils';
 import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
@@ -136,6 +136,20 @@ export const ConfigEditor = ({
 
     const editorContainerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const lineNumbersRef = useRef<HTMLDivElement>(null);
+    const [cardMinWidth, setCardMinWidth] = useState<number | undefined>(undefined);
+
+    useLayoutEffect(() => {
+        if (!configText) { setCardMinWidth(undefined); return; }
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.font = '14px monospace';
+        const maxTextWidth = Math.max(0, ...configText.split('\n').map(l => ctx.measureText(l).width));
+        const lineNumsWidth = lineNumbersRef.current?.offsetWidth ?? 30;
+        // editorContainer padding (16px * 2) + divider/strip (5px) + buffer (8px)
+        setCardMinWidth(Math.ceil(maxTextWidth) + lineNumsWidth + 61);
+    }, [configText]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
 
@@ -246,7 +260,9 @@ export const ConfigEditor = ({
 
     return (
         <div
-            className={`card flex flex-column ${styles.configCard} ${validConfig ? styles.editorContainer : styles.editorContainerInvalid}`}>
+            className={`card flex flex-column ${styles.configCard} ${validConfig ? styles.editorContainer : styles.editorContainerInvalid}`}
+            style={cardMinWidth !== undefined ? { minWidth: cardMinWidth } : undefined}
+        >
             <div className="card-header flex align-center gap-sm">
                 Parsed Configuration
                 {statusClass && <span className={statusClass}>{statusLabel}</span>}
@@ -311,7 +327,7 @@ export const ConfigEditor = ({
                 <div className={styles.editorGrid}>
                     {/* Line numbers gutter */}
                     {configText && (
-                        <div className={styles.lineNumbers}>
+                        <div className={styles.lineNumbers} ref={lineNumbersRef}>
                             {configText.split('\n').map((_, index) => {
                                 const lineNum = index + 1;
                                 const log = errorLineLogMap.get(lineNum);

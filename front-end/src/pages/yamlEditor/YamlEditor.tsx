@@ -244,7 +244,7 @@ const YamlEditor = () => {
                 </div>
             )}
 
-            <div className={`grid grid-2 ${styles.loaderGrid}`}>
+            <div className={styles.loaderGrid}>
                 <ConfigEditor
                     configText={configText}
                     showWhitespace={showWhitespace}
