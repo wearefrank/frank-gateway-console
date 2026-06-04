@@ -182,6 +182,122 @@ export function getLineHeight(el: HTMLElement): number {
     return parseFloat(getComputedStyle(el).lineHeight) || 21;
 }
 
+/**
+ * Given the full YAML text and a 1-indexed cursor line (Monaco convention),
+ * returns all keys that already exist at the same indentation level as the cursor
+ * within the same parent object. Used to filter duplicate suggestions.
+ */
+export function getSiblingKeysAtCursor(text: string, line: number): Set<string> {
+    const lines = text.split('\n');
+    const lineIdx = line - 1;
+    if (lineIdx < 0 || lineIdx >= lines.length) return new Set();
+
+    const getIndent = (s: string) => {
+        let i = 0;
+        while (i < s.length && s[i] === ' ') i++;
+        return i;
+    };
+
+    // If the current line is blank, infer indent from the next non-blank line,
+    // falling back to the previous non-blank line.
+    let targetIndent = getIndent(lines[lineIdx]);
+    if (lines[lineIdx].trim() === '') {
+        for (let i = lineIdx + 1; i < lines.length; i++) {
+            if (lines[i].trim()) { targetIndent = getIndent(lines[i]); break; }
+        }
+        if (targetIndent === 0) {
+            for (let i = lineIdx - 1; i >= 0; i--) {
+                if (lines[i].trim()) { targetIndent = getIndent(lines[i]); break; }
+            }
+        }
+    }
+    if (targetIndent === 0) return new Set();
+
+    const keys = new Set<string>();
+
+    for (let i = lineIdx - 1; i >= 0; i--) {
+        const raw = lines[i];
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+
+        const indent = getIndent(raw);
+        if (indent < targetIndent) {
+            // The array item line may carry an inline key: "  - id: foo"
+            if (trimmed.startsWith('- ')) {
+                const rest = trimmed.slice(2).trim();
+                const c = rest.indexOf(':');
+                if (c > 0) keys.add(rest.substring(0, c).trim());
+            }
+            break;
+        }
+        if (indent > targetIndent) continue;
+
+        const effectiveTrimmed = trimmed.startsWith('- ') ? trimmed.slice(2).trim() : trimmed;
+        const c = effectiveTrimmed.indexOf(':');
+        if (c > 0) keys.add(effectiveTrimmed.substring(0, c).trim());
+    }
+
+    for (let i = lineIdx + 1; i < lines.length; i++) {
+        const raw = lines[i];
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+
+        const indent = getIndent(raw);
+        if (indent < targetIndent) break;
+        if (indent > targetIndent) continue;
+
+        const c = trimmed.indexOf(':');
+        if (c > 0) keys.add(trimmed.substring(0, c).trim());
+    }
+
+    return keys;
+}
+
+/**
+ * Given the full YAML text and a 1-indexed cursor line (Monaco convention),
+ * returns the JSON Schema property path from the entry root to the cursor.
+ * E.g. if cursor is inside `timeout:` in an upstream entry, returns ["timeout"].
+ * Stops at array item markers (-) which mark the entry root.
+ */
+export function getSchemaPathAtCursor(text: string, line: number): string[] {
+    const lines = text.split('\n');
+    const lineIdx = line - 1;
+    if (lineIdx < 0 || lineIdx >= lines.length) return [];
+
+    const getIndent = (s: string) => {
+        let i = 0;
+        while (i < s.length && s[i] === ' ') i++;
+        return i;
+    };
+
+    const path: string[] = [];
+    let currentIndent = getIndent(lines[lineIdx]);
+
+    for (let i = lineIdx - 1; i >= 0; i--) {
+        const raw = lines[i];
+        const trimmed = raw.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+
+        const indent = getIndent(raw);
+        if (indent >= currentIndent) continue;
+
+        // Array item marker is the entry root - stop here
+        if (trimmed.startsWith('- ') || trimmed === '-') break;
+
+        // Extract the mapping key from this parent line
+        const colonIdx = trimmed.indexOf(':');
+        if (colonIdx > 0) {
+            const key = trimmed.substring(0, colonIdx).trim();
+            if (key) {
+                path.unshift(key);
+                currentIndent = indent;
+            }
+        }
+    }
+
+    return path;
+}
+
 export function resolvePathToNode(doc: Document, pathStr: string): Node | null {
     const parts: (string | number)[] = pathStr.split('/').filter(Boolean).map(p => {
         const num = parseInt(p, 10);

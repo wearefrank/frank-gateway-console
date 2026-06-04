@@ -2,20 +2,48 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { client } from '../api/client';
 
 const GITHUB_STORAGE_KEY = 'github-settings';
+const GITLAB_STORAGE_KEY = 'gitlab-settings';
+const GITEA_STORAGE_KEY = 'gitea-settings';
+const PROVIDER_STORAGE_KEY = 'git-provider';
 
-function getGithubHeaders(): Record<string, string> {
+function getProviderHeaders(): Record<string, string> {
     try {
+        const provider = localStorage.getItem(PROVIDER_STORAGE_KEY) ?? 'github';
+        if (provider === 'gitlab') {
+            const stored = localStorage.getItem(GITLAB_STORAGE_KEY);
+            const s = stored ? JSON.parse(stored) : {};
+            return {
+                'X-Git-Provider': 'gitlab',
+                'X-Gitlab-Token': s.gitlabToken || '',
+                'X-Gitlab-Host': s.gitlabHost || '',
+                'X-Gitlab-Project': s.gitlabProject || '',
+                'X-Gitlab-Branch': s.gitlabBranch || '',
+                'X-Gitlab-File-Path': s.gitlabFilePath || '',
+            };
+        }
+        if (provider === 'gitea') {
+            const stored = localStorage.getItem(GITEA_STORAGE_KEY);
+            const s = stored ? JSON.parse(stored) : {};
+            return {
+                'X-Git-Provider': 'gitea',
+                'X-Gitea-Token': s.giteaToken || '',
+                'X-Gitea-Host': s.giteaHost || '',
+                'X-Gitea-Repo': s.giteaRepo || '',
+                'X-Gitea-Branch': s.giteaBranch || '',
+                'X-Gitea-File-Path': s.giteaFilePath || '',
+            };
+        }
         const stored = localStorage.getItem(GITHUB_STORAGE_KEY);
-        if (!stored) return {};
-        const s = JSON.parse(stored);
+        const s = stored ? JSON.parse(stored) : {};
         return {
+            'X-Git-Provider': 'github',
             'X-Github-Token': s.githubToken || '',
             'X-Github-Repo': s.githubRepo || '',
             'X-Github-Branch': s.githubBranch || '',
             'X-Github-File-Path': s.githubFilePath || '',
         };
     } catch {
-        return {};
+        return { 'X-Git-Provider': 'github' };
     }
 }
 
@@ -58,7 +86,7 @@ export function useVersionHistory(): UseVersionHistory {
         const controller = new AbortController();
         controllerRef.current = controller;
         try {
-            const data = await client<VersionSummary[]>('/versions', { signal: controller.signal, headers: getGithubHeaders() });
+            const data = await client<VersionSummary[]>('/versions', { signal: controller.signal, headers: getProviderHeaders() });
             // only update state when the list actually changed (avoids unnecessary re-renders)
             const latestId = data[0]?.id ?? null;
             if (latestId !== cachedLatestId) {
@@ -88,7 +116,7 @@ export function useVersionHistory(): UseVersionHistory {
     }, [fetchVersions]);
 
     const saveVersion = async (message: string, content: string): Promise<void> => {
-        const newVersion = await client<VersionSummary>('/versions', { body: { message, content }, headers: getGithubHeaders() });
+        const newVersion = await client<VersionSummary>('/versions', { body: { message, content }, headers: getProviderHeaders() });
         // optimistically prepend the new version, then refetch to confirm
         cachedVersions = [newVersion, ...(cachedVersions ?? [])];
         cachedLatestId = newVersion.id;
@@ -100,14 +128,14 @@ export function useVersionHistory(): UseVersionHistory {
         // content never changes for a given commit sha, so it's safe to cache indefinitely
         const hit = cachedContent.get(id);
         if (hit !== undefined) return hit;
-        const detail = await client<VersionDetail>(`/versions/${id}`, { method: 'GET', headers: getGithubHeaders() });
+        const detail = await client<VersionDetail>(`/versions/${id}`, { method: 'GET', headers: getProviderHeaders() });
         cachedContent.set(id, detail.content);
         return detail.content;
     };
 
     // loads the current HEAD file directly from the repo (not a specific commit)
     const loadFileContent = async (): Promise<string> => {
-        const response = await fetch('/api/versions/file', { headers: getGithubHeaders() });
+        const response = await fetch('/api/versions/file', { headers: getProviderHeaders() });
         if (!response.ok) {
             const text = await response.text();
             throw new Error(text || `HTTP ${response.status}`);

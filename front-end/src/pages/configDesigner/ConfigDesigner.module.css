@@ -65,7 +65,7 @@
     align-items: start;
 }
 
-.leftColumn {
+.rightColumn {
     position: sticky;
     top: 80px;
     display: flex;
@@ -121,6 +121,48 @@
     padding: 16px;
     overflow-y: auto;
     flex: 1;
+}
+
+.variantRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.variantLabel {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.variantPills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.variantPill {
+    font-size: 0.78rem;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-dim);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.variantPill:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.variantPillActive {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+    background-color: rgba(253, 195, 0, 0.08);
 }
 
 
@@ -243,6 +285,37 @@
 .warningMessage {
     color: var(--warning-color, #f39c12);
     margin-bottom: 0.25rem;
+}
+
+.tabbedContainer {
+    border: 1px solid var(--border-dim);
+    border-radius: 8px;
+}
+
+.tabNav {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-dim);
+}
+
+.tabButton {
+    padding: 4px 12px;
+    background-color: transparent;
+    color: var(--text-secondary);
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.activeTabButton {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--border-dim);
+}
+
+.tabContent {
+    padding: 16px;
 }
 
 @media (max-width: 768px) {

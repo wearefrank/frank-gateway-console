@@ -27,6 +27,10 @@ function fieldMatchesTerm(field: SchemaField, s: string, value?: unknown): boole
         });
     }
 
+    if (field.type === 'oneof-group') {
+        return field.variants.some(v => v.fields.some(f => fieldMatchesTerm(f, s)));
+    }
+
     const nested = field.type === 'object' ? field.fields : [];
     // recursive call
     return nested.some(f => fieldMatchesSearch(f, s));

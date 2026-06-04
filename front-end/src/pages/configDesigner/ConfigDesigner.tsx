@@ -38,7 +38,16 @@ function deepSet(obj: Record<string, unknown>, path: string[], value: unknown): 
 // Skips empty values and handles comma-separated strings for array fields.
 function buildYamlObject(values: Record<string, unknown>, fields: SchemaField[]): Record<string, unknown> {
     const result: Record<string, unknown> = {};
-    const fieldMap = new Map(fields.map(f => [f.name, f]));
+    const fieldMap = new Map<string, SchemaField>();
+    for (const f of fields) {
+        if (f.type === 'oneof-group') {
+            for (const variant of f.variants) {
+                for (const sub of variant.fields) fieldMap.set(sub.name, sub);
+            }
+        } else {
+            fieldMap.set(f.name, f);
+        }
+    }
 
     for (const [key, raw] of Object.entries(values)) {
         if (raw === '' || raw === undefined || raw === null) continue;
@@ -81,6 +90,8 @@ export const ConfigDesigner = () => {
 
     const [search, setSearch] = useState('');
     const [domain, setDomain] = useState('');
+    const [activeTab, setActiveTab] = useState<'entries' | 'settings' | null>('entries');
+
 
     // Form state per category - switching categories preserves values for each.
     const {category, values, handleChange, handleCategorySwitch, switchCategoryForLoad, loadValues} = useFormByCategory(initialCategory);
@@ -113,6 +124,8 @@ export const ConfigDesigner = () => {
         loadValues,
         initialCategory,
         focusId: searchParams.get('focusId'),
+        configText: configText ?? '',
+        onDomainDetected: (d) => setDomain(d ?? ''),
     });
 
     // Extra validation: flag if the current id already exists in the config (duplicate check).
@@ -149,6 +162,7 @@ export const ConfigDesigner = () => {
         setConfig,
         editingEntry,
         onEditSaved: clearEditingEntry,
+        domain: domain || undefined,
     });
 
     // Config status badge: reflects yaml validity, schema errors, or a clean state.
@@ -189,6 +203,10 @@ export const ConfigDesigner = () => {
         if (action.type === 'set-search') setSearch(action.term);
     }, [handleChange, values]);
 
+    const handleTabClick = (tab: 'entries' | 'settings') => {
+        setActiveTab(prev => prev === tab ? null : tab);
+    };
+
     const priorityList = designerSettings.priorityMap[category] ?? [];
 
     if (schemaLoading) return <div>Loading....</div>;
@@ -219,7 +237,25 @@ export const ConfigDesigner = () => {
             </div>
 
             <div className={styles.layout}>
-                <div className={styles.leftColumn}>
+                <ConfigFormCard
+                    category={category}
+                    fields={fields}
+                    values={values}
+                    onChange={handleChange}
+                    priorityList={priorityList}
+                    overrideSettings={overrideSettings}
+                    editingEntry={editingEntry}
+                    allErrors={allErrors}
+                    builtObject={builtObject}
+                    search={search}
+                    onSearchChange={setSearch}
+                    onAddToConfig={handleAddToConfig}
+                    onSaveEdit={handleSaveEdit}
+                    onNewEntry={handleNewEntry}
+                    confirmation={confirmation}
+                />
+
+                <div className={styles.rightColumn}>
                     <div className={`card ${styles.yamlPreviewCard}`}>
                         <div className="card-header">YAML Preview</div>
                         <pre className={styles.yamlPreviewContent}>
@@ -247,37 +283,42 @@ export const ConfigDesigner = () => {
 
                     <DesignerErrorLogs resolvedErrors={allErrors} onAction={handleErrorAction} />
 
-                    <DesignerSettings
-                        category={category}
-                        fields={fields}
-                        settings={designerSettings}
-                        onSettingsChange={setDesignerSettings}
-                    />
-
-                    <EntryList
-                        configManager={configManager}
-                        editingEntry={editingEntry}
-                        onLoad={handleLoadEntry}
-                    />
+                    <div className={styles.tabbedContainer}>
+                        <div className={styles.tabNav}>
+                            <button
+                                className={`${styles.tabButton} ${activeTab === 'entries' ? styles.activeTabButton : ''}`}
+                                onClick={() => handleTabClick('entries')}
+                            >
+                                Entries
+                            </button>
+                            <button
+                                className={`${styles.tabButton} ${activeTab === 'settings' ? styles.activeTabButton : ''}`}
+                                onClick={() => handleTabClick('settings')}
+                            >
+                                Settings
+                            </button>
+                        </div>
+                        {activeTab && (
+                            <div className={styles.tabContent}>
+                                {activeTab === 'entries' && (
+                                    <EntryList
+                                        configManager={configManager}
+                                        editingEntry={editingEntry}
+                                        onLoad={handleLoadEntry}
+                                    />
+                                )}
+                                {activeTab === 'settings' && (
+                                    <DesignerSettings
+                                        category={category}
+                                        fields={fields}
+                                        settings={designerSettings}
+                                        onSettingsChange={setDesignerSettings}
+                                    />
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
-
-                <ConfigFormCard
-                    category={category}
-                    fields={fields}
-                    values={values}
-                    onChange={handleChange}
-                    priorityList={priorityList}
-                    overrideSettings={overrideSettings}
-                    editingEntry={editingEntry}
-                    allErrors={allErrors}
-                    builtObject={builtObject}
-                    search={search}
-                    onSearchChange={setSearch}
-                    onAddToConfig={handleAddToConfig}
-                    onSaveEdit={handleSaveEdit}
-                    onNewEntry={handleNewEntry}
-                    confirmation={confirmation}
-                />
             </div>
         </div>
     );

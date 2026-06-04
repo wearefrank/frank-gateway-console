@@ -28,6 +28,12 @@ export const DEFAULT_DESIGNER_SETTINGS: DesignerSettings = {
 
 export function deepMerge<T extends object>(defaults: T, loaded: Partial<T>): T {
     const result = { ...defaults };
+    // Copy keys from loaded that don't exist in defaults (e.g. dynamic record entries like perCategory.route)
+    for (const key of Object.keys(loaded) as (keyof T)[]) {
+        if (!(key in defaults)) {
+            result[key] = loaded[key] as T[keyof T];
+        }
+    }
     for (const key of Object.keys(defaults) as (keyof T)[]) {
         const loadedVal = loaded[key];
         const defaultVal = defaults[key];

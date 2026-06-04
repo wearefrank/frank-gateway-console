@@ -5,7 +5,7 @@ import type {Node} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import {useConfigManager} from '../../hooks/useConfigManager';
-import {buildTopology, getConnectedNodeIds} from './buildTopology';
+import {buildTopology, applyElkLayout, getConnectedNodeIds} from './buildTopology';
 import type {ColorScheme, ConfigNodeData} from './buildTopology';
 import {ColorSchemeContext, CATEGORY_COLOR, nodeTypes} from './ConfigNode';
 import { getDisplayId } from '../../config/categoryDefinitions';
@@ -54,7 +54,8 @@ export const TopologyPage: React.FC = () => {
         setFocusedNodeId(prev => prev === node.id ? null : node.id);
     }, [cancelPendingClick]);
 
-    // Build graph from config (re-runs when config or color scheme changes)
+    // Build graph from config (re-runs when config or color scheme changes).
+    // Positions are NOT computed here — applyElkLayout() fills them in async.
     const {nodes: initNodes, edges: initEdges} = useMemo(
         () => (config ? buildTopology(config, colorScheme) : {nodes: [], edges: []}),
         [config, colorScheme],
@@ -63,15 +64,28 @@ export const TopologyPage: React.FC = () => {
     const [nodes, setNodes, onNodesChange] = useNodesState(initNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges);
 
-    // Sync nodes — preserve positions when only the color scheme changed
-    useEffect(() => {
-        setNodes(prev => {
-            const posMap = new Map(prev.map(n => [n.id, n.position]));
-            return initNodes.map(n => ({...n, position: posMap.get(n.id) ?? n.position}));
-        });
-    }, [initNodes, setNodes]);
+    // Signature of the last node-set that ELK laid out.
+    // When it matches the new initNodes the config hasn't changed — only the
+    // color scheme has — so we preserve existing positions and routing instead of re-running ELK.
+    const layoutSignatureRef = useRef<string>('');
 
-    useEffect(() => { setEdges(initEdges); }, [initEdges, setEdges]);
+    useEffect(() => {
+        const signature = initNodes.map(n => n.id).join('\0');
+
+        if (signature === layoutSignatureRef.current) {
+            // Color scheme changed only — keep positions, update everything else.
+            setNodes(prev => {
+                const posMap = new Map(prev.map(n => [n.id, n.position]));
+                return initNodes.map(n => ({...n, position: posMap.get(n.id) ?? n.position}));
+            });
+            setEdges(initEdges);
+            return;
+        }
+
+        // Config changed — run ELK layout.
+        layoutSignatureRef.current = signature;
+        applyElkLayout(initNodes, initEdges).then(setNodes);
+    }, [initNodes, initEdges, setNodes, setEdges]);
 
     // ReactFlow needs overflow:hidden on body to capture panning properly
     useEffect(() => {

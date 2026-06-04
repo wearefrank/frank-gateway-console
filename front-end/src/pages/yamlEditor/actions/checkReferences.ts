@@ -2,7 +2,7 @@ import { ValidationLog } from '../../../actions/ValidationLogger';
 import type { ApisixConfig } from '../../../actions/SchemaValidation';
 import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
 
-function getIds(config: ApisixConfig, category: string): Set<string> {
+function getIds(config: ApisixConfig, category: string): Set<string | number> {
     const raw = (config as Record<string, unknown>)[category + 's'];
     if (!Array.isArray(raw)) return new Set();
     const idField = CATEGORY_DEFINITIONS[category]?.idField ?? 'id';
@@ -10,7 +10,7 @@ function getIds(config: ApisixConfig, category: string): Set<string> {
         (raw as (Record<string, unknown> | null)[])
             .filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object')
             .map(e => e[idField])
-            .filter((id): id is string => typeof id === 'string'),
+            .filter((id): id is string | number => typeof id === 'string' || typeof id === 'number'),
     );
 }
 
@@ -36,9 +36,9 @@ function checkDuplicateIds(config: ApisixConfig): ValidationLog[] {
 
         for (const entry of entries) {
             const id = entry[idField];
-            if (typeof id !== 'string') continue;
-            // start with 0 or last number always add one
-            seen.set(id, (seen.get(id) ?? 0) + 1);
+            if (typeof id !== 'string' && typeof id !== 'number') continue;
+            const key = String(id);
+            seen.set(key, (seen.get(key) ?? 0) + 1);
         }
 
         for (const [id, count] of seen) {
@@ -71,7 +71,7 @@ export function checkReferences(config: ApisixConfig): ValidationLog[] {
             const entryId = typeof entry[def.idField] === 'string' ? entry[def.idField] as string : `[${i}]`;
             for (const ref of def.referenceFields) {
                 const val = entry[ref.field];
-                if (typeof val !== 'string') continue;
+                if (typeof val !== 'string' && typeof val !== 'number') continue;
                 if (!getTargetIds(ref.targetCategory).has(val)) {
                     logs.push(new ValidationLog(
                         'warning',

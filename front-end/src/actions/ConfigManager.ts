@@ -77,8 +77,12 @@ export class ConfigManager {
     public validate(): ValidationLog[] {
         if (!this.config) return [];
 
-        if (!this.validator.getSchema()?.main) {
-            return [new ValidationLog('warning', 'Schema catalog missing')];
+        const schema = this.validator.getSchema();
+        if (!schema) {
+            return [new ValidationLog('warning', 'Schema catalog missing - no schema loaded. Check APISIX connection settings.')];
+        }
+        if (!schema.main) {
+            return [new ValidationLog('warning', 'Schema catalog missing - schema was loaded but contains no main definitions.')];
         }
 
         this.validator.setConfig(this.config);

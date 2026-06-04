@@ -1,5 +1,5 @@
 import {type ChangeEvent, type ComponentType, useMemo, useState} from 'react';
-import {type SchemaField, SchemaFormGenerator} from '../../actions/SchemaFormGenerator';
+import {type OneOfGroupField, type SchemaField, SchemaFormGenerator} from '../../actions/SchemaFormGenerator';
 import type {JsonSchema, SchemaCatalog} from '../../actions/SchemaValidation';
 import styles from './SchemaFormRenderer.module.css';
 import {CollapsibleSection} from "./CollapsibleSection/CollapsibleSection.tsx";
@@ -525,6 +525,54 @@ function PluginField({ field, value, onChange, searchTerm }: FieldProps) {
     );
 }
 
+interface OneOfGroupBlockProps {
+    field: OneOfGroupField;
+    values: Record<string, unknown>;
+    onChange?: (name: string, value: unknown) => void;
+    searchTerm?: string;
+}
+
+function OneOfGroupBlock({ field, values, onChange, searchTerm }: OneOfGroupBlockProps) {
+    const [selectedIndex, setSelectedIndex] = useState(0);
+    const selectedVariant = field.variants[selectedIndex];
+
+    const handleVariantSwitch = (newIndex: number) => {
+        if (newIndex === selectedIndex) return;
+        field.variants[selectedIndex].fieldNames.forEach(name => onChange?.(name, undefined));
+        setSelectedIndex(newIndex);
+    };
+
+    return (
+        <div className={styles.oneOfGroup}>
+            <div className={styles.toggleGroup}>
+                {field.variants.map((v, i) => (
+                    <button
+                        key={i}
+                        type="button"
+                        className={i === selectedIndex ? styles.toggleActive : styles.toggle}
+                        onClick={() => handleVariantSwitch(i)}
+                    >
+                        {v.label}
+                    </button>
+                ))}
+            </div>
+            {field.inline ? (
+                selectedVariant.fields.map(subField => {
+                    const Component = fieldComponents[subField.type] ?? TextField;
+                    return <Component key={subField.name} field={subField} value={values[subField.name]} onChange={onChange} searchTerm={searchTerm} />;
+                })
+            ) : (
+                <SchemaFormRenderer
+                    fields={selectedVariant.fields}
+                    values={values}
+                    onChange={onChange}
+                    searchTerm={searchTerm}
+                />
+            )}
+        </div>
+    );
+}
+
 // --- Type -> component map ---
 
 const fieldComponents: Record<SchemaField['type'], ComponentType<FieldProps>> = {
@@ -537,6 +585,7 @@ const fieldComponents: Record<SchemaField['type'], ComponentType<FieldProps>> = 
     select: SelectField,
     array: ArrayField,
     plugin: PluginField,
+    'oneof-group': () => null,  // handled in the render loop before this map is consulted
 };
 
 // --- Renderer ---
@@ -582,6 +631,28 @@ export function SchemaFormRenderer({fields, values, onChange, overrides, overrid
     return (
         <>
             {sortedFields.map(field => {
+                if (field.type === 'oneof-group') {
+                    if (field.inline) {
+                        return (
+                            <div key={field.name} className={styles.fieldGroup}>
+                                <label className={styles.fieldLabel}>
+                                    {field.name}{field.required && <span className={styles.required}>*</span>}
+                                </label>
+                                <OneOfGroupBlock field={field} values={values} onChange={onChange} searchTerm={searchTerm} />
+                            </div>
+                        );
+                    }
+                    return (
+                        <OneOfGroupBlock
+                            key={field.name}
+                            field={field}
+                            values={values}
+                            onChange={onChange}
+                            searchTerm={searchTerm}
+                        />
+                    );
+                }
+
                 const override = overrides?.[field.name];
                 const Component = override ?? fieldComponents[field.type] ?? TextField;
                 const settings = override ? overrideSettings?.[field.name] : undefined;
