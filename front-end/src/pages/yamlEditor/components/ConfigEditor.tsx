@@ -50,17 +50,20 @@ function buildApisixSchema(catalog: SchemaCatalog): MonacoJsonSchema {
 
 type ParsedDoc = ReturnType<typeof parseYamlDoc>;
 
-// Maps each error/warning log entry and YAML syntax error to the line numbers they cover.
-// Each line can accumulate multiple logs; errors and warnings are tracked separately.
+type LogEntry = { startOffset: number; endOffset: number; logs: ValidationLog[] };
+
+// Collects raw character offsets for each error/warning log entry and YAML syntax error.
+// Line numbers are resolved later in the decoration effect using Monaco's model.getPositionAt(),
+// which handles offset-to-position conversion natively and avoids off-by-one issues.
 function buildErrorAnnotations(parsedDoc: ParsedDoc, validationLogs: ValidationLog[]) {
-    const errorLineLogMap = new Map<number, ValidationLog[]>();
-    const warningLineLogMap = new Map<number, ValidationLog[]>();
-    const syntaxErrorLines = new Set<number>();
-    const { doc, lineCounter } = parsedDoc;
+    const errorEntries: LogEntry[] = [];
+    const warningEntries: LogEntry[] = [];
+    const syntaxErrorOffsets: number[] = [];
+    const { doc } = parsedDoc;
 
     for (const err of doc.errors) {
         if (err.pos && err.pos.length >= 1) {
-            syntaxErrorLines.add(lineCounter.linePos(err.pos[0]).line);
+            syntaxErrorOffsets.push(err.pos[0]);
         }
     }
 
@@ -68,17 +71,16 @@ function buildErrorAnnotations(parsedDoc: ParsedDoc, validationLogs: ValidationL
         if ((log.type !== 'error' && log.type !== 'warning') || !log.path) continue;
         const node = resolvePathToNode(doc, log.path);
         if (!node?.range) continue;
-        const startLine = lineCounter.linePos(node.range[0]).line;
-        const endLine = lineCounter.linePos(node.range[1]).line;
-        const map = log.type === 'error' ? errorLineLogMap : warningLineLogMap;
-        for (let i = startLine; i <= endLine; i++) {
-            const existing = map.get(i);
-            if (existing) existing.push(log);
-            else map.set(i, [log]);
+        const list = log.type === 'error' ? errorEntries : warningEntries;
+        const existing = list.find(e => e.startOffset === node.range![0] && e.endOffset === node.range![1]);
+        if (existing) {
+            existing.logs.push(log);
+        } else {
+            list.push({ startOffset: node.range[0], endOffset: node.range[1], logs: [log] });
         }
     }
 
-    return { errorLineLogMap, warningLineLogMap, syntaxErrorLines };
+    return { errorEntries, warningEntries, syntaxErrorOffsets };
 }
 
 // Builds the inline hint text shown at the end of an error/warning line.
@@ -219,11 +221,11 @@ export const ConfigEditor = ({
         return starts;
     }, [categoryLineMap]);
 
-    const { errorLineLogMap, warningLineLogMap, syntaxErrorLines } = useMemo(() => {
+    const { errorEntries, warningEntries, syntaxErrorOffsets } = useMemo(() => {
         if (!parsedDoc) return {
-            errorLineLogMap: new Map<number, ValidationLog[]>(),
-            warningLineLogMap: new Map<number, ValidationLog[]>(),
-            syntaxErrorLines: new Set<number>(),
+            errorEntries: [] as LogEntry[],
+            warningEntries: [] as LogEntry[],
+            syntaxErrorOffsets: [] as number[],
         };
         return buildErrorAnnotations(parsedDoc, validationLogs);
     }, [parsedDoc, validationLogs]);
@@ -237,8 +239,6 @@ export const ConfigEditor = ({
     // --- Keep refs current for use inside Monaco event callbacks ---
 
     useEffect(() => { categoryLineMapRef.current = categoryLineMap; }, [categoryLineMap]);
-    useEffect(() => { errorLineLogMapRef.current = errorLineLogMap; }, [errorLineLogMap]);
-    useEffect(() => { warningLineLogMapRef.current = warningLineLogMap; }, [warningLineLogMap]);
     useEffect(() => { referenceHintMapRef.current = referenceHintMap; }, [referenceHintMap]);
     useEffect(() => { referenceTargetMapRef.current = referenceTargetMap; }, [referenceTargetMap]);
     useEffect(() => { referenceValueRangesRef.current = referenceValueRanges; }, [referenceValueRanges]);
@@ -263,9 +263,52 @@ export const ConfigEditor = ({
         const monaco = monacoRef.current;
         const collection = errorDecorationsRef.current;
         if (!editor || !monaco || !collection) return;
+        const model = editor.getModel();
+        if (!model) return;
+
+        // Convert a YAML node's character offset range to Monaco line numbers.
+        // Using endOffset - 1 (inclusive last character) avoids off-by-one when
+        // the parser places the exclusive end at column 1 of the following line.
+        const toLineRange = (startOffset: number, endOffset: number) => {
+            const startLine = model.getPositionAt(startOffset).lineNumber;
+            const endLine = model.getPositionAt(Math.max(startOffset, endOffset - 1)).lineNumber;
+            return { startLine, endLine };
+        };
+
+        const addToLineMap = (map: Map<number, ValidationLog[]>, line: number, logs: ValidationLog[]) => {
+            const existing = map.get(line);
+            if (existing) {
+                for (const log of logs) existing.push(log);
+            } else {
+                map.set(line, [...logs]);
+            }
+        };
+
+        const newErrorLineLogMap = new Map<number, ValidationLog[]>();
+        for (const entry of errorEntries) {
+            const { startLine, endLine } = toLineRange(entry.startOffset, entry.endOffset);
+            for (let line = startLine; line <= endLine; line++) {
+                addToLineMap(newErrorLineLogMap, line, entry.logs);
+            }
+        }
+
+        const newWarningLineLogMap = new Map<number, ValidationLog[]>();
+        for (const entry of warningEntries) {
+            const { startLine, endLine } = toLineRange(entry.startOffset, entry.endOffset);
+            for (let line = startLine; line <= endLine; line++) {
+                if (!newErrorLineLogMap.has(line)) {
+                    addToLineMap(newWarningLineLogMap, line, entry.logs);
+                }
+            }
+        }
+
+        errorLineLogMapRef.current = newErrorLineLogMap;
+        warningLineLogMapRef.current = newWarningLineLogMap;
 
         const decorations: MonacoType.editor.IModelDeltaDecoration[] = [];
-        for (const line of syntaxErrorLines) {
+
+        for (const offset of syntaxErrorOffsets) {
+            const line = model.getPositionAt(offset).lineNumber;
             decorations.push({
                 range: new monaco.Range(line, 1, line, 1),
                 options: {
@@ -276,7 +319,8 @@ export const ConfigEditor = ({
                 },
             });
         }
-        for (const [line, logs] of errorLineLogMap) {
+
+        for (const [line, logs] of newErrorLineLogMap) {
             decorations.push({
                 range: new monaco.Range(line, 1, line, 1),
                 options: {
@@ -288,8 +332,8 @@ export const ConfigEditor = ({
                 },
             });
         }
-        for (const [line, logs] of warningLineLogMap) {
-            if (errorLineLogMap.has(line)) continue;
+
+        for (const [line, logs] of newWarningLineLogMap) {
             decorations.push({
                 range: new monaco.Range(line, 1, line, 1),
                 options: {
@@ -301,8 +345,9 @@ export const ConfigEditor = ({
                 },
             });
         }
+
         collection.set(decorations);
-    }, [errorLineLogMap, warningLineLogMap, syntaxErrorLines]);
+    }, [errorEntries, warningEntries, syntaxErrorOffsets]);
 
     useEffect(() => {
         const editor = editorRef.current;
