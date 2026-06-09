@@ -8,7 +8,6 @@ import { ValidationLogs } from './components/ValidationLogs';
 import { OverviewPanel } from './components/OverviewPanel';
 import { useConfigManager } from '../../hooks/useConfigManager';
 import { useAppSettings } from '../../hooks/useAppSettings';
-import { useVersionHistory } from '../../hooks/useVersionHistory';
 import { checkReferences } from './actions/checkReferences';
 import { getDisplayId } from '../../config/categoryDefinitions';
 
@@ -16,10 +15,6 @@ import { getDisplayId } from '../../config/categoryDefinitions';
 const YamlEditor = () => {
     const { configManager, config, configYamlValid, schema, setConfig: setGlobalConfig } = useConfigManager();
     const [appSettings, setAppSettings] = useAppSettings();
-    const { saveVersion } = useVersionHistory();
-    const [saveVersionOpen, setSaveVersionOpen] = useState(false);
-    const [saveVersionMessage, setSaveVersionMessage] = useState('');
-    const [savingVersion, setSavingVersion] = useState(false);
     const [searchParams] = useSearchParams();
 
     const [configText, setConfigText] = useState<string>(configManager.getRawText());
@@ -99,20 +94,20 @@ const YamlEditor = () => {
     ];
 
     const tabToggle = (
-        <div className={styles.toggleGroup}>
+        <>
             <button
-                className={rightTab === 'validation' ? styles.toggleBtnActive : styles.toggleBtn}
+                className={rightTab === 'validation' ? styles.tabBtnActive : styles.tabBtn}
                 onClick={() => setRightTab('validation')}
             >
                 Logs
             </button>
             <button
-                className={rightTab === 'overview' ? styles.toggleBtnActive : styles.toggleBtn}
+                className={rightTab === 'overview' ? styles.tabBtnActive : styles.tabBtn}
                 onClick={() => setRightTab('overview')}
             >
                 Overview
             </button>
-        </div>
+        </>
     );
 
     const handleConfigChange = (newValue: string) => {
@@ -156,20 +151,6 @@ const YamlEditor = () => {
 
     const clearLogs = () => setLogs([]);
 
-    const handleSaveVersionClick = () => {
-        setSaveVersionOpen(open => !open);
-    };
-
-    const handleSaveVersionSubmit = async () => {
-        setSavingVersion(true);
-        try {
-            await saveVersion(saveVersionMessage, configManager.getRawText());
-            setSaveVersionOpen(false);
-            setSaveVersionMessage('');
-        } finally {
-            setSavingVersion(false);
-        }
-    };
 
     useEffect(() => {
         if (config && schema) {
@@ -219,35 +200,6 @@ const YamlEditor = () => {
 
             <FileUpload onFileUpload={handleFileUpload} />
 
-            {saveVersionOpen && (
-                <div className={`flex flex-column gap-sm mb-4 ${styles.saveVersionForm}`}>
-                    <span className="text-muted text-small">This will create a git commit in the configured repository.</span>
-                    <div className="flex align-center gap-sm flex-wrap">
-                        <input
-                            type="text"
-                            placeholder="Commit message..."
-                            value={saveVersionMessage}
-                            onChange={e => setSaveVersionMessage(e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') handleSaveVersionSubmit(); }}
-                            className={styles.saveVersionInput}
-                            autoFocus
-                        />
-                        <button
-                            className="btn-primary text-small"
-                            onClick={handleSaveVersionSubmit}
-                            disabled={savingVersion}
-                        >
-                            {savingVersion ? 'Committing...' : 'Commit'}
-                        </button>
-                        <button
-                            className="text-small"
-                            onClick={() => { setSaveVersionOpen(false); setSaveVersionMessage(''); }}
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            )}
 
             <div className={styles.loaderGrid}>
                 <ConfigEditor
@@ -268,7 +220,6 @@ const YamlEditor = () => {
                     }}
                     onReferenceNavigate={handleNavigatePath}
                     scrollToTarget={scrollToTarget}
-                    onSaveVersion={handleSaveVersionClick}
                 />
 
                 {rightTab !== 'overview' ? (

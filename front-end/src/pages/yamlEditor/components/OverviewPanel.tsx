@@ -22,11 +22,9 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({ headerExtra, onNav
 
     return (
         <div className={`card flex flex-column ${loaderStyles.configCard}`}>
+            {headerExtra && <div className={loaderStyles.tabBar}>{headerExtra}</div>}
             <div className="flex justify-between align-center card-header">
                 Overview
-                <div className="flex align-center gap-sm">
-                    {headerExtra}
-                </div>
             </div>
 
             <div className={`scroll-y ${loaderStyles.logContainer}`}>

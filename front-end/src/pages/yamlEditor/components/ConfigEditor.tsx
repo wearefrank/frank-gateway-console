@@ -27,7 +27,6 @@ interface ConfigEditorProps {
     onLineClick?: (log: ValidationLog) => void;
     onReferenceNavigate?: (path: string) => void;
     scrollToTarget?: { path: string; key: number } | null;
-    onSaveVersion?: () => void;
 }
 
 // Builds a JSON Schema that covers the full APISIX config structure,
@@ -193,7 +192,6 @@ export const ConfigEditor = ({
     onLineClick,
     onReferenceNavigate,
     scrollToTarget,
-    onSaveVersion,
 }: ConfigEditorProps) => {
     // Editor instances
     const editorRef = useRef<MonacoType.editor.IStandaloneCodeEditor | null>(null);
@@ -218,6 +216,7 @@ export const ConfigEditor = ({
 
     const [visibleCategory, setVisibleCategory] = useState<string | null>(null);
     const [monacoTheme, setMonacoTheme] = useState(getMonacoTheme);
+    const [settingsOpen, setSettingsOpen] = useState(false);
 
     // Derived data
 
@@ -396,29 +395,33 @@ export const ConfigEditor = ({
             <div className="card-header flex align-center gap-sm">
                 Parsed Configuration
                 {statusClass && <span className={statusClass}>{statusLabel}</span>}
+                <button
+                    className={`text-small ${styles.btnIcon} ${styles.settingsToggle}`}
+                    onClick={() => setSettingsOpen(o => !o)}
+                    title="Editor settings"
+                >
+                    ⚙
+                </button>
             </div>
 
-            <div className={styles.editorToolbar}>
-                <button
-                    className={showWhitespace ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
-                    onClick={onToggleWhitespace}
-                    title="Show Whitespace"
-                >
-                    {showWhitespace ? 'Hide Whitespaces' : 'Show Whitespaces'}
-                </button>
-                <button
-                    className={fillDefaults ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
-                    onClick={onToggleFillDefaults}
-                    title="Fill in Defaults"
-                >
-                    {fillDefaults ? "Don't fill" : 'Fill'}
-                </button>
-                {onSaveVersion && (
-                    <button className={`text-small ${styles.btnIcon}`} onClick={onSaveVersion}>
-                        Commit
+            {settingsOpen && (
+                <div className={styles.editorToolbar}>
+                    <button
+                        className={showWhitespace ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
+                        onClick={onToggleWhitespace}
+                        title="Show Whitespace"
+                    >
+                        {showWhitespace ? 'Hide Whitespaces' : 'Show Whitespaces'}
                     </button>
-                )}
-            </div>
+                    <button
+                        className={fillDefaults ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
+                        onClick={onToggleFillDefaults}
+                        title="Fill in Defaults"
+                    >
+                        {fillDefaults ? "Don't fill defaults" : 'Fill defaults'}
+                    </button>
+                </div>
+            )}
 
             {configText && (
                 <div
