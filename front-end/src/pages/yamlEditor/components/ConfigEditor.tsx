@@ -4,10 +4,11 @@ import type * as MonacoType from 'monaco-editor';
 import { type MonacoYaml, type JSONSchema as MonacoJsonSchema } from 'monaco-yaml';
 import { type ValidationLog } from '../../../actions/ValidationLogger';
 import { parseYamlDoc, resolvePathToNode, buildCategoryLineMap } from '../yamlLineUtils';
-import { YamlCompletionProvider } from './YamlCompletionProvider';
 import { beforeMount, getMonacoTheme, monacoYamlInstance } from './monacoThemes';
 import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../config/categoryDefinitions';
 import type { ApisixConfig, SchemaCatalog } from '../../../actions/SchemaValidation';
+import { useEditorDecorations } from './useEditorDecorations';
+import { useEditorProviders } from './useEditorProviders';
 import styles from '../YamlEditor.module.css';
 import '../monacoStyles.css';
 
@@ -48,6 +49,15 @@ function buildApisixSchema(catalog: SchemaCatalog): MonacoJsonSchema {
     return { type: 'object', properties, definitions: defs };
 }
 
+// Pushes a schema catalog to the monaco-yaml language service.
+// Called both when the schema arrives before the editor mounts and when it updates.
+function pushSchema(monacoYaml: MonacoYaml, catalog: SchemaCatalog): void {
+    void monacoYaml.update({
+        validate: false,
+        schemas: [{ uri: 'file:///apisix-config-schema', fileMatch: ['**'], schema: buildApisixSchema(catalog) }],
+    });
+}
+
 type ParsedDoc = ReturnType<typeof parseYamlDoc>;
 
 type LogEntry = { startOffset: number; endOffset: number; logs: ValidationLog[] };
@@ -83,15 +93,6 @@ function buildErrorAnnotations(parsedDoc: ParsedDoc, validationLogs: ValidationL
     return { errorEntries, warningEntries, syntaxErrorOffsets };
 }
 
-// Builds the inline hint text shown at the end of an error/warning line.
-function buildHintContent(logs: ValidationLog[]): string {
-    const first = logs[0].message;
-    const prefix = logs[0].type === 'error' ? '\u00d7' : '!';
-    const truncated = first.length > 55 ? first.slice(0, 52) + '...' : first;
-    if (logs.length > 1) return `  ${prefix} ${truncated} (+${logs.length - 1} more)`;
-    return `  ${prefix} ${truncated}`;
-}
-
 // Finds every reference field (e.g. upstream_id on a route) and computes
 // the hint text, navigation target path, and value column range for each.
 function buildReferenceAnnotations(parsedDoc: ParsedDoc, config: ApisixConfig) {
@@ -103,34 +104,43 @@ function buildReferenceAnnotations(parsedDoc: ParsedDoc, config: ApisixConfig) {
     for (const [category, def] of Object.entries(CATEGORY_DEFINITIONS)) {
         if (def.referenceFields.length === 0) continue;
 
+        // Get the list of items for this category from the config
         const rawEntries = (config as Record<string, unknown>)[category + 's'];
         if (!Array.isArray(rawEntries)) continue;
 
         for (const [i, entry] of (rawEntries as Record<string, unknown>[]).entries()) {
             if (!entry || typeof entry !== 'object') continue;
 
+            // Check every field that could be a reference (like 'upstream_id')
             for (const ref of def.referenceFields) {
                 const val = (entry as Record<string, unknown>)[ref.field];
                 if (typeof val !== 'string' && typeof val !== 'number') continue;
 
+                // Find the list of items we are supposed to be pointing to
                 const rawTargetEntries = (config as Record<string, unknown>)[ref.targetCategory + 's'];
                 if (!Array.isArray(rawTargetEntries)) continue;
                 const targetDef = CATEGORY_DEFINITIONS[ref.targetCategory];
                 if (!targetDef) continue;
 
+                // Try to find the specific target item that matches our ID
                 const targetEntries = rawTargetEntries as Record<string, unknown>[];
                 const targetIdx = targetEntries.findIndex(
                     e => e && typeof e === 'object' && (e as Record<string, unknown>)[targetDef.idField] === val,
                 );
+                // If we can't find what it's pointing to, we can't show a hint
                 if (targetIdx === -1) continue;
 
+                // Find where this ID is located in the actual YAML text
                 const node = resolvePathToNode(doc, `/${category}s/${i}/${ref.field}`);
                 if (!node?.range) continue;
 
+                // Calculate the line and column so we know where to draw the hint
                 const displayId = getDisplayId(ref.targetCategory, targetEntries[targetIdx]);
                 const startPos = lineCounter.linePos(node.range[0]);
                 const endPos = lineCounter.linePos(node.range[1]);
                 const line = startPos.line;
+
+                // Save the hint text, the jump-to path, and the exact character positions
                 hintMap.set(line, `\u2192 ${targetDef.label}: "${displayId}"`);
                 targetMap.set(line, `/${ref.targetCategory}s/${targetIdx}`);
                 valueRanges.set(line, { startCol: startPos.col, endCol: endPos.col });
@@ -139,6 +149,33 @@ function buildReferenceAnnotations(parsedDoc: ParsedDoc, config: ApisixConfig) {
     }
 
     return { referenceHintMap: hintMap, referenceTargetMap: targetMap, referenceValueRanges: valueRanges };
+}
+
+// Builds a map from line number to { category, idValue } for every entry's id/username field.
+// Used by the hover provider to show "used by" info when hovering over an ID value in the editor.
+function buildIdLineMap(parsedDoc: ParsedDoc, config: ApisixConfig) {
+    const idLineMap = new Map<number, { category: string; idValue: string | number }>();
+    const { doc, lineCounter } = parsedDoc;
+
+    for (const [category, def] of Object.entries(CATEGORY_DEFINITIONS)) {
+        if (def.referenceableFields.length === 0) continue;
+        const rawEntries = (config as Record<string, unknown>)[category + 's'];
+        if (!Array.isArray(rawEntries)) continue;
+
+        for (const [i, entry] of (rawEntries as Record<string, unknown>[]).entries()) {
+            if (!entry || typeof entry !== 'object') continue;
+            const idValue = (entry as Record<string, unknown>)[def.idField];
+            if (typeof idValue !== 'string' && typeof idValue !== 'number') continue;
+
+            const node = resolvePathToNode(doc, `/${category}s/${i}/${def.idField}`);
+            if (!node?.range) continue;
+
+            const line = lineCounter.linePos(node.range[0]).line;
+            idLineMap.set(line, { category, idValue });
+        }
+    }
+
+    return idLineMap;
 }
 
 export const ConfigEditor = ({
@@ -158,48 +195,31 @@ export const ConfigEditor = ({
     scrollToTarget,
     onSaveVersion,
 }: ConfigEditorProps) => {
+    // Editor instances
     const editorRef = useRef<MonacoType.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof MonacoType | null>(null);
     const monacoYamlRef = useRef<MonacoYaml | null>(null);
+
+    // Stable values for event callbacks
     const schemaRef = useRef<SchemaCatalog | null | undefined>(schema);
     const configRef = useRef<ApisixConfig | null | undefined>(config);
-    const errorDecorationsRef = useRef<MonacoType.editor.IEditorDecorationsCollection | null>(null);
-    const categoryDecorationsRef = useRef<MonacoType.editor.IEditorDecorationsCollection | null>(null);
-    const placeholderDecorationsRef = useRef<MonacoType.editor.IEditorDecorationsCollection | null>(null);
-    const referenceDecorationsRef = useRef<MonacoType.editor.IEditorDecorationsCollection | null>(null);
-    const referenceUnderlineDecorationsRef = useRef<MonacoType.editor.IEditorDecorationsCollection | null>(null);
-    const categoryLineMapRef = useRef<Map<number, string>>(new Map());
-    const errorLineLogMapRef = useRef<Map<number, ValidationLog[]>>(new Map());
-    const warningLineLogMapRef = useRef<Map<number, ValidationLog[]>>(new Map());
-    const referenceHintMapRef = useRef<Map<number, string>>(new Map());
-    const referenceTargetMapRef = useRef<Map<number, string>>(new Map());
-    const referenceValueRangesRef = useRef<Map<number, { startCol: number; endCol: number }>>(new Map());
+    const parsedDocRef = useRef<ParsedDoc | null>(null);
+
+    // Callback refs (prevent stale closures in Monaco event handlers)
     const onReferenceNavigateRef = useRef(onReferenceNavigate);
     const onLineClickRef = useRef(onLineClick);
-    const completionProviderRef = useRef<MonacoType.IDisposable | null>(null);
-    const definitionProviderRef = useRef<MonacoType.IDisposable | null>(null);
-    const parsedDocRef = useRef<ParsedDoc | null>(null);
+    const scrollToTargetRef = useRef(scrollToTarget);
+
+    // Snapshot refs for Monaco scroll and provider callbacks
+    const categoryLineMapRef = useRef<Map<number, string>>(new Map());
+    const referenceTargetMapRef = useRef<Map<number, string>>(new Map());
+    const referenceValueRangesRef = useRef<Map<number, { startCol: number; endCol: number }>>(new Map());
+    const idLineMapRef = useRef<Map<number, { category: string; idValue: string | number }>>(new Map());
+
     const [visibleCategory, setVisibleCategory] = useState<string | null>(null);
     const [monacoTheme, setMonacoTheme] = useState(getMonacoTheme);
 
-    useEffect(() => { onLineClickRef.current = onLineClick; }, [onLineClick]);
-    useEffect(() => { onReferenceNavigateRef.current = onReferenceNavigate; }, [onReferenceNavigate]);
-
-    useEffect(() => {
-        return () => {
-            completionProviderRef.current?.dispose();
-            definitionProviderRef.current?.dispose();
-        };
-    }, []);
-
-    // Watch for data-theme attribute changes to switch Monaco theme
-    useEffect(() => {
-        const observer = new MutationObserver(() => setMonacoTheme(getMonacoTheme()));
-        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-        return () => observer.disconnect();
-    }, []);
-
-    // --- Derived data ---
+    // Derived data
 
     const parsedDoc = useMemo(() => {
         if (!configText) return null;
@@ -231,164 +251,49 @@ export const ConfigEditor = ({
     }, [parsedDoc, validationLogs]);
 
     const { referenceHintMap, referenceTargetMap, referenceValueRanges } = useMemo(() => {
-        const empty = { referenceHintMap: new Map<number, string>(), referenceTargetMap: new Map<number, string>(), referenceValueRanges: new Map<number, { startCol: number; endCol: number }>() };
+        const empty = {
+            referenceHintMap: new Map<number, string>(),
+            referenceTargetMap: new Map<number, string>(),
+            referenceValueRanges: new Map<number, { startCol: number; endCol: number }>(),
+        };
         if (!parsedDoc || !config) return empty;
         return buildReferenceAnnotations(parsedDoc, config);
     }, [parsedDoc, config]);
 
-    // --- Keep refs current for use inside Monaco event callbacks ---
+    const idLineMap = useMemo(() => {
+        if (!parsedDoc || !config) return new Map<number, { category: string; idValue: string | number }>();
+        return buildIdLineMap(parsedDoc, config);
+    }, [parsedDoc, config]);
 
+    // Keep refs current for Monaco event callbacks
+
+    useEffect(() => { onLineClickRef.current = onLineClick; }, [onLineClick]);
+    useEffect(() => { onReferenceNavigateRef.current = onReferenceNavigate; }, [onReferenceNavigate]);
+    useEffect(() => { scrollToTargetRef.current = scrollToTarget; }, [scrollToTarget]);
+    useEffect(() => { configRef.current = config; }, [config]);
+    useEffect(() => { parsedDocRef.current = parsedDoc; }, [parsedDoc]);
     useEffect(() => { categoryLineMapRef.current = categoryLineMap; }, [categoryLineMap]);
-    useEffect(() => { referenceHintMapRef.current = referenceHintMap; }, [referenceHintMap]);
     useEffect(() => { referenceTargetMapRef.current = referenceTargetMap; }, [referenceTargetMap]);
     useEffect(() => { referenceValueRangesRef.current = referenceValueRanges; }, [referenceValueRanges]);
-    useEffect(() => { parsedDocRef.current = parsedDoc; }, [parsedDoc]);
+    useEffect(() => { idLineMapRef.current = idLineMap; }, [idLineMap]);
 
-    useEffect(() => { configRef.current = config; }, [config]);
+    // Watch for data-theme attribute changes to switch Monaco theme
+    useEffect(() => {
+        const observer = new MutationObserver(() => setMonacoTheme(getMonacoTheme()));
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+        return () => observer.disconnect();
+    }, []);
 
     // Push schema updates to the YAML language service
     useEffect(() => {
         schemaRef.current = schema;
         if (!schema || !monacoYamlRef.current) return;
-        monacoYamlRef.current.update({
-            validate: false,
-            schemas: [{ uri: 'file:///apisix-config-schema', fileMatch: ['**'], schema: buildApisixSchema(schema) }],
-        });
+        pushSchema(monacoYamlRef.current, schema);
     }, [schema]);
 
-    // --- Decoration updates ---
-
     useEffect(() => {
-        const editor = editorRef.current;
-        const monaco = monacoRef.current;
-        const collection = errorDecorationsRef.current;
-        if (!editor || !monaco || !collection) return;
-        const model = editor.getModel();
-        if (!model) return;
-
-        // Convert a YAML node's character offset range to Monaco line numbers.
-        // Using endOffset - 1 (inclusive last character) avoids off-by-one when
-        // the parser places the exclusive end at column 1 of the following line.
-        const toLineRange = (startOffset: number, endOffset: number) => {
-            const startLine = model.getPositionAt(startOffset).lineNumber;
-            const endLine = model.getPositionAt(Math.max(startOffset, endOffset - 1)).lineNumber;
-            return { startLine, endLine };
-        };
-
-        const addToLineMap = (map: Map<number, ValidationLog[]>, line: number, logs: ValidationLog[]) => {
-            const existing = map.get(line);
-            if (existing) {
-                for (const log of logs) existing.push(log);
-            } else {
-                map.set(line, [...logs]);
-            }
-        };
-
-        const newErrorLineLogMap = new Map<number, ValidationLog[]>();
-        for (const entry of errorEntries) {
-            const { startLine, endLine } = toLineRange(entry.startOffset, entry.endOffset);
-            for (let line = startLine; line <= endLine; line++) {
-                addToLineMap(newErrorLineLogMap, line, entry.logs);
-            }
-        }
-
-        const newWarningLineLogMap = new Map<number, ValidationLog[]>();
-        for (const entry of warningEntries) {
-            const { startLine, endLine } = toLineRange(entry.startOffset, entry.endOffset);
-            for (let line = startLine; line <= endLine; line++) {
-                if (!newErrorLineLogMap.has(line)) {
-                    addToLineMap(newWarningLineLogMap, line, entry.logs);
-                }
-            }
-        }
-
-        errorLineLogMapRef.current = newErrorLineLogMap;
-        warningLineLogMapRef.current = newWarningLineLogMap;
-
-        const decorations: MonacoType.editor.IModelDeltaDecoration[] = [];
-
-        for (const offset of syntaxErrorOffsets) {
-            const line = model.getPositionAt(offset).lineNumber;
-            decorations.push({
-                range: new monaco.Range(line, 1, line, 1),
-                options: {
-                    isWholeLine: true,
-                    className: 'monaco-error-line',
-                    after: { content: '  \u00d7 YAML syntax error', inlineClassName: 'monaco-error-hint' },
-                    hoverMessage: { value: 'YAML syntax error' },
-                },
-            });
-        }
-
-        for (const [line, logs] of newErrorLineLogMap) {
-            decorations.push({
-                range: new monaco.Range(line, 1, line, 1),
-                options: {
-                    isWholeLine: true,
-                    className: 'monaco-error-line',
-                    linesDecorationsClassName: 'monaco-error-line-number',
-                    after: { content: buildHintContent(logs), inlineClassName: 'monaco-error-hint' },
-                    hoverMessage: { value: logs.map(l => l.message).join('\n\n') },
-                },
-            });
-        }
-
-        for (const [line, logs] of newWarningLineLogMap) {
-            decorations.push({
-                range: new monaco.Range(line, 1, line, 1),
-                options: {
-                    isWholeLine: true,
-                    className: 'monaco-warning-line',
-                    linesDecorationsClassName: 'monaco-warning-line-number',
-                    after: { content: buildHintContent(logs), inlineClassName: 'monaco-warning-hint' },
-                    hoverMessage: { value: logs.map(l => l.message).join('\n\n') },
-                },
-            });
-        }
-
-        collection.set(decorations);
-    }, [errorEntries, warningEntries, syntaxErrorOffsets]);
-
-    useEffect(() => {
-        const editor = editorRef.current;
-        const monaco = monacoRef.current;
-        const collection = categoryDecorationsRef.current;
-        if (!editor || !monaco || !collection) return;
-
-        const decorations = [...categoryLineMap].map(([line, category]) => ({
-            range: new monaco.Range(line, 1, line, 1),
-            options: { isWholeLine: true, className: `cat-strip-${category}` },
-        }));
-        collection.set(decorations);
-    }, [categoryLineMap]);
-
-    useEffect(() => {
-        const editor = editorRef.current;
-        const monaco = monacoRef.current;
-        const collection = placeholderDecorationsRef.current;
-        if (!editor || !monaco || !collection) return;
-        const model = editor.getModel();
-        if (!model) return;
-        const matches = model.findMatches('\\$\\{\\{[^}]*\\}\\}', false, true, false, null, false);
-        collection.set(matches.map(m => ({ range: m.range, options: { inlineClassName: 'monaco-placeholder-var' } })));
-    }, [configText]);
-
-    useEffect(() => {
-        const editor = editorRef.current;
-        const monaco = monacoRef.current;
-        if (!editor || !monaco) return;
-
-        const hintDecorations = [...referenceHintMap].map(([line, hint]) => ({
-            range: new monaco.Range(line, 1e9, line, 1e9),
-            options: { after: { content: `  ${hint}`, inlineClassName: 'monaco-ref-hint' } },
-        }));
-        const underlineDecorations = [...referenceValueRanges].map(([line, { startCol, endCol }]) => ({
-            range: new monaco.Range(line, startCol, line, endCol),
-            options: { inlineClassName: 'monaco-ref-value' },
-        }));
-        referenceDecorationsRef.current?.set(hintDecorations);
-        referenceUnderlineDecorationsRef.current?.set(underlineDecorations);
-    }, [referenceHintMap, referenceValueRanges]);
+        editorRef.current?.updateOptions({ renderWhitespace: showWhitespace ? 'all' : 'none' });
+    }, [showWhitespace]);
 
     useEffect(() => {
         if (!scrollToTarget || !editorRef.current || !parsedDoc) return;
@@ -396,13 +301,27 @@ export const ConfigEditor = ({
         if (!node?.range) return;
         const line = parsedDoc.lineCounter.linePos(node.range[0]).line;
         editorRef.current.revealLineInCenter(line);
-    }, [scrollToTarget]);
+    }, [scrollToTarget, parsedDoc]);
 
-    useEffect(() => {
-        editorRef.current?.updateOptions({ renderWhitespace: showWhitespace ? 'all' : 'none' });
-    }, [showWhitespace]);
+    // Decoration and provider hooks
 
-    // --- Editor mount ---
+    const { initCollections, errorLineLogMapRef, warningLineLogMapRef } = useEditorDecorations(
+        editorRef,
+        monacoRef,
+        { errorEntries, warningEntries, syntaxErrorOffsets, categoryLineMap, configText, referenceHintMap, referenceValueRanges },
+    );
+
+    const { registerProviders } = useEditorProviders(
+        categoryLineMapRef,
+        schemaRef,
+        configRef,
+        parsedDocRef,
+        referenceValueRangesRef,
+        referenceTargetMapRef,
+        idLineMapRef,
+    );
+
+    // Editor mount
 
     const handleMount: OnMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
@@ -413,43 +332,24 @@ export const ConfigEditor = ({
         monacoYamlRef.current = monacoYamlInstance;
         const initialSchema = schemaRef.current;
         if (initialSchema && monacoYamlRef.current) {
-            monacoYamlRef.current.update({
-                validate: false,
-                schemas: [{ uri: 'file:///apisix-config-schema', fileMatch: ['**'], schema: buildApisixSchema(initialSchema) }],
-            });
+            pushSchema(monacoYamlRef.current, initialSchema);
         }
 
         document.fonts.ready.then(() => editor.layout());
-        errorDecorationsRef.current = editor.createDecorationsCollection([]);
 
-        categoryDecorationsRef.current = editor.createDecorationsCollection(
-            [...categoryLineMapRef.current].map(([line, category]) => ({
-                range: new monaco.Range(line, 1, line, 1),
-                options: { isWholeLine: true, className: `cat-strip-${category}` },
-            })),
-        );
+        // If a scroll target was queued before the editor finished mounting, apply it now.
+        const pending = scrollToTargetRef.current;
+        const doc = parsedDocRef.current;
+        if (pending && doc) {
+            const node = resolvePathToNode(doc.doc, pending.path);
+            if (node?.range) {
+                const line = doc.lineCounter.linePos(node.range[0]).line;
+                editor.revealLineInCenter(line);
+            }
+        }
 
-        const model = editor.getModel();
-        const placeholderMatches = model
-            ? model.findMatches('\\$\\{\\{[^}]*\\}\\}', false, true, false, null, false)
-            : [];
-        placeholderDecorationsRef.current = editor.createDecorationsCollection(
-            placeholderMatches.map(m => ({ range: m.range, options: { inlineClassName: 'monaco-placeholder-var' } })),
-        );
-
-        referenceDecorationsRef.current = editor.createDecorationsCollection(
-            [...referenceHintMapRef.current].map(([line, hint]) => ({
-                range: new monaco.Range(line, 1e9, line, 1e9),
-                options: { after: { content: `  ${hint}`, inlineClassName: 'monaco-ref-hint' } },
-            })),
-        );
-
-        referenceUnderlineDecorationsRef.current = editor.createDecorationsCollection(
-            [...referenceValueRangesRef.current].map(([line, { startCol, endCol }]) => ({
-                range: new monaco.Range(line, startCol, line, endCol),
-                options: { inlineClassName: 'monaco-ref-value' },
-            })),
-        );
+        initCollections(editor, monaco);
+        registerProviders(monaco);
 
         editor.onDidScrollChange(() => {
             const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
@@ -461,44 +361,19 @@ export const ConfigEditor = ({
         editor.onMouseDown((e) => {
             const line = e.target.position?.lineNumber;
             if (!line) return;
-
             const isGutter =
                 e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS ||
                 e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS;
             if (isGutter) {
                 const logs = errorLineLogMapRef.current.get(line) ?? warningLineLogMapRef.current.get(line);
                 if (logs?.length) onLineClickRef.current?.(logs[0]);
-                return;
             }
-
+            if ((e.event.ctrlKey || e.event.metaKey) && idLineMapRef.current.has(line)) {
+                editor.setPosition(e.target.position!);
+                editor.trigger('mouse', 'editor.action.referenceSearch.trigger', {});
+            }
         });
-
-        completionProviderRef.current = new YamlCompletionProvider(monaco).register(
-            () => categoryLineMapRef.current,
-            () => schemaRef.current,
-            () => configRef.current,
-        );
-
-        definitionProviderRef.current = monaco.languages.registerDefinitionProvider('yaml', {
-            provideDefinition(model, position) {
-                const line = position.lineNumber;
-                const valueRange = referenceValueRangesRef.current.get(line);
-                if (!valueRange) return null;
-                if (position.column < valueRange.startCol || position.column > valueRange.endCol) return null;
-                const targetPath = referenceTargetMapRef.current.get(line);
-                if (!targetPath || !parsedDocRef.current) return null;
-                const { doc, lineCounter } = parsedDocRef.current;
-                const node = resolvePathToNode(doc, targetPath);
-                if (!node?.range) return null;
-                const startPos = lineCounter.linePos(node.range[0]);
-                const lineLength = model.getLineContent(startPos.line).length;
-                return {
-                    uri: model.uri,
-                    range: new monaco.Range(startPos.line, 1, startPos.line, lineLength + 1),
-                };
-            },
-        });
-    }, []);
+    }, [initCollections, registerProviders, errorLineLogMapRef, warningLineLogMapRef, idLineMapRef]);
 
     const handleJumpToCategory = useCallback((category: string) => {
         const line = categoryStartLines.get(category);
@@ -506,7 +381,7 @@ export const ConfigEditor = ({
         editorRef.current.revealLineInCenter(line);
     }, [categoryStartLines]);
 
-    // --- Render ---
+    // Render
 
     let statusClass: string | null = null;
     let statusLabel: string | null = null;

@@ -5,7 +5,7 @@ import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLo
 import { FileUpload } from './components/FileUpload';
 import { ConfigEditor } from './components/ConfigEditor';
 import { ValidationLogs } from './components/ValidationLogs';
-import { ReferencesPanel } from './components/ReferencesPanel';
+import { OverviewPanel } from './components/OverviewPanel';
 import { useConfigManager } from '../../hooks/useConfigManager';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { useVersionHistory } from '../../hooks/useVersionHistory';
@@ -30,7 +30,7 @@ const YamlEditor = () => {
     const scrolledFocusRef = useRef<string | null>(null);
     const validationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [scrollToTarget, setScrollToTarget] = useState<{ path: string; key: number } | null>(null);
-    const [rightTab, setRightTab] = useState<'validation' | 'references'>('validation');
+    const [rightTab, setRightTab] = useState<'validation' | 'overview'>('validation');
     const [refLogs, setRefLogs] = useState<ValidationLog[]>([]);
     const [highlightedLog, setHighlightedLog] = useState<ValidationLog | null>(null);
 
@@ -107,10 +107,10 @@ const YamlEditor = () => {
                 Logs
             </button>
             <button
-                className={rightTab === 'references' ? styles.toggleBtnActive : styles.toggleBtn}
-                onClick={() => setRightTab('references')}
+                className={rightTab === 'overview' ? styles.toggleBtnActive : styles.toggleBtn}
+                onClick={() => setRightTab('overview')}
             >
-                References
+                Overview
             </button>
         </div>
     );
@@ -120,6 +120,13 @@ const YamlEditor = () => {
         if (validationDebounceRef.current) clearTimeout(validationDebounceRef.current);
         validationDebounceRef.current = setTimeout(() => setGlobalConfig(newValue), 400);
     };
+
+    // Scrolls the editor to a JSON pointer path (e.g. "/routes/2").
+    // Incrementing scrollKeyRef ensures the same path can be navigated to twice in a row.
+    const handleNavigatePath = useCallback((path: string) => {
+        scrollKeyRef.current += 1;
+        setScrollToTarget({ path, key: scrollKeyRef.current });
+    }, []);
 
     const toggleFillDefault = useCallback(() => {
         setFillDefault(prev => {
@@ -187,14 +194,12 @@ const YamlEditor = () => {
     useEffect(() => {
         const focusCategory = searchParams.get('focusCategory');
         const focusId = searchParams.get('focusId');
-        const focusNonce = searchParams.get('_n');
         if (!config || !focusCategory || !focusId) return;
 
         // Only scroll once per unique focus target. Without this guard, any
         // config change (e.g. a keystroke) would re-trigger the scroll because
         // `config` is a dependency needed to resolve the array index.
-        // same entry always produce a new key and trigger a fresh scroll.
-        const focusKey = `${focusCategory}:${focusId}:${focusNonce}`;
+        const focusKey = `${focusCategory}:${focusId}`;
         if (scrolledFocusRef.current === focusKey) return;
 
         const key = focusCategory + 's';
@@ -203,9 +208,8 @@ const YamlEditor = () => {
         if (index === -1) return;
 
         scrolledFocusRef.current = focusKey;
-        scrollKeyRef.current += 1;
-        setScrollToTarget({ path: `/${key}/${index}`, key: scrollKeyRef.current });
-    }, [config, searchParams]);
+        handleNavigatePath(`/${key}/${index}`);
+    }, [config, searchParams, handleNavigatePath]);
 
     return (
         <div className={styles.loaderPage}>
@@ -262,15 +266,12 @@ const YamlEditor = () => {
                         setHighlightedLog(log);
                         setRightTab('validation');
                     }}
-                    onReferenceNavigate={path => {
-                        scrollKeyRef.current += 1;
-                        setScrollToTarget({ path, key: scrollKeyRef.current });
-                    }}
+                    onReferenceNavigate={handleNavigatePath}
                     scrollToTarget={scrollToTarget}
                     onSaveVersion={handleSaveVersionClick}
                 />
 
-                {rightTab === 'validation' ? (
+                {rightTab !== 'overview' ? (
                     <ValidationLogs
                         logs={displayLogs}
                         onClear={clearLogs}
@@ -279,18 +280,14 @@ const YamlEditor = () => {
                         highlightedLog={highlightedLog}
                         onLogClick={(log) => {
                             setHighlightedLog(null);
-                            if (log.path) {
-                                scrollKeyRef.current += 1;
-                                setScrollToTarget({ path: log.path, key: scrollKeyRef.current });
-                            }
+                            if (log.path) handleNavigatePath(log.path);
                         }}
                     />
                 ) : (
-                    <ReferencesPanel headerExtra={tabToggle} />
+                    <OverviewPanel headerExtra={tabToggle} onNavigate={handleNavigatePath} />
                 )}
             </div>
 
-            {/*<SchemaView schema={schema} />*/}
         </div>
     );
 };

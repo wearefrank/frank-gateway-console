@@ -134,7 +134,7 @@ export const TopologyPage: React.FC = () => {
                 <h1>Topology</h1>
                 <p className="text-muted">
                     No config loaded.{' '}
-                    <Link to="/loadConfig">Load a config</Link>
+                    <Link to="/yamlEditor">Load a config</Link>
                     {' '}to visualise its topology.
                 </p>
             </div>

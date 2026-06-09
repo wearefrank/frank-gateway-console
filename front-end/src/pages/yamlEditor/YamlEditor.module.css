@@ -31,10 +31,6 @@
     position: relative;
 }
 
-.bold {
-    font-weight: 600;
-}
-
 /* Toolbar / header buttons */
 
 .btnIcon {
@@ -420,12 +416,3 @@
     font-weight: 600;
 }
 
-.schemaPre {
-    margin: 0;
-    font-size: 12px;
-}
-
-.schemaContainer {
-    max-height: 400px;
-    padding: 16px;
-}
