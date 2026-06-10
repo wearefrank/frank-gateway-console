@@ -105,6 +105,19 @@ public class GiteaProviderClient {
         return GitProviderUtils.decodeBase64Content(get(url, config.token()).get("content").asText());
     }
 
+    public boolean fileExists(GiteaConfig config) {
+        if (!isConfigured(config)) return false;
+        String host = GitProviderUtils.normalizeHost(config.host());
+        String url = host + "/api/v1/repos/" + config.repo() + "/contents/" + config.filePath() + "?ref=" + config.branch();
+        try {
+            get(url, config.token());
+            return true;
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode().value() == 404) return false;
+            throw e;
+        }
+    }
+
     private boolean isConfigured(GiteaConfig config) {
         return !GitProviderUtils.isBlank(config.token())
                 && !GitProviderUtils.isBlank(config.host())

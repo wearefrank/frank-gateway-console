@@ -44,6 +44,11 @@ public class VersioningController {
         return versioningService.readCurrentFile(provider(req), githubConfig(req), gitlabConfig(req), giteaConfig(req));
     }
 
+    @GetMapping("/exists")
+    public boolean fileExists(HttpServletRequest req) {
+        return versioningService.fileExists(provider(req), githubConfig(req), gitlabConfig(req), giteaConfig(req));
+    }
+
     private String provider(HttpServletRequest req) {
         return header(req, "X-Git-Provider", "github");
     }

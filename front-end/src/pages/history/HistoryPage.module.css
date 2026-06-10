@@ -90,6 +90,17 @@
     white-space: nowrap;
 }
 
+.fileNotFoundBanner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border-dim);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+}
+
 .saveForm {
     display: flex;
     flex-direction: column;
@@ -217,4 +228,156 @@
 /* makes a settings field span both columns of the 2-col grid */
 .settingsLabelFull {
     grid-column: 1 / -1;
+}
+
+/* --- Profiles manager in settings --- */
+
+.profilesSection {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 4px;
+}
+
+.profilesSectionHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text-secondary);
+}
+
+.profilesEmpty {
+    margin: 0;
+}
+
+.namedFileRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.namedFileTitleInput {
+    width: 120px;
+    flex-shrink: 0;
+}
+
+.namedFilePathInput {
+    flex: 1;
+    min-width: 0;
+    font-family: monospace;
+}
+
+.profileRemoveBtn {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+/* --- Profile/file selectors in the history panel --- */
+
+.profileSelector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-bottom: 1px solid var(--border-dim);
+    background: var(--bg-secondary);
+    flex-wrap: wrap;
+}
+
+.profilePill {
+    padding: 2px 10px;
+    border: 1px solid var(--border-dim);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    white-space: nowrap;
+}
+
+.profilePill:hover:not(.profilePillActive) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.profilePillActive {
+    background: var(--accent-color);
+    color: #fff;
+    border-color: var(--accent-color);
+    font-weight: 500;
+}
+
+.existsDot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 5px;
+    flex-shrink: 0;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
+}
+
+.existsDotChecking {
+    background: var(--text-secondary);
+    opacity: 0.5;
+}
+
+.existsDotFound {
+    background: #22c55e;
+}
+
+.existsDotMissing {
+    background: #ef4444;
+}
+
+/* Standalone dot in the settings named-files list (not inside a pill) */
+.existsDotSettings {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    margin: 0;
+    top: 0;
+    vertical-align: unset;
+}
+
+/* Keeps the row aligned when no dot is shown */
+.existsDotSettingsPlaceholder {
+    display: inline-block;
+    width: 8px;
+    flex-shrink: 0;
+}
+
+/* --- Compare panel header with dual-side selectors --- */
+
+.compareHeader {
+    flex-direction: column !important;
+    gap: 6px;
+    align-items: stretch !important;
+}
+
+.compareHeaderRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.compareSidesRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.compareSideSelectors {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.compareArrow {
+    flex-shrink: 0;
 }

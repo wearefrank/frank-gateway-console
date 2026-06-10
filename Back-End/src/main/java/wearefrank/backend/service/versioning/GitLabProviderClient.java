@@ -121,6 +121,20 @@ public class GitLabProviderClient {
         return GitProviderUtils.decodeBase64Content(get(url, config.token()).get("content").asText());
     }
 
+    public boolean fileExists(GitLabConfig config) {
+        if (!isConfigured(config)) return false;
+        String host = resolveHost(config.host());
+        String url = host + "/api/v4/projects/" + encodePath(config.project())
+                + "/repository/files/" + encodePath(config.filePath()) + "?ref=" + config.branch();
+        try {
+            get(url, config.token());
+            return true;
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode().value() == 404) return false;
+            throw e;
+        }
+    }
+
     private boolean isConfigured(GitLabConfig config) {
         return !GitProviderUtils.isBlank(config.token())
                 && !GitProviderUtils.isBlank(config.project())
