@@ -1,6 +1,37 @@
 import { ValidationLog } from '../../../actions/ValidationLogger';
 import type { ApisixConfig } from '../../../actions/SchemaValidation';
-import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
+import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../config/categoryDefinitions';
+
+export interface Usage {
+    fromCategory: string;
+    fromEntry: Record<string, unknown>;
+    fromIndex: number;
+    field: string;
+}
+
+export function getUsages(
+    config: ApisixConfig,
+    targetCategory: string,
+    idValue: string | number,
+): Usage[] {
+    const results: Usage[] = [];
+    for (const [cat, def] of Object.entries(CATEGORY_DEFINITIONS)) {
+        for (const ref of def.referenceFields) {
+            if (ref.targetCategory !== targetCategory) continue;
+            const raw = (config as Record<string, unknown>)[cat + 's'];
+            if (!Array.isArray(raw)) continue;
+            for (const [i, entry] of (raw as Record<string, unknown>[]).entries()) {
+                const val = (entry as Record<string, unknown>)[ref.field];
+                if (val !== undefined && String(val) === String(idValue)) {
+                    results.push({ fromCategory: cat, fromEntry: entry as Record<string, unknown>, fromIndex: i, field: ref.field });
+                }
+            }
+        }
+    }
+    return results;
+}
+
+export { getDisplayId };
 
 function getIds(config: ApisixConfig, category: string): Set<string | number> {
     const raw = (config as Record<string, unknown>)[category + 's'];

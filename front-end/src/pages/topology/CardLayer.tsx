@@ -37,8 +37,10 @@ export const CardLayer: React.FC<CardLayerProps> = ({cards, edges, closeCard, on
                 const edgeCount = edges.filter(e => e.source === card.id || e.target === card.id).length;
                 const yamlText  = dump(entry, {indent: 2, noRefs: true});
 
-                const focusId = encodeURIComponent(getDisplayId(card.data.category, entry));
-                const configFocusHref = `/loadConfig?focusCategory=${card.data.category}&focusId=${focusId}`;
+                // card.id has format `${category}-${displayId}` (built with the correct index in buildTopology).
+                // Strip the category prefix to recover the exact display ID that getCategoryEntry uses for lookup.
+                const focusId = encodeURIComponent(card.id.slice(card.data.category.length + 1));
+                const configFocusHref = `/yamlEditor?focusCategory=${card.data.category}&focusId=${focusId}`;
 
                 // Convert flow-space position to screen-space
                 const sx = card.x * zoom + vpX;

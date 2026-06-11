@@ -38,10 +38,10 @@ export const ValidationLogs = ({ logs, onClear, config, onLogClick, highlightedL
 
     return (
         <div className={`card flex flex-column ${styles.configCard}`}>
+            {headerExtra && <div className={styles.tabBar}>{headerExtra}</div>}
             <div className="flex justify-between align-center card-header">
                 Validation Results
                 <div className="flex align-center gap-sm">
-                    {headerExtra}
                     <label className="flex align-center gap-xs text-small cursor-pointer">
                         <input
                             type="checkbox"

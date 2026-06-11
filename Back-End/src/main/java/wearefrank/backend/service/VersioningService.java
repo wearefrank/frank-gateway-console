@@ -42,4 +42,10 @@ public class VersioningService {
         if ("gitea".equalsIgnoreCase(provider)) return gitea.readCurrentFile(giteaConfig);
         return github.readCurrentFile(githubConfig);
     }
+
+    public boolean fileExists(String provider, GitHubConfig githubConfig, GitLabConfig gitlabConfig, GiteaConfig giteaConfig) {
+        if ("gitlab".equalsIgnoreCase(provider)) return gitlab.fileExists(gitlabConfig);
+        if ("gitea".equalsIgnoreCase(provider)) return gitea.fileExists(giteaConfig);
+        return github.fileExists(githubConfig);
+    }
 }

@@ -3,6 +3,9 @@
 }
 
 .sectionLabel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -10,16 +13,14 @@
     color: var(--text-secondary);
     border-left: 3px solid;
     padding-left: 6px;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
 }
 
-.entryBlock {
-    padding: 4px 0;
-    border-bottom: 1px solid var(--border-dim);
-}
-
-.entryBlock:last-child {
-    border-bottom: none;
+.sectionCount {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 .entryName {
@@ -39,30 +40,4 @@
 .entryName:hover {
     text-decoration: underline;
     color: var(--accent-color);
-}
-
-.entryRow {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 1px 0 2px 0;
-}
-
-.refField {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    flex-shrink: 0;
-}
-
-.entryId {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    word-break: break-all;
-    flex: 1;
-}
-
-.copyBtn {
-    flex-shrink: 0;
-    min-width: 44px;
-    text-align: center;
 }

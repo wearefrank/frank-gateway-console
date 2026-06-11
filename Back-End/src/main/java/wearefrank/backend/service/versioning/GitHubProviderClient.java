@@ -72,14 +72,20 @@ public class GitHubProviderClient {
         assertConfigured(config);
         String repo = normalizeRepo(config.repo());
 
+        // fetch the existing blob sha; omit it if the file doesn't exist yet (GitHub creates the file when sha is absent)
         String contentsUrl = API_BASE + "/repos/" + repo + "/contents/" + config.filePath() + "?ref=" + config.branch();
-        String blobSha = get(contentsUrl, config.token()).get("sha").asText();
+        String blobSha = null;
+        try {
+            blobSha = get(contentsUrl, config.token()).get("sha").asText();
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode().value() != 404) throw e;
+        }
 
         String encoded = Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
         ObjectNode body = objectMapper.createObjectNode();
         body.put("message", message);
         body.put("content", encoded);
-        body.put("sha", blobSha);
+        if (blobSha != null) body.put("sha", blobSha);
         body.put("branch", config.branch());
 
         JsonNode result = put(contentsUrl, body, config.token());
@@ -96,6 +102,19 @@ public class GitHubProviderClient {
         String repo = normalizeRepo(config.repo());
         String url = API_BASE + "/repos/" + repo + "/contents/" + config.filePath() + "?ref=" + config.branch();
         return GitProviderUtils.decodeBase64Content(get(url, config.token()).get("content").asText());
+    }
+
+    public boolean fileExists(GitHubConfig config) {
+        if (!isConfigured(config)) return false;
+        String repo = normalizeRepo(config.repo());
+        String url = API_BASE + "/repos/" + repo + "/contents/" + config.filePath() + "?ref=" + config.branch();
+        try {
+            get(url, config.token());
+            return true;
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode().value() == 404) return false;
+            throw e;
+        }
     }
 
     private boolean isConfigured(GitHubConfig config) {

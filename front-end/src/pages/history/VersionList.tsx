@@ -105,7 +105,7 @@ export const VersionList: React.FC<VersionListProps> = ({ versions, currentSenti
             )}
             {!loading && historicVersions.length === 0 && (
                 <div className={`text-muted text-small ${styles.empty}`}>
-                    No versions saved yet. Use "Save Version" to get started.
+                    No versions saved yet. Use "Commit" to get started.
                 </div>
             )}
             {!loading && historicVersions.map(version => (

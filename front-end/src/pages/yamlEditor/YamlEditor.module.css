@@ -31,14 +31,14 @@
     position: relative;
 }
 
-.bold {
-    font-weight: 600;
-}
-
 /* Toolbar / header buttons */
 
 .btnIcon {
     padding: 2px 8px;
+}
+
+.settingsToggle {
+    margin-left: auto;
 }
 
 .editorToolbar {
@@ -51,33 +51,34 @@
     flex-wrap: wrap;
 }
 
-/* Tab toggle (Logs / References) */
+/* Tab bar (Logs / Overview) */
 
-.toggleGroup {
-    font-size: 11px;
-    border: 1px solid var(--border-dim);
+.tabBar {
+    display: flex;
+    border-bottom: 1px solid var(--border-dim);
+    background-color: var(--bg-secondary);
 }
 
-.toggleBtn {
-    padding: 2px 8px;
-    border-radius: 0;
+.tabBtn {
+    padding: 7px 14px;
+    font-size: 12px;
     border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
     cursor: pointer;
-    background-color: transparent;
-    color: inherit;
+    color: var(--text-secondary);
+    margin-bottom: -1px;
+    transition: color 0.15s;
 }
 
-.toggleBtnActive {
-    composes: toggleBtn;
-    background-color: var(--accent-color);
-    color: #1a1a1a;
+.tabBtn:hover {
+    color: var(--text-primary);
 }
 
-.toggleBtn + .toggleBtn,
-.toggleBtn + .toggleBtnActive,
-.toggleBtnActive + .toggleBtn,
-.toggleBtnActive + .toggleBtnActive {
-    border-left: 1px solid var(--border-dim);
+.tabBtnActive {
+    composes: tabBtn;
+    color: var(--text-primary);
+    border-bottom-color: var(--accent-color);
 }
 
 /* Status badges*/
@@ -106,28 +107,6 @@
     color: var(--error-color, #f44336);
 }
 
-/* Version commit form */
-
-.saveVersionForm {
-    padding: 8px 0;
-    flex-wrap: wrap;
-}
-
-.saveVersionInput {
-    flex: 1;
-    min-width: 200px;
-    padding: 6px 8px;
-    border: 1px solid var(--border-dim);
-    border-radius: 4px;
-    background: var(--bg-secondary);
-    color: inherit;
-    font-size: 0.85rem;
-}
-
-.saveVersionInput:focus {
-    outline: none;
-    border-color: var(--accent-color);
-}
 
 /* Category banner & navigation pills */
 
@@ -420,12 +399,3 @@
     font-weight: 600;
 }
 
-.schemaPre {
-    margin: 0;
-    font-size: 12px;
-}
-
-.schemaContainer {
-    max-height: 400px;
-    padding: 16px;
-}

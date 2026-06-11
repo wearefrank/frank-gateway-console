@@ -67,8 +67,8 @@ export class YamlCompletionProvider {
                 if (!categorySchema) return { suggestions: [] };
 
                 const text = model.getValue();
-                const path = getSchemaPathAtCursor(text, line);
-                const existingKeys = getSiblingKeysAtCursor(text, line);
+                const path = getSchemaPathAtCursor(text, line, position.column);
+                const existingKeys = getSiblingKeysAtCursor(text, line, position.column);
 
                 const word = model.getWordUntilPosition(position);
                 const range = {
@@ -134,8 +134,9 @@ export class YamlCompletionProvider {
                 const lineText = model.getLineContent(line);
                 const textUpToCursor = lineText.substring(0, position.column - 1);
                 const isValuePosition = textUpToCursor.includes(': ');
-                const keyMatch = lineText.match(/^\s*(?:-\s+)?([^:]+):\s*/);
-                const currentLineKey = keyMatch ? keyMatch[1].trim() : null;
+                // Find the last `key: ` immediately before the cursor - handles both block and flow objects
+                const lastKeyMatch = textUpToCursor.match(/(?:^|[{,\s])([a-zA-Z_][a-zA-Z0-9_-]*):\s*$/);
+                const currentLineKey = lastKeyMatch ? lastKeyMatch[1] : null;
 
                 // Determines the insert range for a string value, extending leftward to cover
                 // any already-typed leading quote so we don't end up with double quotes.

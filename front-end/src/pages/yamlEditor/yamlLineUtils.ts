@@ -8,9 +8,13 @@ function findCommentStart(line: string): number {
     let inDouble = false;
     for (let i = 0; i < line.length; i++) {
         const c = line[i];
-        if (c === "'" && !inDouble) inSingle = !inSingle;
-        else if (c === '"' && !inSingle) inDouble = !inDouble;
-        else if (c === '#' && !inSingle && !inDouble) return i;
+        if (c === "'" && !inDouble) {
+            inSingle = !inSingle;
+        } else if (c === '"' && !inSingle) {
+            inDouble = !inDouble;
+        } else if (c === '#' && !inSingle && !inDouble) {
+            return i;
+        }
     }
     return -1;
 }
@@ -67,6 +71,33 @@ function findYamlKey(line: string, commentIdx: number): { start: number; end: nu
     }
 
     return null;
+}
+
+// Returns the position of the outermost unmatched `{` before col (0-indexed) in line,
+// or -1 if the cursor is not inside a flow object.
+function findFlowOpenBrace(line: string, col: number): number {
+    let depth = 0;
+    let openBracePos = -1;
+    for (let i = 0; i < col; i++) {
+        if (line[i] === '{') {
+            if (depth === 0) openBracePos = i;
+            depth++;
+        } else if (line[i] === '}') {
+            depth--;
+            if (depth === 0) openBracePos = -1;
+        }
+    }
+    return depth > 0 ? openBracePos : -1;
+}
+
+// If col (0-indexed) is inside a flow mapping {...}, returns the YAML key that owns the {.
+// Otherwise returns null.
+function getFlowParentKey(line: string, col: number): string | null {
+    const openBracePos = findFlowOpenBrace(line, col);
+    if (openBracePos === -1) return null;
+    const beforeBrace = line.substring(0, openBracePos).trimEnd();
+    if (!beforeBrace.endsWith(':')) return null;
+    return beforeBrace.slice(0, -1).trimEnd().replace(/^\s*(?:-\s+)?/, '') || null;
 }
 
 // Returns the end index (exclusive) of a ${{...}} placeholder starting at pos, or -1 if unclosed.
@@ -187,10 +218,29 @@ export function getLineHeight(el: HTMLElement): number {
  * returns all keys that already exist at the same indentation level as the cursor
  * within the same parent object. Used to filter duplicate suggestions.
  */
-export function getSiblingKeysAtCursor(text: string, line: number): Set<string> {
+export function getSiblingKeysAtCursor(text: string, line: number, column?: number): Set<string> {
     const lines = text.split('\n');
     const lineIdx = line - 1;
     if (lineIdx < 0 || lineIdx >= lines.length) return new Set();
+
+    // Inside a single-line flow object, siblings are the keys already present in {...} before the cursor
+    if (column !== undefined) {
+        const col = column - 1; // Monaco is 1-indexed
+        const cursorLine = lines[lineIdx];
+        const openBracePos = findFlowOpenBrace(cursorLine, col);
+        if (openBracePos !== -1) {
+            const content = cursorLine.substring(openBracePos + 1, col);
+            const flowKeys = new Set<string>();
+            for (const part of content.split(',')) {
+                const c = part.indexOf(':');
+                if (c > 0) {
+                    const k = part.substring(0, c).trim();
+                    if (k) flowKeys.add(k);
+                }
+            }
+            return flowKeys;
+        }
+    }
 
     const getIndent = (s: string) => {
         let i = 0;
@@ -259,7 +309,7 @@ export function getSiblingKeysAtCursor(text: string, line: number): Set<string> 
  * E.g. if cursor is inside `timeout:` in an upstream entry, returns ["timeout"].
  * Stops at array item markers (-) which mark the entry root.
  */
-export function getSchemaPathAtCursor(text: string, line: number): string[] {
+export function getSchemaPathAtCursor(text: string, line: number, column?: number): string[] {
     const lines = text.split('\n');
     const lineIdx = line - 1;
     if (lineIdx < 0 || lineIdx >= lines.length) return [];
@@ -293,6 +343,13 @@ export function getSchemaPathAtCursor(text: string, line: number): string[] {
                 currentIndent = indent;
             }
         }
+    }
+
+    // If the cursor is inside an inline flow object on the same line (e.g. `timeout: {connect: |}`),
+    // append the flow parent key so completions reflect the correct schema nesting.
+    if (column !== undefined) {
+        const flowKey = getFlowParentKey(lines[lineIdx], column - 1);
+        if (flowKey) path.push(flowKey);
     }
 
     return path;
