@@ -55,13 +55,13 @@ class MetricsControllerTest {
 
     @Test
     void prometheusRangeQuery_passesQueryParam() throws Exception {
-        when(metricsService.prometheusRangeQuery("up")).thenReturn("range-result");
+        when(metricsService.prometheusRangeQuery("up", null, null)).thenReturn("range-result");
 
         mockMvc.perform(get("/api/metrics/prom-range").param("query", "up"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("range-result"));
 
-        verify(metricsService).prometheusRangeQuery("up");
+        verify(metricsService).prometheusRangeQuery("up", null, null);
     }
 
     @Test

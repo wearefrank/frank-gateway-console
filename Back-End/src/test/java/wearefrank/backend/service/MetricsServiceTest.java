@@ -121,7 +121,7 @@ class MetricsServiceTest {
         when(prometheusClient.rangeQuery(anyString(), anyLong(), anyLong(), anyString()))
                 .thenReturn("range-result");
 
-        String result = metricsService.prometheusRangeQuery("up");
+        String result = metricsService.prometheusRangeQuery("up", null, null);
 
         assertThat(result).isEqualTo("range-result");
         verify(prometheusClient).rangeQuery(eq("up"), anyLong(), anyLong(), eq("60"));
