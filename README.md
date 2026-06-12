@@ -1,106 +1,55 @@
-# FederatedGateWay - Setup Guide
+# FederatedGateWay
 
-## Prerequisites
+A management UI for [Frank!Gateway](https://github.com/wearefrank/frank-gateway), an Apache APISIX-based API gateway built by WeareFrank. FederatedGateWay lets you configure and monitor the gateway through a browser instead of editing YAML files by hand.
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- Git
+## What it does
 
----
+- Design and manage routes, upstreams, consumers and services via a form-based UI
+- Validate APISIX config files against the live schema
+- Configure APISIX connection settings
+- Monitor HTTP traffic and metrics via Prometheus
 
-## Running with Docker (recommended)
+## Running with Docker
 
-Clone the repository and start all services with a single command:
+FederatedGateWay is distributed as part of the Frank!Gateway Docker Compose setup. No code needs to be cloned.
 
 ```bash
-git clone https://github.com/tijmensosef/FederatedGateWay.git
-cd FederatedGateWay
-docker compose up
+curl -O https://raw.githubusercontent.com/wearefrank/frank-gateway/master/docker-compose.yaml
+docker compose --profile ui up
 ```
 
-Docker pulls the pre-built images from GitHub Container Registry automatically - no local build tools needed.
+This starts:
 
 | Service | URL | Description |
 |---|---|---|
-| **Management UI** | http://localhost:3000 | FederatedGateWay frontend |
-| **APISIX HTTP proxy** | http://localhost:9080 | Send requests through APISIX here |
-| **APISIX HTTPS proxy** | https://localhost:9443 | |
-| **APISIX Control API** | http://localhost:9092 | `/v1/routes`, `/v1/schema`, etc. |
-| **APISIX Metrics** | http://localhost:9091 | Prometheus scrape endpoint |
-| **Prometheus** | http://localhost:9090 | Metrics UI |
+| Management UI | http://localhost:3000 | This app (frontend) |
+| Management API | http://localhost:8080 | This app (backend) |
+| APISIX | http://localhost:9080 | The API gateway - send your requests here |
+| APISIX Control API | http://localhost:9092 | Used internally to fetch schema and live routes |
+| Prometheus | http://localhost:9090 | Metrics collection and querying |
 
----
+> **Note:** Upstream nodes must use `host.docker.internal` instead of `127.0.0.1` when targeting services running on your host machine from within Docker.
 
-## APISIX configuration
+## Local development
 
-Routes, upstreams, services, and consumers are defined in **`config/apisix.yaml`**. Edit this file to change what APISIX serves - changes take effect after restarting the `apisix` container:
-
-```bash
-docker compose restart apisix
-```
-
-> **Note:** Upstream nodes must use `host.docker.internal` (not `127.0.0.1`) when targeting services running on your host machine.
-
-The three example routes that ship with this repo:
-
-| Route | URI | Notes |
-|---|---|---|
-| `test-test-test-route` | `GET /hello` | Returns `hello`, rate-limited to 2 req/60 s |
-| `host-test-test-route` | `GET /world` | Returns `hello world` via httpbin upstream |
-| `veiligheidenvergunningen-test-test-route` | `GET /secure-test` | Requires `apikey: auth-one` header (consumer: jacks) |
-
----
-
-## Backend connection settings
-
-The backend stores its APISIX connection settings in a file persisted in the `backend_data` Docker volume. The default Docker values (set via environment variables in `docker-compose.yaml`) are:
-
-```yaml
-host: "http://apisix"
-controlPort: 9092
-metricsPort: 9091
-```
-
-These can also be changed at runtime via the **Config** page in the UI at http://localhost:3000/config. Changes persist across restarts via the Docker volume.
-
----
-
-## TLS / certificates
-
-The `frank-gateway/.env` file contains the TLS certificates and keys used by APISIX. This file is required - without it the `apisix` container will not start. The file is already present in the repository.
-
----
-
-## Rebuilding images locally
-
-If you have made code changes and want to test them before pushing, a `docker-compose.override.yml` is included that adds build contexts. Docker Compose merges it automatically:
+You need a running Frank!Gateway instance. The easiest way is to clone it and start it with Docker:
 
 ```bash
-docker compose up --build
+git clone https://github.com/wearefrank/frank-gateway
+cd frank-gateway
+docker compose up
 ```
 
-This builds both the backend and frontend images locally using the Dockerfiles in `Back-End/` and `front-end/`.
+Then run the backend and frontend in your editor:
 
-End-users who only want to run (not develop) can ignore the override file - `docker compose up` will pull the pre-built images from GHCR.
-
----
-
-## Local development (without Docker)
-
-### Prerequisites
-
-- Java 21+, Maven
-- Node.js 22+
-
-### Backend
-
+**Backend** (requires Java 21+, Maven):
 ```bash
 cd Back-End
 ./mvnw spring-boot:run
 # Starts on http://localhost:8080
 ```
 
-### Frontend
-
+**Frontend** (requires Node.js 22+):
 ```bash
 cd front-end
 npm install
@@ -108,12 +57,14 @@ npm run dev
 # Starts on http://localhost:5173
 ```
 
-The frontend dev server proxies `/api` requests to `http://localhost:8080` via the Vite proxy configured in `vite.config.ts`.
+Open http://localhost:5173/config and point the backend at `http://127.0.0.1` (control port `9092`, metrics port `9091`).
 
-Run APISIX locally using the frank-gateway compose file:
+## TLS and FSC/NLX support
 
-```bash
-docker compose up apisix prometheus httpbin
-```
+By default the gateway runs over plain HTTP. If you need encrypted traffic or the FSC/NLX plugin (for connecting to the Dutch government NLX network), the gateway needs TLS certificates configured via a `.env` file:
 
-Then configure the backend via http://localhost:5173/config to point to `http://127.0.0.1` (the default).
+- **Server certificate and key** - required for the gateway to accept HTTPS connections from clients
+- **Client certificate chain** - required for mutual TLS, used by the FSC/NLX plugin to authenticate the gateway to other NLX parties
+- **Self-signed CA** - used to trust certificates from internal or custom upstream services
+
+See `.env.example` in the Frank!Gateway repository for the exact variables and format.
