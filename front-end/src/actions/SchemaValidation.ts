@@ -446,10 +446,16 @@ export class SchemaValidator {
         const parts = instancePath.split('/').filter(p => p !== '');
         let current: unknown = data;
         for (const part of parts) {
-            if (current === null || current === undefined) return undefined;
+            if (current === null || current === undefined) {
+                return undefined;
+            }
+
             if (Array.isArray(current)) {
                 const index = parseInt(part, 10);
-                if (isNaN(index)) return undefined;
+                if (isNaN(index)) {
+                    return undefined;
+                }
+
                 current = current[index];
             } else if (typeof current === 'object') {
                 current = (current as Record<string, unknown>)[part];
@@ -459,6 +465,7 @@ export class SchemaValidator {
         }
         return current;
     }
+
 
     private filterTemplateErrors(errors: ErrorObject[], data: unknown): ErrorObject[] {
         return errors.filter(err => {

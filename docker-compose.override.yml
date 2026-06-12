@@ -1,9 +1,0 @@
-# Developer override - auto-merged by Docker Compose when present.
-# Builds backend and frontend from local source instead of pulling pre-built images.
-# End-users who only have docker-compose.yaml will pull from GHCR and do not need this file.
-services:
-  backend:
-    build: ./Back-End
-
-  frontend:
-    build: ./front-end
