@@ -11,6 +11,9 @@ services:
       - "9091:9091"   # Prometheus metrics
       - "9092:9092"   # Control API (/v1/schema)
       - "9443:9443"   # HTTPS proxy
+    env_file:
+      - path: ./.env
+        required: false
 
   prometheus:
     image: prom/prometheus:latest
@@ -27,9 +30,13 @@ services:
     ports:
       - "80:80"
 
+  # FederatedGateWay management UI - start with: docker compose --profile ui up
   backend:
     image: ghcr.io/tijmensosef/federated-gateway-backend:latest
     restart: always
+    profiles: [ui]
+    ports:
+      - "8080:8080"
     environment:
       - PROMETHEUS_URL=http://prometheus:9090
       - APISIX_HOST=http://apisix
@@ -41,6 +48,7 @@ services:
   frontend:
     image: ghcr.io/tijmensosef/federated-gateway-frontend:latest
     restart: always
+    profiles: [ui]
     ports:
       - "3000:80"
     depends_on:

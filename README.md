@@ -9,62 +9,78 @@ A management UI for [Frank!Gateway](https://github.com/wearefrank/frank-gateway)
 - Configure APISIX connection settings
 - Monitor HTTP traffic and metrics via Prometheus
 
+---
+
+## Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+---
+
 ## Running with Docker
 
-FederatedGateWay is distributed as part of the Frank!Gateway Docker Compose setup. No code needs to be cloned.
-
+**1. Clone the repository:**
 ```bash
-curl -O https://raw.githubusercontent.com/wearefrank/frank-gateway/master/docker-compose.yaml
+git clone https://github.com/TijmenSosef/FederatedGateWay.git
+cd FederatedGateWay
+```
+
+**2. Start the gateway only:**
+```bash
+docker compose up
+```
+
+**Or start with the management UI:**
+```bash
 docker compose --profile ui up
 ```
 
-This starts:
-
 | Service | URL | Description |
 |---|---|---|
-| Management UI | http://localhost:3000 | This app (frontend) |
-| Management API | http://localhost:8080 | This app (backend) |
-| APISIX | http://localhost:9080 | The API gateway - send your requests here |
-| APISIX Control API | http://localhost:9092 | Used internally to fetch schema and live routes |
-| Prometheus | http://localhost:9090 | Metrics collection and querying |
+| **Management UI** | http://localhost:3000 | FederatedGateWay frontend |
+| **Management API** | http://localhost:8080 | FederatedGateWay backend |
+| **APISIX** | http://localhost:9080 | The API gateway - send your requests here |
+| **APISIX Control API** | http://localhost:9092 | Used internally to fetch schema and live routes |
+| **Prometheus** | http://localhost:9090 | Metrics collection and querying |
 
-> **Note:** Upstream nodes must use `host.docker.internal` instead of `127.0.0.1` when targeting services running on your host machine from within Docker.
+> **Note:** When routing traffic to services on your host machine, use `host.docker.internal` instead of `127.0.0.1` in your upstream nodes.
+
+---
 
 ## Local development
 
-You need a running Frank!Gateway instance. The easiest way is to clone it and start it with Docker:
+**Prerequisites:** Java 21+, Maven, Node.js 22+
 
+**1. Start the gateway:**
 ```bash
 git clone https://github.com/wearefrank/frank-gateway
 cd frank-gateway
 docker compose up
 ```
 
-Then run the backend and frontend in your editor:
-
-**Backend** (requires Java 21+, Maven):
+**2. Start the backend:**
 ```bash
 cd Back-End
 ./mvnw spring-boot:run
-# Starts on http://localhost:8080
+# Runs on http://localhost:8080
 ```
 
-**Frontend** (requires Node.js 22+):
+**3. Start the frontend:**
 ```bash
 cd front-end
 npm install
 npm run dev
-# Starts on http://localhost:5173
+# Runs on http://localhost:5173
 ```
 
-Open http://localhost:5173/config and point the backend at `http://127.0.0.1` (control port `9092`, metrics port `9091`).
+**4.** Open http://localhost:5173/config and set the host to `http://127.0.0.1`, control port `9092`, metrics port `9091`.
+
+---
 
 ## TLS and FSC/NLX support
 
-By default the gateway runs over plain HTTP. If you need encrypted traffic or the FSC/NLX plugin (for connecting to the Dutch government NLX network), the gateway needs TLS certificates configured via a `.env` file:
+By default the gateway runs over plain HTTP. To enable HTTPS or the FSC/NLX plugin (for connecting to the Dutch government NLX network), create a `.env` file next to the compose file. See `.env.example` in the [Frank!Gateway repository](https://github.com/wearefrank/frank-gateway) for the variables and format.
 
 - **Server certificate and key** - required for the gateway to accept HTTPS connections from clients
 - **Client certificate chain** - required for mutual TLS, used by the FSC/NLX plugin to authenticate the gateway to other NLX parties
 - **Self-signed CA** - used to trust certificates from internal or custom upstream services
-
-See `.env.example` in the Frank!Gateway repository for the exact variables and format.
