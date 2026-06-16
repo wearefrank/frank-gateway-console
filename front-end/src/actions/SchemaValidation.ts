@@ -106,6 +106,7 @@ export class SchemaValidator {
         const validate = this.compiledRootValidator;
 
         const payloadToValidate = structuredClone(this.config);
+        this.applyConfigDefaults(payloadToValidate, definitions, properties);
 
         if (validate(payloadToValidate)) {
             return { valid: true, errorCollections: [...this.pluginErrorBatch], warningErrors: [], warnings: [...this.pluginWarningBatch] };
@@ -137,7 +138,6 @@ export class SchemaValidator {
     }
 
     public addPluginDetection() {
-
         const validatePlugins: PluginValidator = (
             _schema: JsonSchema,
             data: unknown,
@@ -213,6 +213,7 @@ export class SchemaValidator {
             });
 
             const payload = structuredClone(data);
+            this.applySchemaDefaults(categorySchema, payload);
             const collections: AjvErrorCollection[] = [];
             if (!validate(payload) && validate.errors) {
                 const filteredErrors = this.filterTemplateErrors([...validate.errors], payload);
@@ -221,7 +222,9 @@ export class SchemaValidator {
                 }
             }
             return [...collections, ...this.pluginErrorBatch];
-        } catch {
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(`validateCategory: failed to compile schema for '${categoryName}': ${message}`);
             return [];
         }
     }
@@ -323,6 +326,31 @@ export class SchemaValidator {
 
             if (this.isJsonSchema(schema[key])) {
                 this.fixSchemaTypes(schema[key] as JsonSchema);
+            }
+        }
+    }
+
+    private applyConfigDefaults(payload: Record<string, unknown>, definitions: JsonSchema, properties: JsonSchema) {
+        if (!this.fillInDefaults) return;
+
+        for (const [key, propSchema] of Object.entries(properties)) {
+            if (!this.isJsonSchema(propSchema)) continue;
+
+            const items = propSchema.items;
+            if (!this.isJsonSchema(items)) continue;
+
+            const ref = items.$ref;
+            if (typeof ref !== 'string') continue;
+
+            const defName = ref.split('/').pop();
+            if (!defName || !this.isJsonSchema(definitions[defName])) continue;
+
+            const defSchema = definitions[defName] as JsonSchema;
+            const arr = payload[key];
+            if (!Array.isArray(arr)) continue;
+
+            for (const item of arr) {
+                this.applySchemaDefaults(defSchema, item);
             }
         }
     }
@@ -438,6 +466,7 @@ export class SchemaValidator {
     }
 
     private isTemplatePlaceholder(val: unknown): boolean {
+        // checks if the string contains ${{}} as these are placeholders
         return typeof val === 'string' && /^\$\{\{[^}]+}}$/.test(val);
     }
 

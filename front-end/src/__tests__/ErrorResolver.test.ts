@@ -464,22 +464,20 @@ describe('ErrorResolver — anyOf keyword', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Block 8 — array data oneOf: skipped due to dead-code guard
-// The first check `if (!Array.isArray(schema) || !this.isObject(data)) continue`
-// fires for array data, making the array-handling branch (line 93) unreachable.
+// Block 8 — array data oneOf: leaf errors surface via the array-handling branch
 // ---------------------------------------------------------------------------
 
-describe('ErrorResolver — oneOf with array data (dead-code guard)', () => {
+describe('ErrorResolver — oneOf with array data', () => {
     const resolver = new ErrorResolver();
 
-    it('produces [] when oneOf error data is an array (guard fires, error is skipped)', () => {
+    it('surfaces leaf errors when oneOf error data is an array', () => {
         const err = makeError(
             'oneOf', '/nodes',
             {},
             '#/oneOf',
             {
                 schema: [{ type: 'array' }, { type: 'object' }],
-                data: [{ weight: 1 }],   // array → !isObject(data) → continue
+                data: [{ weight: 1 }],
             }
         );
         const leaf = makeError(
@@ -488,8 +486,7 @@ describe('ErrorResolver — oneOf with array data (dead-code guard)', () => {
             '#/oneOf/0/items/required'
         );
         const result = resolver.resolve([makeCollection([err, leaf])]);
-        // The oneOf error is skipped; the leaf is classified as ifThenLeaf
-        // but resolveBranchErrors has no matching if-wrapper, so nothing surfaces.
-        expect(result).toEqual([]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain("missing required property 'host'");
     });
 });

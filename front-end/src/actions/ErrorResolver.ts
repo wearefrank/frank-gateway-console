@@ -80,14 +80,13 @@ class ErrorResolver {
 
     private resolveOneOfErrors(errors: ErrorObject[], leaves: ErrorObject[], entry: AjvErrorCollection): ResolvedError[] {
         const resolvedErrors: ResolvedError[] = [];
-        console.log(errors)
+
         for (const error of errors) {
             const schema = error.schema;
             const data = error.data;
 
-            if (!Array.isArray(schema) || !this.isObject(data)) continue;
+            if (!Array.isArray(schema) || (!this.isObject(data) && !Array.isArray(data))) continue;
 
-            // when the data is not a plain object (e.g. it's an array like nodes)
             // the generic "score by matching keys" logic below won't work as arrays don't have keys
             // instead we look at which anyOf branch expects this data type and show its specific errors
             if (!this.isObject(data)) {

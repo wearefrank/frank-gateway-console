@@ -2,9 +2,11 @@ services:
   apisix:
     image: ghcr.io/wearefrank/frank-gateway:master
     restart: always
-    volumes:
-      - ./config/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
-      - ./config/apisix-config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    configs:
+      - source: apisix_routes
+        target: /usr/local/apisix/conf/apisix.yaml
+      - source: apisix_config
+        target: /usr/local/apisix/conf/config.yaml
     ports:
       - "9180:9180"   # Admin API
       - "9080:9080"   # HTTP proxy
@@ -55,6 +57,137 @@ services:
       - backend
 
 configs:
+  apisix_routes:
+    content: |
+      routes: []
+      #END
+  apisix_config:
+    content: |
+      apisix:
+        enable_control: true
+        control:
+          ip: "0.0.0.0"
+          port: 9092
+        enable_admin: false
+        extra_lua_path: "/usr/local/apisix/custom-plugins/?.lua"
+        extra_lua_cpath: "/usr/local/apisix/custom-plugin-libs/?.so"
+
+      nginx_config:
+        http:
+          custom_lua_shared_dict:
+            fsc-registration: 1m
+            openid-connect-client-cache: 1m
+            generic-oauth-client-cache: 1m
+            jwt-client-cache: 1m
+
+      plugins:
+        - real-ip
+        - ai
+        - client-control
+        - proxy-control
+        - request-id
+        - zipkin
+        - ext-plugin-pre-req
+        - fault-injection
+        - mocking
+        - serverless-pre-function
+        - cors
+        - ip-restriction
+        - ua-restriction
+        - referer-restriction
+        - csrf
+        - uri-blocker
+        - request-validation
+        - chaitin-waf
+        - multi-auth
+        - openid-connect
+        - cas-auth
+        - authz-casbin
+        - authz-casdoor
+        - wolf-rbac
+        - ldap-auth
+        - hmac-auth
+        - basic-auth
+        - jwt-auth
+        - jwe-decrypt
+        - key-auth
+        - consumer-restriction
+        - forward-auth
+        - opa
+        - authz-keycloak
+        - proxy-cache
+        - body-transformer
+        - proxy-mirror
+        - proxy-rewrite
+        - workflow
+        - api-breaker
+        - limit-conn
+        - limit-count
+        - limit-req
+        - gzip
+        - server-info
+        - traffic-split
+        - redirect
+        - response-rewrite
+        - degraphql
+        - kafka-proxy
+        - grpc-transcode
+        - grpc-web
+        - public-api
+        - prometheus
+        - datadog
+        - loki-logger
+        - elasticsearch-logger
+        - echo
+        - loggly
+        - http-logger
+        - splunk-hec-logging
+        - skywalking-logger
+        - google-cloud-logging
+        - sls-logger
+        - tcp-logger
+        - kafka-logger
+        - rocketmq-logger
+        - syslog
+        - udp-logger
+        - file-logger
+        - clickhouse-logger
+        - tencent-cloud-cls
+        - inspect
+        - example-plugin
+        - cert-auth
+        - frank-sender
+        - generic-oauth-client
+        - jwt-client
+        - limit-size
+        - soap-action-router
+        - openid-connect-client
+        - fsc
+        - aws-lambda
+        - azure-functions
+        - openwhisk
+        - openfunction
+        - serverless-post-function
+        - ext-plugin-post-req
+        - ext-plugin-post-resp
+
+      plugin_attr:
+        prometheus:
+          enable_export_server: true
+          export_addr:
+            ip: 0.0.0.0
+            port: 9091
+          metrics:
+            http_status:
+              extra_labels:
+                - upstream_addr: $upstream_addr
+                - status: $upstream_status
+                - soap_action: $soap_action
+
+      deployment:
+        role: data_plane
+        role_data_plane:
+          config_provider: yaml
   prometheus_config:
     content: |
       global:
