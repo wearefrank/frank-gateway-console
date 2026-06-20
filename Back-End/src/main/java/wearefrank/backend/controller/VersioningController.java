@@ -20,9 +20,6 @@ public class VersioningController {
         this.versioningService = versioningService;
     }
 
-    // Git settings are passed as request headers on every call rather than stored server-side,
-    // so the browser can persist them locally without the backend ever holding someone's token.
-
     @GetMapping
     public List<ConfigVersionDto.Summary> listVersions(HttpServletRequest req) {
         return versioningService.listVersions(provider(req), githubConfig(req), gitlabConfig(req), giteaConfig(req));

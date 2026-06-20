@@ -291,10 +291,11 @@ export class SchemaValidator {
             return null;
         }
 
-        // consumers and consumer_groups require the consumer_schema variant when one exists
-        // because the allowed plugin config differs from the route context
+
         let schema: JsonSchema | undefined;
 
+        // consumers and consumer_groups require the consumer_schema variant when one exists
+        // because the allowed plugin config differs from the route context
         const isConsumerContext = resourceType === 'consumers' || resourceType === 'consumer_groups';
         if (isConsumerContext && pluginDef.consumer_schema) {
             schema = pluginDef.consumer_schema;
