@@ -1,6 +1,6 @@
 package wearefrank.backend.service.versioning;
 
-public sealed interface GitProviderConfig permits GitHubConfig, GitLabConfig, GiteaConfig {
+public interface GitProviderConfig {
     String token();
     String branch();
     String filePath();
