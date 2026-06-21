@@ -22,28 +22,39 @@ public class VersioningController {
 
     @GetMapping
     public List<ConfigVersionDto.Summary> listVersions(HttpServletRequest req) {
-        return versioningService.listVersions(provider(req), githubConfig(req), gitlabConfig(req), giteaConfig(req));
+        return versioningService.listVersions(activeConfig(req));
     }
 
     @GetMapping("/{id}")
     public ConfigVersionDto getVersion(@PathVariable String id, HttpServletRequest req) {
-        return versioningService.getVersion(id, provider(req), githubConfig(req), gitlabConfig(req), giteaConfig(req));
+        return versioningService.getVersion(id, activeConfig(req));
     }
 
     @PostMapping
     public ConfigVersionDto.Summary saveVersion(@RequestBody ConfigVersionDto.SaveRequest request, HttpServletRequest req) {
-        return versioningService.saveVersion(request.message(), request.content(), provider(req), githubConfig(req), gitlabConfig(req), giteaConfig(req));
+        return versioningService.saveVersion(request.message(), request.content(), activeConfig(req));
     }
 
     // returns plain text so the frontend can load the file content directly into the editor
     @GetMapping(value = "/file", produces = MediaType.TEXT_PLAIN_VALUE)
     public String readCurrentFile(HttpServletRequest req) {
-        return versioningService.readCurrentFile(provider(req), githubConfig(req), gitlabConfig(req), giteaConfig(req));
+        return versioningService.readCurrentFile(activeConfig(req));
     }
 
     @GetMapping("/exists")
     public boolean fileExists(HttpServletRequest req) {
-        return versioningService.fileExists(provider(req), githubConfig(req), gitlabConfig(req), giteaConfig(req));
+        return versioningService.fileExists(activeConfig(req));
+    }
+
+    private GitProviderConfig activeConfig(HttpServletRequest req) {
+        switch (provider(req).toLowerCase()) {
+            case "gitlab":
+                return gitlabConfig(req);
+            case "gitea":
+                return giteaConfig(req);
+            default:
+                return githubConfig(req);
+        }
     }
 
     private String provider(HttpServletRequest req) {
