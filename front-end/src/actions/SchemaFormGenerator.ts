@@ -9,8 +9,8 @@ interface FieldBase {
     defaultValue?: unknown;
 }
 
-// each field type carries only the extra data that its renderer actually needs —
-// e.g. a select needs options, a number needs min/max, a map doesn't need either
+// each field type carries only the extra data that its renderer actually needs
+// e.g. a select needs options: a number needs min/max, a map doesn't need either
 export interface TextField extends FieldBase { type: 'text'; pattern?: string }
 export interface NumberField extends FieldBase { type: 'number'; minimum?: number; maximum?: number }
 export interface CheckboxField extends FieldBase { type: 'checkbox' }

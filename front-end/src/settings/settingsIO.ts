@@ -4,9 +4,9 @@ export function exportSettings(settings: AppSettings): string {
     const now = new Date();
     const exportedAt = now.toISOString();
     const datePart = exportedAt.slice(0, 10);
-    const labelPart = settings.meta.label.trim()
-        ? '-' + settings.meta.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-        : '';
+    // format the label for the filename (e.g. "file name" -> "-file-name")
+    const formatedFileName = settings.meta.label.toLowerCase().match(/[a-z0-9]+/g)?.join('-');
+    const labelPart = formatedFileName ? `-${formatedFileName}` : '';
     const exportable = { ...settings, meta: { ...settings.meta, exportedAt } };
     const blob = new Blob([JSON.stringify(exportable, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

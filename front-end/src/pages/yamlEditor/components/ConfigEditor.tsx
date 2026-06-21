@@ -110,23 +110,23 @@ function buildReferenceAnnotations(parsedDoc: ParsedDoc, config: ApisixConfig) {
         for (const [i, entry] of (rawEntries as Record<string, unknown>[]).entries()) {
             if (!entry || typeof entry !== 'object') continue;
 
-            // Check every field that could be a reference (like 'upstream_id')
+            // check every field that could be a reference (like 'upstream_id')
             for (const ref of def.referenceFields) {
                 const val = (entry as Record<string, unknown>)[ref.field];
                 if (typeof val !== 'string' && typeof val !== 'number') continue;
 
-                // Find the list of items we are supposed to be pointing to
+                // find the list of items we are supposed to be pointing to
                 const rawTargetEntries = (config as Record<string, unknown>)[ref.targetCategory + 's'];
                 if (!Array.isArray(rawTargetEntries)) continue;
                 const targetDef = CATEGORY_DEFINITIONS[ref.targetCategory];
                 if (!targetDef) continue;
 
-                // Try to find the specific target item that matches our ID
+                // try to find the specific target item that matches our ID
                 const targetEntries = rawTargetEntries as Record<string, unknown>[];
                 const targetIdx = targetEntries.findIndex(
                     e => e && typeof e === 'object' && (e as Record<string, unknown>)[targetDef.idField] === val,
                 );
-                // If we can't find what it's pointing to, we can't show a hint
+                // if we can't find what it's pointing to, we can't show a hint
                 if (targetIdx === -1) continue;
 
                 // Find where this ID is located in the actual YAML text
@@ -150,8 +150,8 @@ function buildReferenceAnnotations(parsedDoc: ParsedDoc, config: ApisixConfig) {
     return { referenceHintMap: hintMap, referenceTargetMap: targetMap, referenceValueRanges: valueRanges };
 }
 
-// Builds a map from line number to { category, idValue } for every entry's id/username field.
-// Used by the hover provider to show "used by" info when hovering over an ID value in the editor.
+// builds a map from line number to { category, idValue } for every entry id and username field
+// used by the hover provider to show "used by" info when hovering over an ID value in the editor
 function buildIdLineMap(parsedDoc: ParsedDoc, config: ApisixConfig) {
     const idLineMap = new Map<number, { category: string; idValue: string | number }>();
     const { doc, lineCounter } = parsedDoc;
@@ -264,7 +264,7 @@ export const ConfigEditor = ({
         return buildIdLineMap(parsedDoc, config);
     }, [parsedDoc, config]);
 
-    // Keep refs current for Monaco event callbacks
+    // Keep refs current for Monaco event callbacks (these give errors of not set)
 
     useEffect(() => { onLineClickRef.current = onLineClick; }, [onLineClick]);
     useEffect(() => { onReferenceNavigateRef.current = onReferenceNavigate; }, [onReferenceNavigate]);
@@ -295,12 +295,14 @@ export const ConfigEditor = ({
     }, [showWhitespace]);
 
     useEffect(() => {
-        if (!scrollToTarget || !editorRef.current || !parsedDoc) return;
-        const node = resolvePathToNode(parsedDoc.doc, scrollToTarget.path);
+        if (!scrollToTarget || !editorRef.current) return;
+        const doc = parsedDocRef.current;
+        if (!doc) return;
+        const node = resolvePathToNode(doc.doc, scrollToTarget.path);
         if (!node?.range) return;
-        const line = parsedDoc.lineCounter.linePos(node.range[0]).line;
+        const line = doc.lineCounter.linePos(node.range[0]).line;
         editorRef.current.revealLineInCenter(line);
-    }, [scrollToTarget, parsedDoc]);
+    }, [scrollToTarget]);
 
     // Decoration and provider hooks
 

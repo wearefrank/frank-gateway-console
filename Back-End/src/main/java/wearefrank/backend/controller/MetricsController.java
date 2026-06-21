@@ -4,6 +4,8 @@ import org.springframework.web.bind.annotation.*;
 import wearefrank.backend.dto.MetricsDto;
 import wearefrank.backend.service.MetricsService;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/metrics")
 @CrossOrigin(origins = "http://localhost:5173")
@@ -44,12 +46,12 @@ public class MetricsController {
     }
 
     @GetMapping("/routes")
-    public Object getLiveRoutes() {
+    public List<Object> getLiveRoutes() {
         return metricsService.getLiveRoutes();
     }
 
     @GetMapping("/upstreams")
-    public Object getLiveUpstreams() {
+    public List<Object> getLiveUpstreams() {
         return metricsService.getLiveUpstreams();
     }
 }

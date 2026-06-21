@@ -118,6 +118,7 @@ export function getDisplayId(category: string, entry: Record<string, unknown>, i
     for (const field of (def?.fallbackFields ?? [])) {
         const val = entry[field];
         if (val === undefined || val === null) continue;
+
         const str = Array.isArray(val) ? String(val[0]) : String(val);
         if (str.trim() !== '') return str;
     }

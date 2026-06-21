@@ -6,14 +6,13 @@ import styles from '../YamlEditor.module.css';
 
 interface ValidationLogsProps {
     logs: ValidationLog[];
-    onClear: () => void;
     config?: ApisixConfig | null;
     onLogClick?: (log: ValidationLog) => void;
     highlightedLog?: ValidationLog | null;
     headerExtra?: React.ReactNode;
 }
 
-export const ValidationLogs = ({ logs, onClear, config, onLogClick, highlightedLog, headerExtra }: ValidationLogsProps) => {
+export const ValidationLogs = ({ logs, config, onLogClick, highlightedLog, headerExtra }: ValidationLogsProps) => {
     const [hideInfo, setHideInfo] = useState(true);
     const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -50,7 +49,6 @@ export const ValidationLogs = ({ logs, onClear, config, onLogClick, highlightedL
                         />
                         Hide Info
                     </label>
-                    <button className={`text-small ${styles.btnIcon}`} onClick={onClear}>Clear</button>
                 </div>
             </div>
             <div className={`flex flex-column gap-sm scroll-y ${styles.logContainer}`}>

@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import wearefrank.backend.dto.MetricsDto;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -26,17 +27,27 @@ public class MetricsService {
         return apisixClient.controlGet("/v1/healthcheck");
     }
 
-    public Object getLiveRoutes() {
+    @SuppressWarnings("unchecked")
+    public List<Object> getLiveRoutes() {
         try {
-            return objectMapper.readValue(apisixClient.controlGet("/v1/routes"), Object.class);
+            Object parsed = objectMapper.readValue(apisixClient.controlGet("/v1/routes"), Object.class);
+            if (parsed instanceof List<?> list) {
+                return (List<Object>) list;
+            }
+            return List.of();
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse live routes", e);
         }
     }
 
-    public Object getLiveUpstreams() {
+    @SuppressWarnings("unchecked")
+    public List<Object> getLiveUpstreams() {
         try {
-            return objectMapper.readValue(apisixClient.controlGet("/v1/upstreams"), Object.class);
+            Object parsed = objectMapper.readValue(apisixClient.controlGet("/v1/upstreams"), Object.class);
+            if (parsed instanceof List<?> list) {
+                return (List<Object>) list;
+            }
+            return List.of();
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse live upstreams", e);
         }

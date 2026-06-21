@@ -125,7 +125,7 @@ class ErrorResolver {
                 continue;
             }
 
-            // no branch matched at all -score each branch by how many of the user's fields appear in it
+            // no branch matched at all score each branch by how many of the user's fields appear in it
             const scored = this.matchOneOfErrors(schema, data);
 
             const fieldHint: FieldHint = {
