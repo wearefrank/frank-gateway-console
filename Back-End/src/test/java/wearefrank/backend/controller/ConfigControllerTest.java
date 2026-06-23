@@ -22,6 +22,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ConfigController.class)
+@org.springframework.test.context.TestPropertySource(properties = {
+    "apisix.default.host=http://127.0.0.1",
+    "apisix.default.control-port=9882",
+    "apisix.default.metrics-port=9881"
+})
 class ConfigControllerTest {
 
     @Autowired
@@ -120,12 +125,12 @@ class ConfigControllerTest {
     void checkStoredConnection_get_usesDefaultPort_whenConfigPortNull() throws Exception {
         when(yamlStoreService.getFullConfig())
                 .thenReturn(new YamlApisixConfig(null, null, null, null));
-        when(apisixClient.checkControl("http://127.0.0.1", 9092)).thenReturn(false);
+        when(apisixClient.checkControl("http://127.0.0.1", 9882)).thenReturn(false);
 
         mockMvc.perform(get("/api/config/check"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("false"));
 
-        verify(apisixClient).checkControl("http://127.0.0.1", 9092);
+        verify(apisixClient).checkControl("http://127.0.0.1", 9882);
     }
 }

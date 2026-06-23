@@ -1,5 +1,6 @@
 package wearefrank.backend.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import wearefrank.backend.dto.ConfigDto;
 import wearefrank.backend.dto.YamlApisixConfig;
@@ -13,10 +14,22 @@ public class ConfigController {
 
     private final YamlStoreService yamlStoreService;
     private final ApisixClient apisixClient;
+    private final String defaultHost;
+    private final int defaultControlPort;
+    private final int defaultMetricsPort;
 
-    public ConfigController(YamlStoreService yamlStoreService, ApisixClient apisixClient) {
+    public ConfigController(
+            YamlStoreService yamlStoreService,
+            ApisixClient apisixClient,
+            @Value("${apisix.default.host}") String defaultHost,
+            @Value("${apisix.default.control-port}") int defaultControlPort,
+            @Value("${apisix.default.metrics-port}") int defaultMetricsPort
+    ) {
         this.yamlStoreService = yamlStoreService;
         this.apisixClient = apisixClient;
+        this.defaultHost = defaultHost;
+        this.defaultControlPort = defaultControlPort;
+        this.defaultMetricsPort = defaultMetricsPort;
     }
 
     // apply null fallbacks so the frontend always gets a usable response even on a fresh install
@@ -24,9 +37,9 @@ public class ConfigController {
     public ConfigDto.ApisixConfig getConfig() {
         YamlApisixConfig config = yamlStoreService.getFullConfig();
         return new ConfigDto.ApisixConfig(
-                config.host() != null ? config.host() : "http://127.0.0.1",
-                config.controlPort() != null ? config.controlPort() : 9882,
-                config.metricsPort() != null ? config.metricsPort() : 9881
+                config.host() != null ? config.host() : defaultHost,
+                config.controlPort() != null ? config.controlPort() : defaultControlPort,
+                config.metricsPort() != null ? config.metricsPort() : defaultMetricsPort
         );
     }
 
@@ -45,12 +58,12 @@ public class ConfigController {
     @GetMapping("/check")
     public boolean checkStoredConnection(@RequestParam(defaultValue = "control") String api) {
         YamlApisixConfig config = yamlStoreService.getFullConfig();
-        String host = config.host() != null ? config.host() : "http://127.0.0.1";
+        String host = config.host() != null ? config.host() : defaultHost;
         if ("metrics".equals(api)) {
-            int port = config.metricsPort() != null ? config.metricsPort() : 9881;
+            int port = config.metricsPort() != null ? config.metricsPort() : defaultMetricsPort;
             return apisixClient.checkMetrics(host, port);
         }
-        int port = config.controlPort() != null ? config.controlPort() : 9882;
+        int port = config.controlPort() != null ? config.controlPort() : defaultControlPort;
         return apisixClient.checkControl(host, port);
     }
 }
