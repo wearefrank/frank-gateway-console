@@ -25,8 +25,8 @@ public class ConfigController {
         YamlApisixConfig config = yamlStoreService.getFullConfig();
         return new ConfigDto.ApisixConfig(
                 config.host() != null ? config.host() : "http://127.0.0.1",
-                config.controlPort() != null ? config.controlPort() : 9092,
-                config.metricsPort() != null ? config.metricsPort() : 9091
+                config.controlPort() != null ? config.controlPort() : 9882,
+                config.metricsPort() != null ? config.metricsPort() : 9881
         );
     }
 
@@ -47,10 +47,10 @@ public class ConfigController {
         YamlApisixConfig config = yamlStoreService.getFullConfig();
         String host = config.host() != null ? config.host() : "http://127.0.0.1";
         if ("metrics".equals(api)) {
-            int port = config.metricsPort() != null ? config.metricsPort() : 9091;
+            int port = config.metricsPort() != null ? config.metricsPort() : 9881;
             return apisixClient.checkMetrics(host, port);
         }
-        int port = config.controlPort() != null ? config.controlPort() : 9092;
+        int port = config.controlPort() != null ? config.controlPort() : 9882;
         return apisixClient.checkControl(host, port);
     }
 }

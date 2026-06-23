@@ -41,8 +41,8 @@ class ConfigControllerTest {
         mockMvc.perform(get("/api/config"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.host").value("http://127.0.0.1"))
-                .andExpect(jsonPath("$.controlPort").value(9092))
-                .andExpect(jsonPath("$.metricsPort").value(9091));
+                .andExpect(jsonPath("$.controlPort").value(9882))
+                .andExpect(jsonPath("$.metricsPort").value(9881));
     }
 
     @Test

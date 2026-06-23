@@ -43,7 +43,7 @@ public class YamlStoreService {
                 boolean created = file.createNewFile();
                 if (created) {
                     String defaultHost = System.getenv().getOrDefault("APISIX_HOST", "http://127.0.0.1");
-                    YamlApisixConfig initial = new YamlApisixConfig(defaultHost, 9092, 9091, new ArrayList<>());
+                    YamlApisixConfig initial = new YamlApisixConfig(defaultHost, 9882, 9881, new ArrayList<>());
                     writeConfig(initial);
                 }
             } catch (IOException e) {

@@ -9,9 +9,9 @@ services:
         target: /usr/local/apisix/conf/config.yaml
     ports:
       - "9180:9180"   # Admin API
-      - "9080:9080"   # HTTP proxy
-      - "9091:9091"   # Prometheus metrics
-      - "9092:9092"   # Control API (/v1/schema)
+      - "9880:9080"   # HTTP proxy
+      - "9881:9091"   # Prometheus metrics
+      - "9882:9092"   # Control API (/v1/schema)
       - "9443:9443"   # HTTPS proxy
     env_file:
       - path: ./.env
@@ -33,28 +33,20 @@ services:
       - "80:80"
 
   # FederatedGateWay management UI - start with: docker compose --profile ui up
-  backend:
-    image: ghcr.io/tijmensosef/federated-gateway-backend:latest
+  console:
+    image: ghcr.io/wearefrank/federated-gateway-console:latest
+    build: .
     restart: always
     profiles: [ui]
     ports:
       - "8080:8080"
     environment:
-      - PROMETHEUS_URL=http://prometheus:9090
-      - APISIX_HOST=http://apisix
+      - PROMETHEUS_URL=http://host.docker.internal:9090
+      - APISIX_HOST=http://host.docker.internal
     volumes:
       - backend_data:/data
     depends_on:
       - apisix
-
-  frontend:
-    image: ghcr.io/tijmensosef/federated-gateway-frontend:latest
-    restart: always
-    profiles: [ui]
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
 
 configs:
   apisix_routes:
@@ -180,9 +172,9 @@ configs:
           metrics:
             http_status:
               extra_labels:
-                - upstream_addr: $upstream_addr
-                - status: $upstream_status
-                - soap_action: $soap_action
+                - upstream_addr: $$upstream_addr
+                - status: $$upstream_status
+                - soap_action: $$soap_action
 
       deployment:
         role: data_plane

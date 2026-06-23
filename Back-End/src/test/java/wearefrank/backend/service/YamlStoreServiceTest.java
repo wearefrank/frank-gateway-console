@@ -39,8 +39,8 @@ class YamlStoreServiceTest {
 
         assertThat(tempDir.resolve("apisix_config.yaml").toFile()).exists();
         assertThat(config.host()).isEqualTo("http://127.0.0.1");
-        assertThat(config.controlPort()).isEqualTo(9092);
-        assertThat(config.metricsPort()).isEqualTo(9091);
+        assertThat(config.controlPort()).isEqualTo(9882);
+        assertThat(config.metricsPort()).isEqualTo(9881);
         assertThat(config.routes()).isEmpty();
     }
 
