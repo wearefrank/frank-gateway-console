@@ -33,28 +33,20 @@ services:
       - "80:80"
 
   # FederatedGateWay management UI - start with: docker compose --profile ui up
-  backend:
-    image: ghcr.io/tijmensosef/federated-gateway-backend:latest
+  console:
+    image: ghcr.io/wearefrank/federated-gateway-console:latest
+    build: .
     restart: always
     profiles: [ui]
     ports:
       - "8080:8080"
     environment:
-      - PROMETHEUS_URL=http://prometheus:9090
-      - APISIX_HOST=http://apisix
+      - PROMETHEUS_URL=http://host.docker.internal:9090
+      - APISIX_HOST=http://host.docker.internal
     volumes:
       - backend_data:/data
     depends_on:
       - apisix
-
-  frontend:
-    image: ghcr.io/tijmensosef/federated-gateway-frontend:latest
-    restart: always
-    profiles: [ui]
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
 
 configs:
   apisix_routes:
