@@ -1,0 +1,13 @@
+frankgateway:
+  image: ghcr.io/wearefrank/frank-gateway:master
+  port: 9080
+
+prometheus:
+  image: prom/prometheus:v3.4.0
+
+backend:
+  image: ghcr.io/tijmensosef/federated-gateway-backend:latest
+
+frontend:
+  image: ghcr.io/tijmensosef/federated-gateway-frontend:latest
+  port: 8081

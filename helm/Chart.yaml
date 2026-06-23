@@ -1,0 +1,4 @@
+apiVersion: v2
+name: federated-gateway
+description: FederatedGateWay - APISIX management UI
+version: 0.1.0
