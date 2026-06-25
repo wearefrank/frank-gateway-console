@@ -6,8 +6,7 @@ A management UI for [Frank!Gateway](https://github.com/wearefrank/frank-gateway)
 
 - Design and manage routes, upstreams, consumers and services via a form-based UI
 - Validate APISIX config files against the live schema
-- Configure APISIX connection settings
-- Monitor HTTP traffic and metrics via Prometheus
+- Topology in React flow build from the config your editing
 
 ---
 
@@ -21,26 +20,25 @@ A management UI for [Frank!Gateway](https://github.com/wearefrank/frank-gateway)
 
 **1. Clone the repository:**
 ```bash
-git clone https://github.com/TijmenSosef/FederatedGateWay.git
-cd FederatedGateWay
+git clone https://github.com/wearefrank/frank-gateway-console.git
+cd frank-gateway-console
 ```
 
-**2. Start the gateway only:**
-```bash
-docker compose up
-```
-
-**Or start with the management UI:**
+**2. start with the management UI:**
 ```bash
 docker compose --profile ui up
 ```
 
+**Or Start the gateway only:**
+```bash
+docker compose up
+```
+
 | Service | URL | Description |
 |---|---|---|
-| **Management UI** | http://localhost:3000 | FederatedGateWay frontend |
-| **Management API** | http://localhost:8080 | FederatedGateWay backend |
-| **APISIX** | http://localhost:9080 | The API gateway - send your requests here |
-| **APISIX Control API** | http://localhost:9092 | Used internally to fetch schema and live routes |
+| **Management UI** `--profile ui` | http://localhost:8080 | FederatedGateWay console |
+| **APISIX** | http://localhost:9880 | The API gateway - send your requests here |
+| **APISIX Control API** | http://localhost:9882 | Used internally to fetch schema and live routes |
 | **Prometheus** | http://localhost:9090 | Metrics collection and querying |
 
 > **Note:** When routing traffic to services on your host machine, use `host.docker.internal` instead of `127.0.0.1` in your upstream nodes.
@@ -49,12 +47,10 @@ docker compose --profile ui up
 
 ## Local development
 
-**Prerequisites:** Java 21+, Maven, Node.js 22+
+**Prerequisites:** Java 25, Maven, Node.js 22+
 
 **1. Start the gateway:**
 ```bash
-git clone https://github.com/wearefrank/frank-gateway
-cd frank-gateway
 docker compose up
 ```
 
@@ -73,7 +69,17 @@ npm run dev
 # Runs on http://localhost:5173
 ```
 
-**4.** Open http://localhost:5173/config and set the host to `http://127.0.0.1`, control port `9092`, metrics port `9091`.
+**4.** Open http://localhost:5173/config and set the host to `http://127.0.0.1`, control port `9882`, metrics port `9881`.
+
+---
+
+## Kubernetes / Helm
+
+A sample Helm chart is available in the `helm/` directory. It is provided as a starting point.
+
+```bash
+helm install federated-gateway ./helm
+```
 
 ---
 
