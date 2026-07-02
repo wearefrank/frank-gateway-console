@@ -387,9 +387,6 @@ export class SchemaValidator {
     }
 
     public setConfig(config: ApisixConfig) {
-        if (this.config !== config) {
-            this.compiledRootValidator = null;
-        }
         this.config = config;
     }
 
@@ -440,28 +437,22 @@ export class SchemaValidator {
     private buildValidationProperties(definitions: unknown): JsonSchema {
         const properties: JsonSchema = {};
 
-        const config = this.config;
-
-        if (!this.isJsonSchema(definitions) || !config) {
+        if (!this.isJsonSchema(definitions)) {
             return properties;
         }
 
         const defNames = Object.keys(definitions);
 
         defNames.forEach((defName: string) => {
-            // some names are in plural
+            // Register both singular and plural
             const candidateKeys = [defName, `${defName}s`];
 
             candidateKeys.forEach((key) => {
-                const cfgVal = config[key];
-                if (Array.isArray(cfgVal)) {
-                    properties[key] = {
-                        type: 'array',
-                        items: { $ref: `#/definitions/${defName}` }
-                    };
-                }
+                properties[key] = {
+                    type: 'array',
+                    items: { $ref: `#/definitions/${defName}` }
+                };
             });
-
         });
         return properties;
     }

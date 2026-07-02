@@ -36,11 +36,14 @@ function walkSchemaToPath(
 }
 
 // Builds key candidates from the schema at the given path, filtering already-present keys.
+// Object-type fields (e.g. "nodes", "plugins") insert a newline + child indent so the cursor
+// lands ready to type the first nested key, instead of just "key: ".
 function keyCandidates(
     rootSchema: MonacoJsonSchema,
     path: string[],
     defs: Record<string, MonacoJsonSchema>,
     existingKeys: Set<string>,
+    indent: number,
 ): Candidate[] {
     const targetSchema = walkSchemaToPath(rootSchema, path, defs);
     if (!targetSchema) return [];
@@ -54,7 +57,10 @@ function keyCandidates(
             const resolved = resolveRef(propSchema as MonacoJsonSchema, defs);
             const schemaType = (resolved as { type?: string }).type;
             const description = (resolved as { description?: string }).description;
-            return { label: key, insertText: `${key}: `, schemaType, description };
+            const insertText = schemaType === 'object'
+                ? `${key}:\n${' '.repeat(indent)}`
+                : `${key}: `;
+            return { label: key, insertText, schemaType, description };
         });
 }
 
@@ -147,8 +153,8 @@ export function resolveCandidates(
         case 'category':
             return Object.keys(CATEGORY_DEFINITIONS)
                 .map(name => ({
-                    label: name,
-                    insertText: `${name}:\n  - `,
+                    label: `${name}s`,
+                    insertText: `${name}s:\n  - `,
                     schemaType: 'array',
                 }));
 
@@ -156,7 +162,7 @@ export function resolveCandidates(
             const categorySchema = defs[context.category];
             if (!categorySchema) return [];
 
-            return keyCandidates(categorySchema, context.path, defs, context.existingKeys);
+            return keyCandidates(categorySchema, context.location.schemaPath, defs, context.location.existingKeys, context.location.indent);
         }
 
         case 'value': {
@@ -171,7 +177,7 @@ export function resolveCandidates(
 
         case 'plugin-name':
             return Object.keys(catalog.plugins ?? {})
-                .filter(name => !context.existingKeys.has(name))
+                .filter(name => !context.location.existingKeys.has(name))
                 .map(name => ({
                     label: name,
                     insertText: `${name}: `,
@@ -182,7 +188,7 @@ export function resolveCandidates(
             const ps = getPluginSchema(catalog, context.pluginName, context.category);
             if (!ps) return [];
 
-            return keyCandidates(ps, context.path, defs, context.existingKeys);
+            return keyCandidates(ps, context.location.schemaPath, defs, context.location.existingKeys, context.location.indent);
         }
 
         case 'plugin-value': {

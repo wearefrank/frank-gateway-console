@@ -22,12 +22,12 @@ function findCommentStart(line: string): number {
 // Returns the start/end positions of the key in a YAML line, or null if there is no key-value pair.
 function findYamlKey(line: string, commentIdx: number): { start: number; end: number } | null {
     let pos = 0;
-    
+
     // Skip leading spaces
     while (pos < line.length && line[pos] === ' ') {
         pos++;
     }
-    
+
     // Skip list item marker "- " if present
     if (line[pos] === '-' && (pos + 1 >= line.length || line[pos + 1] === ' ')) {
         pos += 2;
@@ -35,30 +35,30 @@ function findYamlKey(line: string, commentIdx: number): { start: number; end: nu
             pos++;
         }
     }
-    
+
     const keyStart = pos;
     let inSingleQuotes = false;
     let inDoubleQuotes = false;
-    
+
     // The search should stop at a comment.
     const searchEnd = commentIdx !== -1 ? commentIdx : line.length;
 
     while (pos < searchEnd) {
         const char = line[pos];
 
-        // we need both these checks as single can't close double
+        // checked separately since a single quote can't close a double quote, and vice versa
         if (char === "'" && !inDoubleQuotes) {
             inSingleQuotes = !inSingleQuotes;
             pos++;
             continue;
         }
-        
+
         if (char === '"' && !inSingleQuotes) {
             inDoubleQuotes = !inDoubleQuotes;
             pos++;
             continue;
         }
-        
+
         // A colon is a key-value separator if it's at the end of the line (or before a comment)
         // or followed by a space.
         if (char === ':' && !inSingleQuotes && !inDoubleQuotes) {
@@ -71,33 +71,6 @@ function findYamlKey(line: string, commentIdx: number): { start: number; end: nu
     }
 
     return null;
-}
-
-// Returns the position of the outermost unmatched `{` before col (0-indexed) in line,
-// or -1 if the cursor is not inside a flow object.
-function findFlowOpenBrace(line: string, col: number): number {
-    let depth = 0;
-    let openBracePos = -1;
-    for (let i = 0; i < col; i++) {
-        if (line[i] === '{') {
-            if (depth === 0) openBracePos = i;
-            depth++;
-        } else if (line[i] === '}') {
-            depth--;
-            if (depth === 0) openBracePos = -1;
-        }
-    }
-    return depth > 0 ? openBracePos : -1;
-}
-
-// If col (0-indexed) is inside a flow mapping {...}, returns the YAML key that owns the {.
-// Otherwise returns null.
-function getFlowParentKey(line: string, col: number): string | null {
-    const openBracePos = findFlowOpenBrace(line, col);
-    if (openBracePos === -1) return null;
-    const beforeBrace = line.substring(0, openBracePos).trimEnd();
-    if (!beforeBrace.endsWith(':')) return null;
-    return beforeBrace.slice(0, -1).trimEnd().replace(/^\s*(?:-\s+)?/, '') || null;
 }
 
 // Returns the end index (exclusive) of a ${{...}} placeholder starting at pos, or -1 if unclosed.
@@ -173,13 +146,14 @@ export function buildLineSegments(line: string, showWhitespace: boolean): { text
     return segments;
 }
 
+export const CATEGORY_KEY_MAP: Record<string, string> = {
+    routes: 'route', upstreams: 'upstream', services: 'service',
+    consumers: 'consumer', global_rules: 'global_rule',
+    plugin_configs: 'plugin_config', ssls: 'ssl',
+};
+
 export function buildCategoryLineMap(doc: Document, lineCounter: LineCounter): Map<number, string> {
     const lineMap = new Map<number, string>();
-    const categoryByKey: Record<string, string> = {
-        routes: 'route', upstreams: 'upstream', services: 'service',
-        consumers: 'consumer', global_rules: 'global_rule',
-        plugin_configs: 'plugin_config', ssls: 'ssl',
-    };
 
     const root = doc.contents;
     if (!isMap(root)) return lineMap;
@@ -190,7 +164,7 @@ export function buildCategoryLineMap(doc: Document, lineCounter: LineCounter): M
         if (!key?.range || !value?.range) continue;
 
         const keyStr = String(key.value ?? '');
-        const category = categoryByKey[keyStr];
+        const category = CATEGORY_KEY_MAP[keyStr];
         if (!category) continue;
 
         const startLine = lineCounter.linePos(key.range[0]).line;
@@ -203,7 +177,9 @@ export function buildCategoryLineMap(doc: Document, lineCounter: LineCounter): M
     return lineMap;
 }
 
-export function parseYamlDoc(configText: string): { doc: Document; lineCounter: LineCounter } {
+export type ParsedDoc = { doc: Document; lineCounter: LineCounter };
+
+export function parseYamlDoc(configText: string): ParsedDoc {
     const lineCounter = new LineCounter();
     const doc = parseDocument(configText, {lineCounter});
     return {doc, lineCounter};
@@ -211,148 +187,6 @@ export function parseYamlDoc(configText: string): { doc: Document; lineCounter: 
 
 export function getLineHeight(el: HTMLElement): number {
     return parseFloat(getComputedStyle(el).lineHeight) || 21;
-}
-
-/**
- * Given the full YAML text and a 1-indexed cursor line (Monaco convention),
- * returns all keys that already exist at the same indentation level as the cursor
- * within the same parent object. Used to filter duplicate suggestions.
- */
-export function getSiblingKeysAtCursor(text: string, line: number, column?: number): Set<string> {
-    const lines = text.split('\n');
-    const lineIdx = line - 1;
-    if (lineIdx < 0 || lineIdx >= lines.length) return new Set();
-
-    // Inside a single-line flow object, siblings are the keys already present in {...} before the cursor
-    if (column !== undefined) {
-        const col = column - 1; // Monaco is 1-indexed
-        const cursorLine = lines[lineIdx];
-        const openBracePos = findFlowOpenBrace(cursorLine, col);
-        if (openBracePos !== -1) {
-            const content = cursorLine.substring(openBracePos + 1, col);
-            const flowKeys = new Set<string>();
-            for (const part of content.split(',')) {
-                const c = part.indexOf(':');
-                if (c > 0) {
-                    const k = part.substring(0, c).trim();
-                    if (k) flowKeys.add(k);
-                }
-            }
-            return flowKeys;
-        }
-    }
-
-    const getIndent = (s: string) => {
-        let i = 0;
-        while (i < s.length && s[i] === ' ') i++;
-        return i;
-    };
-
-    // If the current line is blank, infer indent from the next non-blank line,
-    // falling back to the previous non-blank line.
-    let targetIndent = getIndent(lines[lineIdx]);
-    if (lines[lineIdx].trim() === '') {
-        for (let i = lineIdx + 1; i < lines.length; i++) {
-            if (lines[i].trim()) { targetIndent = getIndent(lines[i]); break; }
-        }
-        if (targetIndent === 0) {
-            for (let i = lineIdx - 1; i >= 0; i--) {
-                if (lines[i].trim()) { targetIndent = getIndent(lines[i]); break; }
-            }
-        }
-    }
-    if (targetIndent === 0) return new Set();
-
-    const keys = new Set<string>();
-
-    for (let i = lineIdx - 1; i >= 0; i--) {
-        const raw = lines[i];
-        const trimmed = raw.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-
-        const indent = getIndent(raw);
-        if (indent < targetIndent) {
-            // The array item line may carry an inline key: "  - id: foo"
-            if (trimmed.startsWith('- ')) {
-                const rest = trimmed.slice(2).trim();
-                const c = rest.indexOf(':');
-                if (c > 0) keys.add(rest.substring(0, c).trim());
-            }
-            break;
-        }
-        if (indent > targetIndent) continue;
-
-        const effectiveTrimmed = trimmed.startsWith('- ') ? trimmed.slice(2).trim() : trimmed;
-        const c = effectiveTrimmed.indexOf(':');
-        if (c > 0) keys.add(effectiveTrimmed.substring(0, c).trim());
-    }
-
-    for (let i = lineIdx + 1; i < lines.length; i++) {
-        const raw = lines[i];
-        const trimmed = raw.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-
-        const indent = getIndent(raw);
-        if (indent < targetIndent) break;
-        if (indent > targetIndent) continue;
-
-        const c = trimmed.indexOf(':');
-        if (c > 0) keys.add(trimmed.substring(0, c).trim());
-    }
-
-    return keys;
-}
-
-/**
- * Given the full YAML text and a 1-indexed cursor line (Monaco convention),
- * returns the JSON Schema property path from the entry root to the cursor.
- * E.g. if cursor is inside `timeout:` in an upstream entry, returns ["timeout"].
- * Stops at array item markers (-) which mark the entry root.
- */
-export function getSchemaPathAtCursor(text: string, line: number, column?: number): string[] {
-    const lines = text.split('\n');
-    const lineIdx = line - 1;
-    if (lineIdx < 0 || lineIdx >= lines.length) return [];
-
-    const getIndent = (s: string) => {
-        let i = 0;
-        while (i < s.length && s[i] === ' ') i++;
-        return i;
-    };
-
-    const path: string[] = [];
-    let currentIndent = getIndent(lines[lineIdx]);
-
-    for (let i = lineIdx - 1; i >= 0; i--) {
-        const raw = lines[i];
-        const trimmed = raw.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-
-        const indent = getIndent(raw);
-        if (indent >= currentIndent) continue;
-
-        // Array item marker is the entry root - stop here
-        if (trimmed.startsWith('- ') || trimmed === '-') break;
-
-        // Extract the mapping key from this parent line
-        const colonIdx = trimmed.indexOf(':');
-        if (colonIdx > 0) {
-            const key = trimmed.substring(0, colonIdx).trim();
-            if (key) {
-                path.unshift(key);
-                currentIndent = indent;
-            }
-        }
-    }
-
-    // If the cursor is inside an inline flow object on the same line (e.g. `timeout: {connect: |}`),
-    // append the flow parent key so completions reflect the correct schema nesting.
-    if (column !== undefined) {
-        const flowKey = getFlowParentKey(lines[lineIdx], column - 1);
-        if (flowKey) path.push(flowKey);
-    }
-
-    return path;
 }
 
 export function resolvePathToNode(doc: Document, pathStr: string): Node | null {

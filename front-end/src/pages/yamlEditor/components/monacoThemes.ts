@@ -109,11 +109,8 @@ const LIGHT_THEME: MonacoType.editor.IStandaloneThemeData = {
 
 export const beforeMount: BeforeMount = (monaco) => {
     if (!monacoYamlInstance) {
-        // monaco-yaml registers a CodeActionProvider for YAML, but its worker does not implement
-        // getCodeAction. Wrap registerCodeActionProvider so the broken provider's provideCodeActions
-        // swallows the worker error and returns empty results instead of throwing.
-        // monaco-yaml also registers a hover provider but its worker does not implement doHover.
-        // Wrap registerHoverProvider so that errors from the broken provider return null instead of throwing.
+        // monaco-yaml's hover provider calls its worker's doHover, which never connects in this
+        // app's Vite setup - wrap it so the resulting error returns null instead of throwing.
         const origRegisterHover = monaco.languages.registerHoverProvider.bind(monaco.languages);
         (monaco.languages as unknown as Record<string, unknown>).registerHoverProvider = (
             selector: Parameters<typeof monaco.languages.registerHoverProvider>[0],
@@ -132,8 +129,7 @@ export const beforeMount: BeforeMount = (monaco) => {
             return origRegisterHover(selector, provider);
         };
 
-        // monaco-yaml registers a definition provider but its worker does not implement doDefinition.
-        // Wrap registerDefinitionProvider so errors return undefined instead of throwing.
+        // Same worker problem as hover above, for doDefinition - return undefined instead of throwing.
         const origRegisterDefinition = monaco.languages.registerDefinitionProvider.bind(monaco.languages);
         (monaco.languages as unknown as Record<string, unknown>).registerDefinitionProvider = (
             selector: Parameters<typeof monaco.languages.registerDefinitionProvider>[0],
@@ -152,6 +148,7 @@ export const beforeMount: BeforeMount = (monaco) => {
             return origRegisterDefinition(selector, provider);
         };
 
+        // Same worker problem as hover above, for getCodeAction - return no actions instead of throwing.
         const origRegister = monaco.languages.registerCodeActionProvider.bind(monaco.languages);
         (monaco.languages as unknown as Record<string, unknown>).registerCodeActionProvider = (
             selector: Parameters<typeof monaco.languages.registerCodeActionProvider>[0],
@@ -173,9 +170,12 @@ export const beforeMount: BeforeMount = (monaco) => {
         // fileMatch ['**'] matches any URI including in-memory models
         // (e.g. inmemory://model/apisix-config.yaml). Schema starts empty
         // and is pushed via update() once ConfigEditor receives the catalog.
+        // format: false - same broken worker as hover/definition/codeAction above;
+        // useEditorProviders.ts registers a main-thread prettier formatter instead.
         monacoYamlInstance = configureMonacoYaml(monaco as never, {
             validate: false,
             completion: false,
+            format: { enable: false },
             schemas: [],
         });
 
