@@ -85,12 +85,12 @@ class ErrorResolver {
             const schema = error.schema;
             const data = error.data;
 
-            if (!Array.isArray(schema) || (!this.isObject(data) && !Array.isArray(data))) continue;
+            if (!Array.isArray(schema)) continue;
 
-            // the generic "score by matching keys" logic below won't work as arrays don't have keys
-            // instead we look at which anyOf branch expects this data type and show its specific errors
+            // the generic "score by matching keys" logic below won't work as arrays/scalars don't have keys
+            // instead we look at which oneOf branch's declared type matches this value's actual type
             if (!this.isObject(data)) {
-                const dataType = Array.isArray(data) ? 'array' : typeof data;
+                const dataType = Array.isArray(data) ? 'array' : (data === null ? 'null' : typeof data);
                 const branchIdx = (schema as Record<string, unknown>[]).findIndex(b => b.type === dataType);
                 if (branchIdx >= 0) {
                     // the leaf errors from AJV already contain the details (e.g. missing required field),
@@ -105,6 +105,19 @@ class ErrorResolver {
                             sourceError: leaf,
                         });
                     }
+                } else {
+                    // the value's type doesn't match any branch at all (e.g. a boolean where only integer/string are allowed) -
+                    // there are no leaf errors to drill into here, so report the type mismatch directly
+                    const allowedTypes = (schema as Record<string, unknown>[])
+                        .map(b => typeof b.type === 'string' ? b.type : '(unknown)');
+                    const prop = error.instancePath.split('/').pop() || entry.parent;
+
+                    resolvedErrors.push({
+                        message: `${entry.parent}: '${prop}' must be ${allowedTypes.join(' or ')}, got ${dataType}`,
+                        path: this.buildResolvedPath(entry, this.getExactPath(error)),
+                        errorObject: entry,
+                        sourceError: error,
+                    });
                 }
                 continue;
             }
