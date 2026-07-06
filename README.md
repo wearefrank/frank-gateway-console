@@ -16,32 +16,101 @@ A management UI for [Frank!Gateway](https://github.com/wearefrank/frank-gateway)
 
 ---
 
-## Running with Docker
+## Quick Start
 
-**1. Clone the repository:**
+**Prerequisite:** [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+Both the gateway and the console are published as ready-to-run images, so you don't need to clone this repo just to run it — grab the compose file on its own:
+
 ```bash
-git clone https://github.com/wearefrank/frank-gateway-console.git
-cd frank-gateway-console
+curl -O https://raw.githubusercontent.com/wearefrank/frank-gateway-console/master/docker-compose.yaml
 ```
 
-**2. start with the management UI:**
-```bash
-docker compose --profile ui up
-```
-
-**Or Start the gateway only:**
+**Option A — Just the gateway**
 ```bash
 docker compose up
 ```
+Starts Frank!Gateway (APISIX) and Prometheus. Routes are configured by editing the inline YAML under `configs:` in `docker-compose.yaml`.
 
-| Service | URL | Description |
+**Option B — Gateway + management console**
+```bash
+docker compose --profile ui up
+```
+Adds the FederatedGateWay console, so you can configure and monitor everything from a browser instead.
+
+| Service | URL | Included in |
 |---|---|---|
-| **Management UI** `--profile ui` | http://localhost:8080 | FederatedGateWay console |
-| **APISIX** | http://localhost:9880 | The API gateway - send your requests here |
-| **APISIX Control API** | http://localhost:9882 | Used internally to fetch schema and live routes |
-| **Prometheus** | http://localhost:9090 | Metrics collection and querying |
+| APISIX (proxy) | http://localhost:9880 | A & B |
+| APISIX Control API | http://localhost:9882 | A & B |
+| Prometheus | http://localhost:9090 | A & B |
+| **Console UI** | http://localhost:8080 | B only |
 
 > **Note:** When routing traffic to services on your host machine, use `host.docker.internal` instead of `127.0.0.1` in your upstream nodes.
+
+---
+
+## Using the images in your own setup
+
+Both images are on GHCR, so you can drop them into infrastructure you already manage instead of using this repo's compose file or Helm chart directly.
+
+- **Gateway:** `ghcr.io/wearefrank/frank-gateway:master`
+- **Console:** `ghcr.io/wearefrank/federated-gateway-console:latest`
+
+### In your own docker-compose file
+
+```yaml
+services:
+  apisix:
+    image: ghcr.io/wearefrank/frank-gateway:master
+    ports:
+      - "9880:9080"   # HTTP proxy
+      - "9882:9092"   # Control API
+      - "9881:9091"   # Prometheus metrics
+    volumes:
+      - ./apisix.yaml:/usr/local/apisix/conf/apisix.yaml
+      - ./config.yaml:/usr/local/apisix/conf/config.yaml
+
+  console:
+    image: ghcr.io/wearefrank/federated-gateway-console:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - APISIX_HOST=http://apisix          # point at the apisix service above
+      - PROMETHEUS_URL=http://prometheus:9090
+    volumes:
+      - console_data:/data                 # persists the console's own connection settings
+
+volumes:
+  console_data:
+```
+
+### In your own Helm chart
+
+Reference the images as values (this is exactly what `helm/values.yaml` in this repo does):
+
+```yaml
+# values.yaml
+frankgateway:
+  image: ghcr.io/wearefrank/frank-gateway:master
+console:
+  image: ghcr.io/wearefrank/federated-gateway-console:latest
+```
+
+```yaml
+# templates/console.yaml (excerpt)
+containers:
+  - name: console
+    image: {{ .Values.console.image }}
+    env:
+      - name: APISIX_HOST
+        value: "http://{{ .Release.Name }}-frankgateway"
+      - name: PROMETHEUS_URL
+        value: "http://{{ .Release.Name }}-prometheus:9090"
+    ports:
+      - containerPort: 8080
+```
+
+See `helm/templates/console.yaml` for the full working version, including the PVC used to persist `/data`.
 
 ---
 
