@@ -245,10 +245,7 @@ export class SchemaValidator {
 
         if (!validate) {
             try {
-                const compilableSchema: JsonSchema = 'additionalProperties' in pluginSchema
-                    ? pluginSchema
-                    : { ...pluginSchema, additionalProperties: false };
-                validate = this.ajv.compile(compilableSchema);
+                validate = this.ajv.compile(pluginSchema);
                 this.pluginSchemasCache.set(cacheKey, validate);
             } catch (err: unknown) {
                 const errorMessage = err instanceof Error ? err.message : String(err);
