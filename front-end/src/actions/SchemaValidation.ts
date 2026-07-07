@@ -78,15 +78,13 @@ export class SchemaValidator {
             return { valid: false, errorCollections: [], warningErrors: [], warnings: [] };
         }
 
-        if (!this.schema?.main) {
+        if (!this.schema?.main || !this.isJsonSchema(this.schema.main)) {
             return { valid: false, errorCollections: [], warningErrors: [], warnings: [] };
         }
 
-        const definitions = this.schema.main;
-
-        if (!definitions || !this.isJsonSchema(definitions)) {
-            return { valid: false, errorCollections: [], warningErrors: [], warnings: [] };
-        }
+        // clone before mutating - this.schema.main is the same object handed to the Monaco/monaco-yaml
+        // schema sync (see monacoSchemaSync.ts), which doesn't know about our detectPlugins keyword
+        const definitions = structuredClone(this.schema.main);
 
         // mutate definitions to inject the detectPlugins keyword on every `plugins` property
         this.injectPluginDetectionProperties(definitions);
@@ -200,9 +198,13 @@ export class SchemaValidator {
         if (!this.schema?.main) return [];
 
         const definitions = this.schema.main;
-        const categorySchema = definitions[categoryName] as JsonSchema | undefined;
+        const rawCategorySchema = definitions[categoryName] as JsonSchema | undefined;
 
-        if (!categorySchema || !this.isJsonSchema(categorySchema)) return [];
+        if (!rawCategorySchema || !this.isJsonSchema(rawCategorySchema)) return [];
+
+        // clone before mutating - definitions is the same object handed to the Monaco/monaco-yaml
+        // schema sync (see monacoSchemaSync.ts), which doesn't know about our detectPlugins keyword
+        const categorySchema = structuredClone(rawCategorySchema);
 
         this.injectPluginDetectionProperties({ [categoryName]: categorySchema });
 

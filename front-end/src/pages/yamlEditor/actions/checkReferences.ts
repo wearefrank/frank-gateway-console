@@ -89,8 +89,8 @@ export function checkReferences(config: ApisixConfig): ValidationLog[] {
     const logs: ValidationLog[] = [];
 
     // Cache of valid ID sets per category, built on first access
-    const idSetCache = new Map<string, Set<string>>();
-    const getTargetIds = (category: string): Set<string> => {
+    const idSetCache = new Map<string, Set<string | number>>();
+    const getTargetIds = (category: string): Set<string | number> => {
         if (!idSetCache.has(category)) idSetCache.set(category, getIds(config, category));
         return idSetCache.get(category)!;
     };

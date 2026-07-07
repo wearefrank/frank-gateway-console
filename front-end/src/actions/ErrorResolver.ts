@@ -268,7 +268,7 @@ class ErrorResolver {
 
         ifThenWrappers.forEach(wrapper => {
             const ifSchema = wrapper.parentSchema?.if as Record<string, unknown> | undefined;
-            const data = wrapper.data as Record<string, unknown>;
+            const data = wrapper.data;
 
             if (!ifSchema) return;
 
@@ -379,8 +379,10 @@ class ErrorResolver {
         return parts.join(' and ');
     }
 
-    private evaluateIfCondition(parsedConstraints: IfConditionProperties[], data: Record<string, unknown>): MatchResult {
+    private evaluateIfCondition(parsedConstraints: IfConditionProperties[], data: unknown): MatchResult {
         if (parsedConstraints.length === 0) return 'unknown';
+
+        if (!this.isObject(data)) return 'vacuous';
 
         let allVacuous = true;
 

@@ -1,6 +1,6 @@
 import type { JSONSchema as MonacoJsonSchema } from 'monaco-yaml';
 import type { ApisixConfig, SchemaCatalog } from '../../../actions/SchemaValidation';
-import { CATEGORY_DEFINITIONS, getCategoryArray, getDisplayId } from '../../../config/categoryDefinitions';
+import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../config/categoryDefinitions';
 import type { CursorContext } from './CursorContext';
 
 export interface Candidate {
@@ -97,12 +97,15 @@ function referenceCandidates(
     targetCategory: string,
     config: ApisixConfig,
 ): Candidate[] {
+    const targetEntries = (config as Record<string, unknown>)[targetCategory + 's'];
+    if (!Array.isArray(targetEntries)) return [];
+
     const targetDef = CATEGORY_DEFINITIONS[targetCategory];
     const idField = targetDef?.idField ?? 'id';
     const categoryLabel = targetDef?.label ?? targetCategory;
 
     const candidates: Candidate[] = [];
-    for (const entry of getCategoryArray(config, targetCategory)) {
+    for (const entry of targetEntries as Record<string, unknown>[]) {
         if (!entry || typeof entry !== 'object') continue;
 
         const id = entry[idField];
