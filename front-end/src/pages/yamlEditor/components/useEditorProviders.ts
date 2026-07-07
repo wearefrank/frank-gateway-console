@@ -1,14 +1,15 @@
 import { useRef, useEffect, useCallback } from 'react';
 import type { RefObject } from 'react';
 import type * as MonacoType from 'monaco-editor';
-import type { Document, LineCounter } from 'yaml';
+import { format } from 'prettier/standalone';
+import * as yamlPlugin from 'prettier/plugins/yaml';
+import * as estreePlugin from 'prettier/plugins/estree';
 import type { ApisixConfig, SchemaCatalog } from '../../../actions/SchemaValidation';
 import { CATEGORY_LABEL, CATEGORY_COLOR } from '../../../config/categoryDefinitions';
 import { getDisplayId } from '../actions/checkReferences';
+import type { ParsedDoc } from '../yamlLineUtils';
 import { YamlCompletionProvider } from './YamlCompletionProvider';
 import { ProviderContext } from './ProviderContext';
-
-type ParsedDoc = { doc: Document; lineCounter: LineCounter };
 
 /**
  * Manages the completion, definition, and hover language provider registrations.
@@ -16,7 +17,6 @@ type ParsedDoc = { doc: Document; lineCounter: LineCounter };
  * Disposes all providers automatically on unmount.
  */
 export function useEditorProviders(
-    categoryLineMapRef: RefObject<Map<number, string>>,
     schemaRef: RefObject<SchemaCatalog | null | undefined>,
     configRef: RefObject<ApisixConfig | null | undefined>,
     parsedDocRef: RefObject<ParsedDoc | null>,
@@ -28,6 +28,7 @@ export function useEditorProviders(
     const definitionProviderRef = useRef<MonacoType.IDisposable | null>(null);
     const hoverProviderRef = useRef<MonacoType.IDisposable | null>(null);
     const referenceProviderRef = useRef<MonacoType.IDisposable | null>(null);
+    const formattingProviderRef = useRef<MonacoType.IDisposable | null>(null);
 
     // Dispose of all registered Monaco providers when the component unmounts
     useEffect(() => {
@@ -36,13 +37,13 @@ export function useEditorProviders(
             definitionProviderRef.current?.dispose();
             hoverProviderRef.current?.dispose();
             referenceProviderRef.current?.dispose();
+            formattingProviderRef.current?.dispose();
         };
     }, []);
 
     const registerProviders = useCallback((monaco: typeof MonacoType) => {
         // Provides suggestions for keys and values based on the YAML schema
         completionProviderRef.current = new YamlCompletionProvider(monaco).register(
-            () => categoryLineMapRef.current,
             () => schemaRef.current,
             () => configRef.current,
         );
@@ -94,7 +95,28 @@ export function useEditorProviders(
                 return ProviderContext.from(configRef, parsedDocRef, monaco)?.usageLocations(model, idInfo.category, idInfo.idValue) ?? null;
             },
         });
-    }, [categoryLineMapRef, schemaRef, configRef, parsedDocRef, referenceValueRangesRef, referenceTargetMapRef, idLineMapRef]);
+
+        // Format Document: monaco-yaml's own formatter needs its worker, which never connects
+        // in this app's Vite setup (see monacoThemes.ts) - run prettier on the main thread instead.
+        formattingProviderRef.current = monaco.languages.registerDocumentFormattingEditProvider('yaml', {
+            displayName: 'yaml',
+            async provideDocumentFormattingEdits(model: MonacoType.editor.ITextModel) {
+                const text = model.getValue();
+                let formatted: string;
+                try {
+                    formatted = await format(text, {
+                        parser: 'yaml',
+                        plugins: [yamlPlugin, estreePlugin],
+                        tabWidth: 2,
+                    });
+                } catch {
+                    return [];
+                }
+                if (formatted === text) return [];
+                return [{ range: model.getFullModelRange(), text: formatted }];
+            },
+        });
+    }, [schemaRef, configRef, parsedDocRef, referenceValueRangesRef, referenceTargetMapRef, idLineMapRef]);
 
     return { registerProviders };
 }

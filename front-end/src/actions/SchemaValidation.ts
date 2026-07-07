@@ -78,15 +78,13 @@ export class SchemaValidator {
             return { valid: false, errorCollections: [], warningErrors: [], warnings: [] };
         }
 
-        if (!this.schema?.main) {
+        if (!this.schema?.main || !this.isJsonSchema(this.schema.main)) {
             return { valid: false, errorCollections: [], warningErrors: [], warnings: [] };
         }
 
-        const definitions = this.schema.main;
-
-        if (!definitions || !this.isJsonSchema(definitions)) {
-            return { valid: false, errorCollections: [], warningErrors: [], warnings: [] };
-        }
+        // clone before mutating - this.schema.main is the same object handed to the Monaco/monaco-yaml
+        // schema sync (see monacoSchemaSync.ts), which doesn't know about our detectPlugins keyword
+        const definitions = structuredClone(this.schema.main);
 
         // mutate definitions to inject the detectPlugins keyword on every `plugins` property
         this.injectPluginDetectionProperties(definitions);
@@ -200,9 +198,13 @@ export class SchemaValidator {
         if (!this.schema?.main) return [];
 
         const definitions = this.schema.main;
-        const categorySchema = definitions[categoryName] as JsonSchema | undefined;
+        const rawCategorySchema = definitions[categoryName] as JsonSchema | undefined;
 
-        if (!categorySchema || !this.isJsonSchema(categorySchema)) return [];
+        if (!rawCategorySchema || !this.isJsonSchema(rawCategorySchema)) return [];
+
+        // clone before mutating - definitions is the same object handed to the Monaco/monaco-yaml
+        // schema sync (see monacoSchemaSync.ts), which doesn't know about our detectPlugins keyword
+        const categorySchema = structuredClone(rawCategorySchema);
 
         this.injectPluginDetectionProperties({ [categoryName]: categorySchema });
 
@@ -245,10 +247,7 @@ export class SchemaValidator {
 
         if (!validate) {
             try {
-                const compilableSchema: JsonSchema = 'additionalProperties' in pluginSchema
-                    ? pluginSchema
-                    : { ...pluginSchema, additionalProperties: false };
-                validate = this.ajv.compile(compilableSchema);
+                validate = this.ajv.compile(pluginSchema);
                 this.pluginSchemasCache.set(cacheKey, validate);
             } catch (err: unknown) {
                 const errorMessage = err instanceof Error ? err.message : String(err);
@@ -387,9 +386,6 @@ export class SchemaValidator {
     }
 
     public setConfig(config: ApisixConfig) {
-        if (this.config !== config) {
-            this.compiledRootValidator = null;
-        }
         this.config = config;
     }
 
@@ -440,28 +436,22 @@ export class SchemaValidator {
     private buildValidationProperties(definitions: unknown): JsonSchema {
         const properties: JsonSchema = {};
 
-        const config = this.config;
-
-        if (!this.isJsonSchema(definitions) || !config) {
+        if (!this.isJsonSchema(definitions)) {
             return properties;
         }
 
         const defNames = Object.keys(definitions);
 
         defNames.forEach((defName: string) => {
-            // some names are in plural
+            // Register both singular and plural
             const candidateKeys = [defName, `${defName}s`];
 
             candidateKeys.forEach((key) => {
-                const cfgVal = config[key];
-                if (Array.isArray(cfgVal)) {
-                    properties[key] = {
-                        type: 'array',
-                        items: { $ref: `#/definitions/${defName}` }
-                    };
-                }
+                properties[key] = {
+                    type: 'array',
+                    items: { $ref: `#/definitions/${defName}` }
+                };
             });
-
         });
         return properties;
     }

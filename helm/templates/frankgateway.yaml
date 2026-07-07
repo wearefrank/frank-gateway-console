@@ -4,8 +4,7 @@ metadata:
   name: {{ .Release.Name }}-frankgateway-config
 data:
   apisix.yaml: |
-    routes: []
-    #END
+{{ .Files.Get "files/apisix.yaml" | indent 4 }}
   config.yaml: |
     apisix:
       enable_control: true

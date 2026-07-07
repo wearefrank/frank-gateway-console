@@ -20,12 +20,10 @@ export class YamlCompletionProvider {
      * Registers a context-aware YAML completion provider against the Monaco instance.
      * Returns a disposable that must be called when the editor is unmounted.
      *
-     * @param getCategoryLineMap - returns the current line -> category map
-     * @param getSchema          - returns the current APISIX schema catalog
-     * @param getConfig          - returns the current parsed APISIX config
+     * @param getSchema - returns the current APISIX schema catalog
+     * @param getConfig - returns the current parsed APISIX config
      */
     register(
-        getCategoryLineMap: () => Map<number, string>,
         getSchema: () => SchemaCatalog | null | undefined,
         getConfig: () => ApisixConfig | null | undefined,
     ): MonacoType.IDisposable {
@@ -37,11 +35,11 @@ export class YamlCompletionProvider {
                 const catalog = getSchema();
                 if (!catalog?.main) return { suggestions: [] };
 
+                // Force LF - a trailing \r on an otherwise-empty line defeats the blank-line indent checks
                 const context = resolveCursorContext(
-                    model.getValue(),
+                    model.getValue(monaco.editor.EndOfLinePreference.LF),
                     position.lineNumber,
                     position.column,
-                    getCategoryLineMap(),
                     CATEGORY_DEFINITIONS,
                 );
 

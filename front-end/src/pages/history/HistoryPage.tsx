@@ -76,6 +76,26 @@ function patchProfiles<T extends { profiles: FileProfile[] }>(
     setter(prev => ({ ...prev, profiles: updater(prev.profiles) }));
 }
 
+function hasGithubRepoChanged(draft: GithubSettings, saved: GithubSettings): boolean {
+    return draft.githubRepo !== saved.githubRepo
+        || draft.githubBranch !== saved.githubBranch
+        || JSON.stringify(draft.profiles) !== JSON.stringify(saved.profiles);
+}
+
+function hasGitlabRepoChanged(draft: GitlabSettings, saved: GitlabSettings): boolean {
+    return draft.gitlabProject !== saved.gitlabProject
+        || draft.gitlabBranch !== saved.gitlabBranch
+        || draft.gitlabHost !== saved.gitlabHost
+        || JSON.stringify(draft.profiles) !== JSON.stringify(saved.profiles);
+}
+
+function hasGiteaRepoChanged(draft: GiteaSettings, saved: GiteaSettings): boolean {
+    return draft.giteaRepo !== saved.giteaRepo
+        || draft.giteaBranch !== saved.giteaBranch
+        || draft.giteaHost !== saved.giteaHost
+        || JSON.stringify(draft.profiles) !== JSON.stringify(saved.profiles);
+}
+
 export const HistoryPage: React.FC = () => {
     const { configManager, setConfig } = useConfigManager();
 
@@ -173,21 +193,10 @@ export const HistoryPage: React.FC = () => {
 
     const saveSettings = () => {
         const providerChanged = providerDraft !== provider;
-        const githubRepoChanged = githubDraft.githubRepo !== githubSettings.githubRepo
-            || githubDraft.githubBranch !== githubSettings.githubBranch
-            || JSON.stringify(githubDraft.profiles) !== JSON.stringify(githubSettings.profiles);
-        const gitlabRepoChanged = gitlabDraft.gitlabProject !== gitlabSettings.gitlabProject
-            || gitlabDraft.gitlabBranch !== gitlabSettings.gitlabBranch
-            || gitlabDraft.gitlabHost !== gitlabSettings.gitlabHost
-            || JSON.stringify(gitlabDraft.profiles) !== JSON.stringify(gitlabSettings.profiles);
-        const giteaRepoChanged = giteaDraft.giteaRepo !== giteaSettings.giteaRepo
-            || giteaDraft.giteaBranch !== giteaSettings.giteaBranch
-            || giteaDraft.giteaHost !== giteaSettings.giteaHost
-            || JSON.stringify(giteaDraft.profiles) !== JSON.stringify(giteaSettings.profiles);
         const repoChanged = providerChanged
-            || (providerDraft === 'github' && githubRepoChanged)
-            || (providerDraft === 'gitlab' && gitlabRepoChanged)
-            || (providerDraft === 'gitea' && giteaRepoChanged);
+            || (providerDraft === 'github' && hasGithubRepoChanged(githubDraft, githubSettings))
+            || (providerDraft === 'gitlab' && hasGitlabRepoChanged(gitlabDraft, gitlabSettings))
+            || (providerDraft === 'gitea' && hasGiteaRepoChanged(giteaDraft, giteaSettings));
 
         setProvider(providerDraft);
         setGithubSettings(githubDraft);
@@ -798,7 +807,9 @@ export const HistoryPage: React.FC = () => {
                                 </div>
                             )}
 
-                            {error && <div className={`text-error text-small ${styles.statusMsg}`}>{error}</div>}
+                            {error && <div className={`text-error text-small ${styles.statusMsg}`}>
+                                {error}
+                            </div>}
 
                             <VersionList
                                 versions={[{ id: CURRENT_VERSION, message: 'Current (unsaved)', createdAt: '' }, ...versionList]}

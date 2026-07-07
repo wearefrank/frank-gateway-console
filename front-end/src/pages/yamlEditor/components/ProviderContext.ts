@@ -1,11 +1,8 @@
 import type { RefObject } from 'react';
 import type * as MonacoType from 'monaco-editor';
-import type { Document, LineCounter } from 'yaml';
 import type { ApisixConfig } from '../../../actions/SchemaValidation';
 import { getUsages } from '../actions/checkReferences';
-import { resolvePathToNode } from '../yamlLineUtils';
-
-type ParsedDoc = { doc: Document; lineCounter: LineCounter };
+import { resolvePathToNode, type ParsedDoc } from '../yamlLineUtils';
 
 // Holds the validated context needed by all language providers.
 // Use ProviderContext.from() to create an instance - returns null if any required

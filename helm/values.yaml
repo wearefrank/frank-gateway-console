@@ -5,9 +5,6 @@ frankgateway:
 prometheus:
   image: prom/prometheus:v3.4.0
 
-backend:
-  image: ghcr.io/tijmensosef/federated-gateway-backend:latest
-
-frontend:
-  image: ghcr.io/tijmensosef/federated-gateway-frontend:latest
-  port: 8081
+console:
+  image: ghcr.io/wearefrank/federated-gateway-console:latest
+  port: 8080

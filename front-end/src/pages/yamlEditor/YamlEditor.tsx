@@ -146,7 +146,7 @@ const YamlEditor = () => {
     };
 
     useEffect(() => {
-        if (config && schema) {
+        if (schema) {
             configManager.setFillInDefaults(fillDefault);
 
             const validationLogs = configManager.validate();
@@ -211,7 +211,6 @@ const YamlEditor = () => {
                         setHighlightedLog(log);
                         setRightTab('validation');
                     }}
-                    onReferenceNavigate={handleNavigatePath}
                     scrollToTarget={scrollToTarget}
                 />
 
