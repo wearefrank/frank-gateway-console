@@ -8,11 +8,19 @@ import { resolvePathToNode, type ParsedDoc } from '../yamlLineUtils';
 // Use ProviderContext.from() to create an instance - returns null if any required
 // ref is not yet populated, so providers never have to do their own null-checks.
 export class ProviderContext {
+    private readonly config: ApisixConfig;
+    private readonly parsedDoc: ParsedDoc;
+    private readonly monaco: typeof MonacoType;
+
     private constructor(
-        private readonly config: ApisixConfig,
-        private readonly parsedDoc: ParsedDoc,
-        private readonly monaco: typeof MonacoType,
-    ) {}
+        config: ApisixConfig,
+        parsedDoc: ParsedDoc,
+        monaco: typeof MonacoType,
+    ) {
+        this.config = config;
+        this.parsedDoc = parsedDoc;
+        this.monaco = monaco;
+    }
 
     static from(
         configRef: RefObject<ApisixConfig | null | undefined>,
