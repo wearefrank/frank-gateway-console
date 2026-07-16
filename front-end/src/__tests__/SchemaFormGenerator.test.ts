@@ -329,7 +329,8 @@ describe('getOneOfGroups', () => {
         });
         const groups = gen.getOneOfGroups('route');
         expect(groups).toHaveLength(1);
-        expect(groups![0].map(g => g.exclusiveFields)).toEqual([['uri'], ['uris']]);
+        expect(groups![0].keyword).toBe('oneOf');
+        expect(groups![0].groups.map(g => g.exclusiveFields)).toEqual([['uri'], ['uris']]);
     });
 
     it('collects groups from each entry of an allOf wrapper', () => {

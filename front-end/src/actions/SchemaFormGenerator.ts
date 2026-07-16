@@ -50,8 +50,8 @@ export class SchemaFormGenerator {
     }
 
     public getFieldsFromSchema(schema: JsonSchema): SchemaField[] {
-        if (!schema.properties) return [];
-        const properties = schema.properties as Record<string, SchemaNode>;
+        const properties = this.resolveProperties(schema as SchemaNode);
+        if (Object.keys(properties).length === 0) return [];
         const requiredFields = new Set<string>(
             Array.isArray(schema.required) ? schema.required : []
         );
@@ -62,11 +62,12 @@ export class SchemaFormGenerator {
 
     public getFields(category: string, onlyKeys?: string[]): SchemaField[] {
         const categorySchema = this.getCategorySchema(category);
-        if (!categorySchema?.properties) {
+        if (!categorySchema) return [];
+
+        const properties = this.resolveProperties(categorySchema as SchemaNode);
+        if (Object.keys(properties).length === 0) {
             return [];
         }
-
-        const properties = categorySchema.properties as Record<string, SchemaNode>;
 
         // get required fields
         const requiredFields = new Set<string>(
@@ -90,20 +91,20 @@ export class SchemaFormGenerator {
         const dimensions = this.getOneOfGroups(category);
         if (!dimensions) return allFields;
 
-        const allExclusive = new Set(dimensions.flatMap(d => d.flatMap(g => g.exclusiveFields)));
+        const allExclusive = new Set(dimensions.flatMap(d => d.groups.flatMap(g => g.exclusiveFields)));
 
         // Build one OneOfGroupField per independent dimension
         const groupFields = new Map<string, OneOfGroupField>();
         for (const dimension of dimensions) {
-            const variants: OneOfGroupVariant[] = dimension.map(g => ({
+            const variants: OneOfGroupVariant[] = dimension.groups.map(g => ({
                 label: g.label,
                 fieldNames: g.exclusiveFields,
                 fields: g.exclusiveFields
                     .filter(name => name in properties)
                     .map(name => this.buildField(name, properties[name] as SchemaNode, requiredFields.has(name))),
             }));
-            const groupName = dimension.find(g => g.exclusiveFields.length > 0)?.exclusiveFields[0] ?? '__oneof_group';
-            groupFields.set(groupName, { name: groupName, type: 'oneof-group', inline: false, required: false, variants });
+            const groupName = dimension.groups.find(g => g.exclusiveFields.length > 0)?.exclusiveFields[0] ?? '__oneof_group';
+            groupFields.set(groupName, { name: groupName, type: 'oneof-group', inline: false, required: false, keyword: dimension.keyword, variants });
         }
 
         // Replace each exclusive field with its group block (injected once, at the position of its first field)
@@ -139,13 +140,14 @@ export class SchemaFormGenerator {
         }
 
         if (Array.isArray(schema.anyOf) || Array.isArray(schema.oneOf)) {
-            const variants = (schema.anyOf ?? schema.oneOf) as SchemaNode[];
+            const keyword: 'oneOf' | 'anyOf' = Array.isArray(schema.anyOf) ? 'anyOf' : 'oneOf';
+            const variants = schema[keyword] as SchemaNode[];
             const meaningful = variants.filter(v => v && v.type !== 'null' && Object.keys(v).length > 0);
             if (meaningful.length <= 1) {
                 const chosen = meaningful[0] ?? variants[0];
                 return this.buildField(name, { ...schema, ...chosen, anyOf: undefined, oneOf: undefined }, required);
             }
-            return this.buildInlineAnyOf(base, meaningful);
+            return this.buildInlineAnyOf(base, meaningful, keyword);
         }
 
         switch (schema.type) {
@@ -209,8 +211,9 @@ export class SchemaFormGenerator {
         }
 
         // structured object with known properties → recurse
-        if (schema.properties) {
-            const properties = schema.properties as Record<string, SchemaNode>;
+        // (includes properties that only exist inside if/then/else/allOf branches)
+        const properties = this.resolveProperties(schema);
+        if (Object.keys(properties).length > 0) {
             const requiredFields = new Set<string>(
                 Array.isArray(schema.required) ? schema.required : []
             );
@@ -224,30 +227,63 @@ export class SchemaFormGenerator {
         return { ...base, type: 'object', fields: [] };
     }
 
-    public getOneOfGroups(category: string): OneOfGroup[][] | null {
+    // Merges the schema's own "properties" with any properties that only exist inside
+    // if/then/else/allOf branches (e.g. limit-count's redis_host is only defined under
+    // a "then" that applies when policy === "redis") so those fields aren't silently
+    // dropped from the form. Own properties take precedence on key collisions.
+    private resolveProperties(schema: SchemaNode): Record<string, SchemaNode> {
+        const conditional = this.collectConditionalProperties(schema);
+        const own = (schema.properties ?? {}) as Record<string, SchemaNode>;
+        return { ...conditional, ...own };
+    }
+
+    private collectConditionalProperties(schema: SchemaNode): Record<string, SchemaNode> {
+        const collected: Record<string, SchemaNode> = {};
+        const branches = [
+            schema.then,
+            schema.else,
+            ...(Array.isArray(schema.allOf) ? schema.allOf : []),
+        ];
+
+        for (const branch of branches) {
+            if (!branch || typeof branch !== 'object') continue;
+            const branchSchema = branch as SchemaNode;
+            Object.assign(collected, branchSchema.properties as Record<string, SchemaNode> | undefined);
+            // then/else can nest their own if/then/else (e.g. limit-count's else contains a nested if/then)
+            Object.assign(collected, this.collectConditionalProperties(branchSchema));
+        }
+
+        return collected;
+    }
+
+    public getOneOfGroups(category: string): OneOfDimension[] | null {
         const schema = this.getCategorySchema(category);
         if (!schema) return null;
 
-        const all: OneOfGroup[][] = [];
+        const all: OneOfDimension[] = [];
 
         // Check top-level oneOf/anyOf
-        const topGroups = this.extractGroupsFromNode(schema as SchemaNode);
-        if (topGroups) all.push(topGroups);
+        const topDimension = this.extractGroupsFromNode(schema as SchemaNode);
+        if (topDimension) all.push(topDimension);
 
         // APISIX schemas wrap multiple independent constraints in allOf — collect all of them
         if (Array.isArray(schema.allOf)) {
             for (const node of schema.allOf as SchemaNode[]) {
-                const groups = this.extractGroupsFromNode(node);
-                if (groups) all.push(groups);
+                const dimension = this.extractGroupsFromNode(node);
+                if (dimension) all.push(dimension);
             }
         }
 
         return all.length > 0 ? all : null;
     }
 
-    private extractGroupsFromNode(node: SchemaNode): OneOfGroup[] | null {
-        const variants = (node.oneOf ?? node.anyOf) as SchemaNode[] | undefined;
-        if (!Array.isArray(variants) || variants.length <= 1) return null;
+    private extractGroupsFromNode(node: SchemaNode): OneOfDimension | null {
+        const keyword: 'oneOf' | 'anyOf' | null =
+            Array.isArray(node.oneOf) ? 'oneOf' : Array.isArray(node.anyOf) ? 'anyOf' : null;
+        if (!keyword) return null;
+
+        const variants = node[keyword] as SchemaNode[];
+        if (variants.length <= 1) return null;
 
         const variantRequired: string[][] = variants.map(v =>
             Array.isArray(v.required) ? (v.required as string[]) : []
@@ -264,10 +300,10 @@ export class SchemaFormGenerator {
         });
 
         const hasExclusions = groups.some(g => g.exclusiveFields.length > 0);
-        return hasExclusions ? groups : null;
+        return hasExclusions ? { keyword, groups } : null;
     }
 
-    private buildInlineAnyOf(base: FieldBase, meaningful: SchemaNode[]): SchemaField {
+    private buildInlineAnyOf(base: FieldBase, meaningful: SchemaNode[], keyword: 'oneOf' | 'anyOf'): SchemaField {
         const builtFields = meaningful.map(v =>
             this.buildField(base.name, { ...v, anyOf: undefined, oneOf: undefined }, base.required)
         );
@@ -286,7 +322,7 @@ export class SchemaFormGenerator {
             fieldNames: [base.name],
             fields: [builtFields[i]],
         }));
-        return { ...base, type: 'oneof-group', inline: true, variants };
+        return { ...base, type: 'oneof-group', inline: true, keyword, variants };
     }
 
     private getVariantLabel(v: SchemaNode, index: number): string {
@@ -294,15 +330,6 @@ export class SchemaFormGenerator {
         if (typeof v.type === 'string') return v.type;
         if (v.properties) return 'object';
         return `Option ${index + 1}`;
-    }
-
-    private pickBestVariant(variants: SchemaNode[]): SchemaNode {
-        const arrayVariant = variants.find(v => v.type === 'array');
-        if (arrayVariant) return arrayVariant;
-
-        const objectWithProps = variants.find(v => v.type === 'object' && v.properties);
-        if (objectWithProps) return objectWithProps;
-        return variants[0];
     }
 
     private buildArrayField(base: FieldBase, schema: SchemaNode): ArrayField | ObjectArrayField {
