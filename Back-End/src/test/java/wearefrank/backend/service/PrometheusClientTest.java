@@ -1,5 +1,6 @@
 package wearefrank.backend.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import java.net.http.HttpResponse;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
@@ -131,5 +133,37 @@ class PrometheusClientTest {
         assertThat(uri).contains("start=1000");
         assertThat(uri).contains("end=2000");
         assertThat(uri).contains("step=30");
+    }
+
+    @Test
+    void getTsdbMinTime_returnsMinTimeConvertedToSeconds() throws Exception {
+        doReturn(httpResponse).when(httpClient).send(any(), any());
+        when(httpResponse.statusCode()).thenReturn(200);
+        when(httpResponse.body()).thenReturn("{\"data\":{\"headStats\":{\"minTime\":123456000}}}");
+        JsonNode realTree = new ObjectMapper().readTree("{\"data\":{\"headStats\":{\"minTime\":123456000}}}");
+        when(objectMapper.readTree(anyString())).thenReturn(realTree);
+
+        long result = prometheusClient.getTsdbMinTime();
+
+        assertThat(result).isEqualTo(123456L);
+    }
+
+    @Test
+    void getTsdbMinTime_wrapsNetworkFailure() throws Exception {
+        doThrow(new IOException("connection refused")).when(httpClient).send(any(), any());
+
+        assertThatThrownBy(() -> prometheusClient.getTsdbMinTime())
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Failed to fetch Prometheus TSDB status");
+    }
+
+    @Test
+    void getTsdbMinTime_wrapsNon200Response() throws Exception {
+        doReturn(httpResponse).when(httpClient).send(any(), any());
+        when(httpResponse.statusCode()).thenReturn(503);
+
+        assertThatThrownBy(() -> prometheusClient.getTsdbMinTime())
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Failed to fetch Prometheus TSDB status");
     }
 }

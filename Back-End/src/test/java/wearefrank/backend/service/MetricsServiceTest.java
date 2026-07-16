@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import wearefrank.backend.dto.MetricsDto;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -75,7 +77,7 @@ class MetricsServiceTest {
 
         Object result = metricsService.getLiveRoutes();
 
-        assertThat((List<Object>) result).hasSize(1);
+        assertThat((List<Object>) result).containsExactly(Map.of("id", "r1"));
     }
 
     @Test
@@ -94,7 +96,7 @@ class MetricsServiceTest {
 
         Object result = metricsService.getLiveUpstreams();
 
-        assertThat((List<Object>) result).hasSize(1);
+        assertThat((List<Object>) result).containsExactly(Map.of("id", "u1"));
     }
 
     @Test
@@ -117,14 +119,43 @@ class MetricsServiceTest {
     }
 
     @Test
-    void prometheusRangeQuery_delegatesToPrometheusClientWithTimeBoundsAndStep() {
-        when(prometheusClient.rangeQuery(anyString(), anyLong(), anyLong(), anyString()))
+    void prometheusRangeQuery_nullStartTime_resolvesToLastHourBeforeNow() {
+        ArgumentCaptor<Long> startCaptor = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<Long> endCaptor = ArgumentCaptor.forClass(Long.class);
+        when(prometheusClient.rangeQuery(eq("up"), startCaptor.capture(), endCaptor.capture(), eq("60")))
                 .thenReturn("range-result");
 
+        long before = System.currentTimeMillis() / 1000;
         String result = metricsService.prometheusRangeQuery("up", null, null);
+        long after = System.currentTimeMillis() / 1000;
 
         assertThat(result).isEqualTo("range-result");
-        verify(prometheusClient).rangeQuery(eq("up"), anyLong(), anyLong(), eq("60"));
+        assertThat(endCaptor.getValue()).isBetween(before, after);
+        assertThat(startCaptor.getValue()).isEqualTo(endCaptor.getValue() - 3600);
+    }
+
+    @Test
+    void prometheusRangeQuery_explicitStartTime_isPassedThroughUnchanged() {
+        when(prometheusClient.rangeQuery(eq("up"), eq(12345L), anyLong(), eq("30")))
+                .thenReturn("range-result");
+
+        String result = metricsService.prometheusRangeQuery("up", 12345L, "30");
+
+        assertThat(result).isEqualTo("range-result");
+        verify(prometheusClient).rangeQuery(eq("up"), eq(12345L), anyLong(), eq("30"));
+    }
+
+    @Test
+    void prometheusRangeQuery_zeroStartTime_resolvesViaTsdbMinTime() {
+        when(prometheusClient.getTsdbMinTime()).thenReturn(999L);
+        when(prometheusClient.rangeQuery(eq("up"), eq(999L), anyLong(), eq("60")))
+                .thenReturn("range-result");
+
+        String result = metricsService.prometheusRangeQuery("up", 0L, null);
+
+        assertThat(result).isEqualTo("range-result");
+        verify(prometheusClient).getTsdbMinTime();
+        verify(prometheusClient).rangeQuery(eq("up"), eq(999L), anyLong(), eq("60"));
     }
 
     @Test
