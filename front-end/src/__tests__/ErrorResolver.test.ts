@@ -543,4 +543,66 @@ describe('ErrorResolver — anyOf with object data (nodes map form)', () => {
         expect(result[0].message).toContain('object (key: value map)');
         expect(result[0].message).not.toContain('unknown variant');
     });
+
+    // mirrors the real APISIX route schema's mutual-exclusion guard for host/hosts
+    // (and remote_addr/remote_addrs): oneOf [not-either, host, hosts]
+    it('labels a "not" mutual-exclusion branch instead of "(unknown variant)"', () => {
+        const err = makeError(
+            'oneOf', '/route',
+            {},
+            '#/route/allOf/1/oneOf',
+            {
+                schema: [
+                    { not: { anyOf: [{ required: ['host'] }, { required: ['hosts'] }] } },
+                    { required: ['host'] },
+                    { required: ['hosts'] },
+                ],
+                data: {},
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('none of: host, hosts');
+        expect(result[0].message).not.toContain('unknown variant');
+    });
+
+    // mirrors plugin _meta.error_response: oneOf [{type: "string"}, {type: "object"}] -
+    // branches with no required/properties/items/patternProperties/not, just a bare type
+    it('labels a bare-type branch by its type instead of "(unknown variant)"', () => {
+        const err = makeError(
+            'oneOf', '/error_response',
+            {},
+            '#/_meta/properties/error_response/oneOf',
+            {
+                schema: [{ type: 'string' }, { type: 'object' }],
+                data: {},
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('string');
+        expect(result[0].message).toContain('object');
+        expect(result[0].message).not.toContain('unknown variant');
+    });
+
+    // mirrors the gzip plugin's "types" field: anyOf [array-of-strings, {enum: ["*"]}] -
+    // the enum branch has no type/required/properties of its own
+    it('labels an enum-only branch by its allowed value(s) instead of "(unknown variant)"', () => {
+        const err = makeError(
+            'anyOf', '/types',
+            {},
+            '#/properties/types/anyOf',
+            {
+                schema: [
+                    { type: 'array', items: { type: 'string' } },
+                    { enum: ['*'] },
+                ],
+                data: {},
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('value: *');
+        expect(result[0].message).not.toContain('unknown variant');
+    });
 });

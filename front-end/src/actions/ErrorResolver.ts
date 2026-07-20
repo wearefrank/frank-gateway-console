@@ -137,9 +137,7 @@ class ErrorResolver {
                 continue;
             }
 
-            // before falling back to guessing, see if a branch that structurally matches the data's
-            // shape (explicitly typed "object") has leaf errors we can drill into direct
-            // e.g. a specific field failing minimum/pattern/etc, instead of a vague "no variant matched"
+            // try the specific leaf error (e.g. failed minimum) before falling back to guessing
             const objectBranchLeaves = this.collectObjectBranchLeaves(schema, error.schemaPath, leaves);
             if (objectBranchLeaves.length > 0) {
                 for (const leaf of objectBranchLeaves) {
@@ -174,17 +172,13 @@ class ErrorResolver {
         return resolvedErrors;
     }
 
-    // the leaf errors from AJV already contain the details (e.g. missing required field, failed
-    // minimum) for whatever branch was being checked - this just finds the ones nested under a
-    // given branch index of an anyOf/oneOf so we can report them directly
+    // finds AJV's leaf errors nested under a given anyOf/oneOf branch index
     private drillBranchLeaves(schemaPath: string, branchIdx: number, leaves: ErrorObject[]): ErrorObject[] {
         const prefix = `${schemaPath}/${branchIdx}/`;
         return leaves.filter(leaf => leaf.schemaPath.startsWith(prefix));
     }
 
-    // same idea as the array/scalar branchIdx lookup above, but for object data: only branches
-    // explicitly typed "object" are structural candidates (patternProperties-only branches with no
-    // "type" are left alone, since we can't be sure they were meant to apply to this data)
+    // only branches explicitly typed "object" are treated as candidates for the data
     private collectObjectBranchLeaves(schema: unknown, schemaPath: string, leaves: ErrorObject[]): ErrorObject[] {
         if (!Array.isArray(schema)) return [];
 
@@ -261,8 +255,7 @@ class ErrorResolver {
             return subOptions;
         }
 
-        // array-of-objects form (e.g. nodes: [{host, port, weight}]) - describe by the item shape
-        // instead of falling through to an unlabelled variant
+        // array-of-objects form (e.g. nodes: [{host, port, weight}])
         if (this.isObject(branch.items)) {
             const items = branch.items;
             if (Array.isArray(items.required)) {
@@ -274,13 +267,49 @@ class ErrorResolver {
             return ['array'];
         }
 
-        // map form (e.g. nodes: {"host:port": weight}) - patternProperties has no fixed key names
-        // to list, so just name the shape
+        // map form (e.g. nodes: {"host:port": weight})
         if (this.isObject(branch.patternProperties)) {
             return ['object (key: value map)'];
         }
 
+        // mutual-exclusion guard (e.g. "neither host nor hosts is set") - describe by what it excludes
+        if (this.isObject(branch.not)) {
+            const excluded = this.gatherRequiredFields(branch.not);
+            if (excluded.length > 0) {
+                return [`none of: ${excluded.join(', ')}`];
+            }
+        }
+
+        // bare type with no further constraints (e.g. oneOf: [{type: "string"}, {type: "object"}])
+        if (typeof branch.type === 'string') {
+            return [branch.type];
+        }
+
+        // fixed value(s) with no type of their own (e.g. anyOf: [{type: "array", ...}, {enum: ["*"]}])
+        if (Array.isArray(branch.enum)) {
+            return [`value: ${branch.enum.map(String).join(' or ')}`];
+        }
+        if ('const' in branch) {
+            return [`value: ${String(branch.const)}`];
+        }
+
         return ['(unknown variant)'];
+    }
+
+    // collects "required" field names from a schema and its direct anyOf/oneOf sub-branches
+    private gatherRequiredFields(schema: unknown): string[] {
+        if (!this.isObject(schema)) return [];
+
+        if (Array.isArray(schema.required)) {
+            return schema.required.map(String);
+        }
+
+        const subBranches = schema.anyOf ?? schema.oneOf;
+        if (Array.isArray(subBranches)) {
+            return subBranches.flatMap(b => this.gatherRequiredFields(b));
+        }
+
+        return [];
     }
 
     private classifyErrors(errors: ErrorObject[]): ClassifiedErrors {
