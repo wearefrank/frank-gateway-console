@@ -606,3 +606,110 @@ describe('ErrorResolver — anyOf with object data (nodes map form)', () => {
         expect(result[0].message).not.toContain('unknown variant');
     });
 });
+
+// ---------------------------------------------------------------------------
+// Block 10 — schema-form "dependencies" (compiles to a bare "not" error)
+// ---------------------------------------------------------------------------
+
+describe('ErrorResolver — "not" from a schema-form dependencies entry', () => {
+    const resolver = new ErrorResolver();
+
+    // mirrors upstream.tls.dependencies: setting client_cert_id excludes client_cert/client_key
+    it('names the triggering field and what it excludes, not the raw AJV message', () => {
+        const err = makeError(
+            'not', '/upstream/tls',
+            {},
+            '#/definitions/upstream/properties/tls/dependencies/client_cert_id/not',
+            {
+                schema: { required: ['client_cert', 'client_key'] },
+                message: 'must NOT be valid',
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toBe(
+            "route: 'client_cert_id' cannot be combined with: client_cert, client_key"
+        );
+        expect(result[0].message).not.toContain('must NOT be valid');
+    });
+
+    // mirrors response-rewrite.dependencies: body and filters exclude each other, each
+    // producing its own "not" error - they must stay distinguishable, not identical
+    it('produces distinct messages for each side of a two-way exclusion', () => {
+        const bodyErr = makeError(
+            'not', '/plugins/response-rewrite',
+            {},
+            '#/dependencies/body/not',
+            { schema: { required: ['filters'] } }
+        );
+        const filtersErr = makeError(
+            'not', '/plugins/response-rewrite',
+            {},
+            '#/dependencies/filters/not',
+            { schema: { required: ['body'] } }
+        );
+        const result = resolver.resolve([makeCollection([bodyErr, filtersErr])]);
+        expect(result).toHaveLength(2);
+        expect(result[0].message).toContain("'body' cannot be combined with: filters");
+        expect(result[1].message).toContain("'filters' cannot be combined with: body");
+        expect(result[0].message).not.toBe(result[1].message);
+    });
+
+    it('falls back to the raw AJV message when the negated schema has no required/anyOf fields', () => {
+        const err = makeError(
+            'not', '/upstream/scheme',
+            {},
+            '#/properties/scheme/not',
+            { schema: { enum: ['grpc'] }, message: 'must NOT be valid' }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('must NOT be valid');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Block 11 — anyOf/oneOf with array data, no branch's type matches at all
+// ---------------------------------------------------------------------------
+
+describe('ErrorResolver — anyOf with array data and no matching branch type', () => {
+    const resolver = new ErrorResolver();
+
+    // mirrors ip-restriction.whitelist: a 4-branch anyOf that's all "type: string",
+    // distinguished only by format/pattern - a wrong-typed item used to render as
+    // "'1' must be string or string or string or string, got number"
+    it('dedupes repeated types and describes an array item by index, not as a quoted field', () => {
+        const err = makeError(
+            'anyOf', '/whitelist/1',
+            {},
+            '#/properties/whitelist/items/anyOf',
+            {
+                schema: [
+                    { type: 'string', format: 'ipv4' },
+                    { type: 'string', pattern: 'ipv4-cidr' },
+                    { type: 'string', format: 'ipv6' },
+                    { type: 'string', pattern: 'ipv6-cidr' },
+                ],
+                data: 8080,
+            }
+        );
+        const result = resolver.resolve([makeCollection([err], 'ip-restriction', 'ip-restriction')]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toBe('ip-restriction: item 1 must be string, got number');
+    });
+
+    it('still quotes a named field (non-numeric last path segment)', () => {
+        const err = makeError(
+            'anyOf', '/upstream/scheme',
+            {},
+            '#/properties/scheme/anyOf',
+            {
+                schema: [{ type: 'string' }, { type: 'integer' }],
+                data: true,
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toBe("route: 'scheme' must be string or integer, got boolean");
+    });
+});

@@ -106,13 +106,20 @@ class ErrorResolver {
                     }
                 } else {
                     // the value's type doesn't match any branch at all (e.g. a boolean where only integer/string are allowed) -
-                    // there are no leaf errors to drill into here, so report the type mismatch directly
-                    const allowedTypes = (schema as Record<string, unknown>[])
-                        .map(b => typeof b.type === 'string' ? b.type : '(unknown)');
-                    const prop = error.instancePath.split('/').pop() || entry.parent;
+                    // there are no leaf errors to drill into here, so report the type mismatch directly.
+                    // dedupe since branches often share a type and only differ by format/pattern
+                    const allowedTypes = [...new Set(
+                        (schema as Record<string, unknown>[]).map(b => typeof b.type === 'string' ? b.type : '(unknown)')
+                    )];
+
+                    // a numeric last segment is an array index (e.g. whitelist/1), not a field name
+                    const lastSegment = error.instancePath.split('/').pop();
+                    const subject = !lastSegment
+                        ? `'${entry.parent}'`
+                        : /^\d+$/.test(lastSegment) ? `item ${lastSegment}` : `'${lastSegment}'`;
 
                     resolvedErrors.push({
-                        message: `${entry.parent}: '${prop}' must be ${allowedTypes.join(' or ')}, got ${dataType}`,
+                        message: `${entry.parent}: ${subject} must be ${allowedTypes.join(' or ')}, got ${dataType}`,
                         path: this.buildResolvedPath(entry, this.getExactPath(error)),
                         errorObject: entry,
                         sourceError: error,
@@ -577,6 +584,17 @@ class ErrorResolver {
                 return `'${prop}' must have at least ${err.params?.limit} items`;
             case 'pattern':
                 return `'${prop}' does not match required pattern: ${err.params?.pattern ?? 'unknown'}`;
+            case 'not': {
+                // schema-form "dependencies" compiles to a bare "not" error with no field names in params
+                const excluded = this.gatherRequiredFields(err.schema);
+                if (excluded.length > 0) {
+                    const trigger = err.schemaPath.match(/\/dependencies\/([^/]+)\/not$/)?.[1];
+                    return trigger
+                        ? `'${trigger}' cannot be combined with: ${excluded.join(', ')}`
+                        : `must not also set: ${excluded.join(', ')}`;
+                }
+                return err.message ?? 'unknown validation error';
+            }
             default:
                 return err.message ?? 'unknown validation error';
         }
