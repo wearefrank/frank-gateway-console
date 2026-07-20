@@ -490,3 +490,57 @@ describe('ErrorResolver — oneOf with array data', () => {
         expect(result[0].message).toContain("missing required property 'host'");
     });
 });
+
+// ---------------------------------------------------------------------------
+// Block 9 — anyOf with object data: drills into a structurally-matching
+// "type: object" branch's leaf errors instead of showing "(unknown variant)"
+// ---------------------------------------------------------------------------
+
+describe('ErrorResolver — anyOf with object data (nodes map form)', () => {
+    const resolver = new ErrorResolver();
+
+    it('surfaces the specific leaf error (e.g. negative weight) instead of "no variant matched"', () => {
+        const err = makeError(
+            'anyOf', '/upstream/nodes',
+            {},
+            '#/properties/nodes/anyOf',
+            {
+                schema: [
+                    { type: 'array', items: { required: ['host', 'weight'] } },
+                    { type: 'object', patternProperties: { '.*': { type: 'integer', minimum: 0 } } },
+                ],
+                data: { 'host.docker.internal:3004': -1 },
+            }
+        );
+        const leaf = makeError(
+            'minimum', '/upstream/nodes/host.docker.internal:3004',
+            { limit: 0 },
+            '#/properties/nodes/anyOf/1/patternProperties/.*/minimum'
+        );
+        const result = resolver.resolve([makeCollection([err, leaf])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toBe("route: 'host.docker.internal:3004' must be >= 0");
+        expect(result[0].message).not.toContain('unknown variant');
+    });
+
+    it('falls back to labelled (not "unknown variant") options when no branch has leaf errors to drill into', () => {
+        const err = makeError(
+            'anyOf', '/upstream/nodes',
+            {},
+            '#/properties/nodes/anyOf',
+            {
+                schema: [
+                    { type: 'array', items: { required: ['host', 'weight'] } },
+                    { type: 'object', patternProperties: { '.*': { type: 'integer', minimum: 0 } } },
+                ],
+                data: { 'host.docker.internal:3004': -1 },
+            }
+        );
+        // no matching leaf errors supplied this time - forces the scoring/label fallback
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('array of {host, weight}');
+        expect(result[0].message).toContain('object (key: value map)');
+        expect(result[0].message).not.toContain('unknown variant');
+    });
+});

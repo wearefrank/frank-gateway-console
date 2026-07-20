@@ -95,8 +95,7 @@ class ErrorResolver {
                 if (branchIdx >= 0) {
                     // the leaf errors from AJV already contain the details (e.g. missing required field),
                     // we just need to find the ones that belong to the matching branch
-                    const prefix = `${error.schemaPath}/${branchIdx}/`;
-                    const branchLeaves = leaves.filter(leaf => leaf.schemaPath.startsWith(prefix));
+                    const branchLeaves = this.drillBranchLeaves(error.schemaPath, branchIdx, leaves);
                     for (const leaf of branchLeaves) {
                         resolvedErrors.push({
                             message: `${entry.parent}: ${this.formatDirectError(leaf)}`,
@@ -138,6 +137,22 @@ class ErrorResolver {
                 continue;
             }
 
+            // before falling back to guessing, see if a branch that structurally matches the data's
+            // shape (explicitly typed "object") has leaf errors we can drill into direct
+            // e.g. a specific field failing minimum/pattern/etc, instead of a vague "no variant matched"
+            const objectBranchLeaves = this.collectObjectBranchLeaves(schema, error.schemaPath, leaves);
+            if (objectBranchLeaves.length > 0) {
+                for (const leaf of objectBranchLeaves) {
+                    resolvedErrors.push({
+                        message: `${entry.parent}: ${this.formatDirectError(leaf)}`,
+                        path: this.buildResolvedPath(entry, this.getExactPath(leaf)),
+                        errorObject: entry,
+                        sourceError: leaf,
+                    });
+                }
+                continue;
+            }
+
             // no branch matched at all score each branch by how many of the user's fields appear in it
             const scored = this.matchOneOfErrors(schema, data);
 
@@ -157,6 +172,28 @@ class ErrorResolver {
         }
 
         return resolvedErrors;
+    }
+
+    // the leaf errors from AJV already contain the details (e.g. missing required field, failed
+    // minimum) for whatever branch was being checked - this just finds the ones nested under a
+    // given branch index of an anyOf/oneOf so we can report them directly
+    private drillBranchLeaves(schemaPath: string, branchIdx: number, leaves: ErrorObject[]): ErrorObject[] {
+        const prefix = `${schemaPath}/${branchIdx}/`;
+        return leaves.filter(leaf => leaf.schemaPath.startsWith(prefix));
+    }
+
+    // same idea as the array/scalar branchIdx lookup above, but for object data: only branches
+    // explicitly typed "object" are structural candidates (patternProperties-only branches with no
+    // "type" are left alone, since we can't be sure they were meant to apply to this data)
+    private collectObjectBranchLeaves(schema: unknown, schemaPath: string, leaves: ErrorObject[]): ErrorObject[] {
+        if (!Array.isArray(schema)) return [];
+
+        const result: ErrorObject[] = [];
+        schema.forEach((branch, idx) => {
+            if (!this.isObject(branch) || branch.type !== 'object') return;
+            result.push(...this.drillBranchLeaves(schemaPath, idx, leaves));
+        });
+        return result;
     }
 
     private matchOneOfErrors(branch: unknown, data:unknown): string[][] {
@@ -222,6 +259,25 @@ class ErrorResolver {
         if (this.isObject(branch.properties)) {
             subOptions = Object.keys(branch.properties);
             return subOptions;
+        }
+
+        // array-of-objects form (e.g. nodes: [{host, port, weight}]) - describe by the item shape
+        // instead of falling through to an unlabelled variant
+        if (this.isObject(branch.items)) {
+            const items = branch.items;
+            if (Array.isArray(items.required)) {
+                return [`array of {${items.required.join(', ')}}`];
+            }
+            if (this.isObject(items.properties)) {
+                return [`array of {${Object.keys(items.properties).join(', ')}}`];
+            }
+            return ['array'];
+        }
+
+        // map form (e.g. nodes: {"host:port": weight}) - patternProperties has no fixed key names
+        // to list, so just name the shape
+        if (this.isObject(branch.patternProperties)) {
+            return ['object (key: value map)'];
         }
 
         return ['(unknown variant)'];
