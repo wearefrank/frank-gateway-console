@@ -22,6 +22,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ConfigController.class)
+@org.springframework.test.context.TestPropertySource(properties = {
+    "apisix.default.host=http://127.0.0.1",
+    "apisix.default.control-port=9882",
+    "apisix.default.metrics-port=9881"
+})
 class ConfigControllerTest {
 
     @Autowired
