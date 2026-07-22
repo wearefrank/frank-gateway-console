@@ -39,6 +39,25 @@ describe('buildCursorLocation', () => {
         expect(loc!.existingKeys.has('name')).toBe(true);
     });
 
+    it('collects sibling values alongside sibling keys, stripping quotes and inline comments', () => {
+        const text = [
+            'routes:',
+            '  - id: r1',
+            '    policy: "redis" # which backend',
+            '    count: 5',
+        ].join('\n');
+        // cursor sits on the "count" line; "id" (from the marker line) and "policy" are siblings above it
+        const loc = buildCursorLocation(text, 4);
+        expect(loc!.existingValues.get('id')).toBe('r1');
+        expect(loc!.existingValues.get('policy')).toBe('redis');
+    });
+
+    it('does not carry sibling values over from a previous entry', () => {
+        const text = ['routes:', '  - id: r1', '    policy: redis', '  - id: r2', '    uri: /foo'].join('\n');
+        const loc = buildCursorLocation(text, 5);
+        expect(loc!.existingValues.has('policy')).toBe(false);
+    });
+
     it('walks up to build the schema path for a nested field', () => {
         const text = ['routes:', '  - id: r1', '    timeout:', '      connect: 5'].join('\n');
         const loc = buildCursorLocation(text, 4);

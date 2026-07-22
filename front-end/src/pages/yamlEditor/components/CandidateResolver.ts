@@ -19,17 +19,106 @@ function resolveRef(schema: MonacoJsonSchema, defs: Record<string, MonacoJsonSch
     return schema;
 }
 
+// A discriminator condition from "if.properties.<field>" (const or enum), compared
+// as strings against sibling text.
+interface IfCondition {
+    field: string;
+    values: string[];
+}
+
+type MatchResult = 'match' | 'no-match' | 'vacuous';
+
+function parseIfConditions(ifSchema: Record<string, unknown>): IfCondition[] {
+    const properties = ifSchema.properties as Record<string, unknown> | undefined;
+    if (!properties) return [];
+
+    const conditions: IfCondition[] = [];
+    for (const [field, constraint] of Object.entries(properties)) {
+        if (!constraint || typeof constraint !== 'object') continue;
+        const c = constraint as Record<string, unknown>;
+        if ('const' in c) {
+            conditions.push({ field, values: [String(c.const)] });
+        } else if (Array.isArray(c.enum)) {
+            conditions.push({ field, values: c.enum.map(String) });
+        }
+    }
+    return conditions;
+}
+
+// "vacuous" means the discriminator hasn't been typed yet - callers merge both branches
+// then to avoid hiding valid fields.
+function evaluateIfCondition(conditions: IfCondition[], siblingValues: Map<string, string>): MatchResult {
+    if (conditions.length === 0) return 'vacuous';
+
+    let allVacuous = true;
+    for (const condition of conditions) {
+        const value = siblingValues.get(condition.field);
+        // An empty value means "key: " has been typed but not its value yet - treat that the
+        // same as not-typed-at-all rather than as a (never-matching) real value.
+        if (value === undefined || value === '') continue;
+
+        allVacuous = false;
+        if (!condition.values.includes(value)) return 'no-match';
+    }
+
+    return allVacuous ? 'vacuous' : 'match';
+}
+
+// Merges a schema's own properties with any nested inside if/then/else/allOf branches
+// (e.g. limit-count's redis_host lives under a "then" for policy === "redis"), filtered
+// to whichever branch matches siblingValues once the discriminator's been typed. Own
+// properties win on collisions.
+function resolveProperties(
+    schema: MonacoJsonSchema,
+    defs: Record<string, MonacoJsonSchema>,
+    siblingValues: Map<string, string>,
+): Record<string, MonacoJsonSchema> {
+    const conditional = collectConditionalProperties(schema, defs, siblingValues);
+    const own = (schema as Record<string, unknown>).properties as Record<string, MonacoJsonSchema> | undefined;
+    return { ...conditional, ...own };
+}
+
+function collectConditionalProperties(
+    schema: MonacoJsonSchema,
+    defs: Record<string, MonacoJsonSchema>,
+    siblingValues: Map<string, string>,
+): Record<string, MonacoJsonSchema> {
+    const collected: Record<string, MonacoJsonSchema> = {};
+    const s = schema as Record<string, unknown>;
+
+    const ifSchema = s.if as Record<string, unknown> | undefined;
+    const matchResult = ifSchema ? evaluateIfCondition(parseIfConditions(ifSchema), siblingValues) : 'vacuous';
+
+    const branches = [
+        ...(matchResult !== 'no-match' ? [s.then] : []),
+        ...(matchResult !== 'match' ? [s.else] : []),
+        ...(Array.isArray(s.allOf) ? s.allOf as unknown[] : []),
+    ];
+
+    for (const branch of branches) {
+        if (!branch || typeof branch !== 'object') continue;
+        const branchSchema = resolveRef(branch as MonacoJsonSchema, defs);
+        const branchProps = (branchSchema as Record<string, unknown>).properties as Record<string, MonacoJsonSchema> | undefined;
+        Object.assign(collected, branchProps);
+        // then/else can nest their own if/then/else, so recurse.
+        Object.assign(collected, collectConditionalProperties(branchSchema, defs, siblingValues));
+    }
+
+    return collected;
+}
+
 // Walks a JSON Schema along a property path, resolving $refs at each step.
 // Returns null if any step in the path is missing.
 function walkSchemaToPath(
     schema: MonacoJsonSchema,
     path: string[],
     defs: Record<string, MonacoJsonSchema>,
+    siblingValues: Map<string, string>,
 ): MonacoJsonSchema | null {
     let current = resolveRef(schema, defs);
     for (const key of path) {
-        const props = (current as Record<string, unknown>).properties as Record<string, MonacoJsonSchema> | undefined;
-        if (!props || !(key in props)) return null;
+        const props = resolveProperties(current, defs, siblingValues);
+        if (!(key in props)) return null;
         current = resolveRef(props[key], defs);
     }
     return current;
@@ -44,12 +133,13 @@ function keyCandidates(
     defs: Record<string, MonacoJsonSchema>,
     existingKeys: Set<string>,
     indent: number,
+    siblingValues: Map<string, string>,
 ): Candidate[] {
-    const targetSchema = walkSchemaToPath(rootSchema, path, defs);
+    const targetSchema = walkSchemaToPath(rootSchema, path, defs, siblingValues);
     if (!targetSchema) return [];
 
-    const properties = (targetSchema as Record<string, unknown>).properties as Record<string, MonacoJsonSchema> | undefined;
-    if (!properties) return [];
+    const properties = resolveProperties(targetSchema, defs, siblingValues);
+    if (Object.keys(properties).length === 0) return [];
 
     return Object.entries(properties)
         .filter(([key]) => !existingKeys.has(key))
@@ -163,14 +253,14 @@ export function resolveCandidates(
             const categorySchema = defs[context.category];
             if (!categorySchema) return [];
 
-            return keyCandidates(categorySchema, context.location.schemaPath, defs, context.location.existingKeys, context.location.indent);
+            return keyCandidates(categorySchema, context.location.schemaPath, defs, context.location.existingKeys, context.location.indent, context.location.existingValues);
         }
 
         case 'value': {
             const categorySchema = defs[context.category];
             if (!categorySchema) return [];
 
-            const valueSchema = walkSchemaToPath(categorySchema, context.schemaPath, defs);
+            const valueSchema = walkSchemaToPath(categorySchema, context.schemaPath, defs, context.location.existingValues);
             if (!valueSchema) return [];
 
             return valueCandidates(valueSchema, defs);
@@ -189,14 +279,14 @@ export function resolveCandidates(
             const ps = getPluginSchema(catalog, context.pluginName, context.category);
             if (!ps) return [];
 
-            return keyCandidates(ps, context.location.schemaPath, defs, context.location.existingKeys, context.location.indent);
+            return keyCandidates(ps, context.schemaPath, defs, context.location.existingKeys, context.location.indent, context.location.existingValues);
         }
 
         case 'plugin-value': {
             const ps = getPluginSchema(catalog, context.pluginName, context.category);
             if (!ps) return [];
 
-            const valueSchema = walkSchemaToPath(ps, context.schemaPath, defs);
+            const valueSchema = walkSchemaToPath(ps, context.schemaPath, defs, context.location.existingValues);
             if (!valueSchema) return [];
 
             return valueCandidates(valueSchema, defs);

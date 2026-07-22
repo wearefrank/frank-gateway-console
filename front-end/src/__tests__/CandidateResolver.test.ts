@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { resolveCandidates } from '../pages/yamlEditor/components/CandidateResolver';
-import type { CursorContext } from '../pages/yamlEditor/components/CursorContext';
+import { resolveCursorContext, type CursorContext } from '../pages/yamlEditor/components/CursorContext';
+import { CATEGORY_DEFINITIONS } from '../config/categoryDefinitions';
 import type { SchemaCatalog, ApisixConfig } from '../actions/SchemaValidation';
 import type { CursorLocation } from '../pages/yamlEditor/components/CursorLocation';
 
@@ -10,6 +11,7 @@ function loc(overrides: Partial<CursorLocation> = {}): CursorLocation {
         category: 'route',
         schemaPath: [],
         existingKeys: new Set(),
+        existingValues: new Map(),
         markerIndent: 2,
         isEntryMarkerLine: false,
         isUnderIndentedField: false,
@@ -131,7 +133,7 @@ describe('resolveCandidates', () => {
 
         it('suggests keys from the plugin schema', () => {
             const context: CursorContext = {
-                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'limit-count',
+                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: [],
             };
             const candidates = resolveCandidates(context, catalog, null);
             expect(candidates.map(c => c.label).sort()).toEqual(['count', 'policy']);
@@ -139,7 +141,7 @@ describe('resolveCandidates', () => {
 
         it('returns no candidates for an unknown plugin', () => {
             const context: CursorContext = {
-                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'does-not-exist',
+                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'does-not-exist', schemaPath: [],
             };
             expect(resolveCandidates(context, catalog, null)).toHaveLength(0);
         });
@@ -152,6 +154,191 @@ describe('resolveCandidates', () => {
             expect(candidates.map(c => c.label)).toEqual(['local', 'redis']);
         });
 
+        it('includes properties only defined under if/then/else branches', () => {
+            const conditionalCatalog: SchemaCatalog = {
+                plugins: {
+                    'limit-count': {
+                        schema: {
+                            properties: { count: { type: 'integer' }, policy: { type: 'string', enum: ['local', 'redis'] } },
+                            if: { properties: { policy: { const: 'redis' } } },
+                            then: { properties: { redis_host: { type: 'string' } } },
+                            else: { properties: { local_only_field: { type: 'string' } } },
+                        },
+                    },
+                },
+            };
+            const context: CursorContext = {
+                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: [],
+            };
+            const candidates = resolveCandidates(context, conditionalCatalog, null);
+            expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field', 'policy', 'redis_host']);
+        });
+
+        describe('if/then/else filtering based on an already-typed discriminator', () => {
+            const discriminatedCatalog: SchemaCatalog = {
+                plugins: {
+                    'limit-count': {
+                        schema: {
+                            properties: { count: { type: 'integer' }, policy: { type: 'string', enum: ['local', 'redis'] } },
+                            if: { properties: { policy: { const: 'redis' } } },
+                            then: { properties: { redis_host: { type: 'string' } } },
+                            else: { properties: { local_only_field: { type: 'string' } } },
+                        },
+                    },
+                },
+            };
+
+            it('only offers "then" fields when the sibling discriminator matches the if condition', () => {
+                const context: CursorContext = {
+                    kind: 'plugin-key',
+                    category: 'route',
+                    location: loc({ existingValues: new Map([['policy', 'redis']]) }),
+                    pluginName: 'limit-count',
+                    schemaPath: [],
+                };
+                const candidates = resolveCandidates(context, discriminatedCatalog, null);
+                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'policy', 'redis_host']);
+            });
+
+            it('only offers "else" fields when the sibling discriminator does not match the if condition', () => {
+                const context: CursorContext = {
+                    kind: 'plugin-key',
+                    category: 'route',
+                    location: loc({ existingValues: new Map([['policy', 'local']]) }),
+                    pluginName: 'limit-count',
+                    schemaPath: [],
+                };
+                const candidates = resolveCandidates(context, discriminatedCatalog, null);
+                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field', 'policy']);
+            });
+
+            it('offers both branches when the discriminator has not been typed yet', () => {
+                const context: CursorContext = {
+                    kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: [],
+                };
+                const candidates = resolveCandidates(context, discriminatedCatalog, null);
+                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field', 'policy', 'redis_host']);
+            });
+
+            it('offers both branches when the discriminator key is typed but its value is still empty', () => {
+                // Regression: "policy: " (colon typed, value not yet typed) used to be read as
+                // an empty-string sibling value, which compared as a real (never-matching)
+                // value instead of "not typed yet" - hiding both branches instead of neither.
+                const context: CursorContext = {
+                    kind: 'plugin-key',
+                    category: 'route',
+                    location: loc({ existingValues: new Map([['policy', '']]) }),
+                    pluginName: 'limit-count',
+                    schemaPath: [],
+                };
+                const candidates = resolveCandidates(context, discriminatedCatalog, null);
+                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field', 'policy', 'redis_host']);
+            });
+
+            it('requires every field of a multi-field if condition to match before selecting "then"', () => {
+                const multiFieldCatalog: SchemaCatalog = {
+                    plugins: {
+                        'limit-count': {
+                            schema: {
+                                properties: {},
+                                if: { properties: { policy: { const: 'redis' }, key_type: { const: 'var' } } },
+                                then: { properties: { redis_host: { type: 'string' } } },
+                                else: { properties: { local_only_field: { type: 'string' } } },
+                            },
+                        },
+                    },
+                };
+                const contextWith = (values: [string, string][]): CursorContext => ({
+                    kind: 'plugin-key', category: 'route', location: loc({ existingValues: new Map(values) }), pluginName: 'limit-count', schemaPath: [],
+                });
+
+                // Both fields match -> "then" only.
+                expect(resolveCandidates(contextWith([['policy', 'redis'], ['key_type', 'var']]), multiFieldCatalog, null).map(c => c.label))
+                    .toEqual(['redis_host']);
+
+                // One field mismatches -> "else" only, regardless of the other field.
+                expect(resolveCandidates(contextWith([['policy', 'redis'], ['key_type', 'constant']]), multiFieldCatalog, null).map(c => c.label))
+                    .toEqual(['local_only_field']);
+
+                // Only one of the two fields typed so far, and it matches: current behavior
+                // treats this as a full match rather than waiting for the second field, since
+                // no typed field has mismatched yet. Documenting this as the known behavior.
+                expect(resolveCandidates(contextWith([['policy', 'redis']]), multiFieldCatalog, null).map(c => c.label))
+                    .toEqual(['redis_host']);
+            });
+        });
+
+        it('includes properties nested under allOf branches, with own properties taking precedence', () => {
+            const allOfCatalog: SchemaCatalog = {
+                plugins: {
+                    'limit-count': {
+                        schema: {
+                            properties: { count: { type: 'integer', description: 'own' } },
+                            allOf: [
+                                { properties: { count: { type: 'integer', description: 'shadowed' }, redis_host: { type: 'string' } } },
+                                { then: { properties: { nested_field: { type: 'string' } } } },
+                            ],
+                        },
+                    },
+                },
+            };
+            const context: CursorContext = {
+                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: [],
+            };
+            const candidates = resolveCandidates(context, allOfCatalog, null);
+            expect(candidates.map(c => c.label).sort()).toEqual(['count', 'nested_field', 'redis_host']);
+            expect(candidates.find(c => c.label === 'count')?.description).toBe('own');
+        });
+
+        it('walks into a nested value path whose parent is defined only under a then branch', () => {
+            const conditionalCatalog: SchemaCatalog = {
+                plugins: {
+                    'limit-count': {
+                        schema: {
+                            properties: { policy: { type: 'string', enum: ['local', 'redis'] } },
+                            then: {
+                                properties: {
+                                    redis: { properties: { mode: { type: 'string', enum: ['on', 'off'] } } },
+                                },
+                            },
+                        },
+                    },
+                },
+            };
+            const context: CursorContext = {
+                kind: 'plugin-value', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: ['redis', 'mode'],
+            };
+            const candidates = resolveCandidates(context, conditionalCatalog, null);
+            expect(candidates.map(c => c.label)).toEqual(['on', 'off']);
+        });
+
+        it('offers no candidates walking into a then-only path when the discriminator does not match', () => {
+            const conditionalCatalog: SchemaCatalog = {
+                plugins: {
+                    'limit-count': {
+                        schema: {
+                            properties: { policy: { type: 'string', enum: ['local', 'redis'] } },
+                            if: { properties: { policy: { const: 'redis' } } },
+                            then: {
+                                properties: {
+                                    redis: { properties: { mode: { type: 'string', enum: ['on', 'off'] } } },
+                                },
+                            },
+                        },
+                    },
+                },
+            };
+            const context: CursorContext = {
+                kind: 'plugin-value',
+                category: 'route',
+                location: loc({ existingValues: new Map([['policy', 'local']]) }),
+                pluginName: 'limit-count',
+                schemaPath: ['redis', 'mode'],
+            };
+            const candidates = resolveCandidates(context, conditionalCatalog, null);
+            expect(candidates).toHaveLength(0);
+        });
+
         it('uses consumer_schema instead of schema when category is consumer', () => {
             const consumerCatalog: SchemaCatalog = {
                 plugins: {
@@ -162,10 +349,72 @@ describe('resolveCandidates', () => {
                 },
             };
             const context: CursorContext = {
-                kind: 'plugin-key', category: 'consumer', location: loc(), pluginName: 'key-auth',
+                kind: 'plugin-key', category: 'consumer', location: loc(), pluginName: 'key-auth', schemaPath: [],
             };
             const candidates = resolveCandidates(context, consumerCatalog, null);
             expect(candidates.map(c => c.label)).toEqual(['key']);
+        });
+    });
+
+    describe('full pipeline: real YAML text through resolveCursorContext', () => {
+        // Regression coverage for a bug where plugin-key completions always resolved to
+        // nothing in the real editor: resolveCandidates used context.location.schemaPath
+        // (the full document path, still prefixed with "plugins"/pluginName) instead of a
+        // path scoped to the plugin's own schema. Hand-built CursorContext objects elsewhere
+        // in this file never caught it because they never exercised resolveCursorContext.
+        // Fixture mirrors the real limit-count plugin's shape: a top-level if/then/else where
+        // "else" itself nests its own if/then (redis vs. redis-cluster vs. neither).
+        const catalog: SchemaCatalog = {
+            plugins: {
+                'limit-count': {
+                    schema: {
+                        properties: { count: { type: 'integer' }, policy: { type: 'string', enum: ['local', 'redis', 'redis-cluster'] } },
+                        if: { properties: { policy: { enum: ['redis'] } } },
+                        then: { properties: { redis_host: { type: 'string' } } },
+                        else: {
+                            if: { properties: { policy: { enum: ['redis-cluster'] } } },
+                            then: { properties: { redis_cluster_nodes: { type: 'array' } } },
+                        },
+                    },
+                },
+            },
+        };
+
+        function candidatesForPolicy(policyLine: string): string[] {
+            const lines = [
+                'routes:',
+                '  - id: r1',
+                '    uri: /foo',
+                '    plugins:',
+                '      limit-count:',
+                '        count: 2',
+                ...(policyLine ? [`        ${policyLine}`] : []),
+                '        ',
+            ];
+            const text = lines.join('\n');
+            const context = resolveCursorContext(text, lines.length, lines[lines.length - 1].length + 1, CATEGORY_DEFINITIONS);
+            return resolveCandidates(context, catalog, null).map(c => c.label).sort();
+        }
+
+        it('resolves to a non-empty plugin-key context once other fields are already typed', () => {
+            const context = resolveCursorContext(
+                ['routes:', '  - id: r1', '    plugins:', '      limit-count:', '        count: 2', '        '].join('\n'),
+                6, 9, CATEGORY_DEFINITIONS,
+            );
+            expect(context.kind).toBe('plugin-key');
+        });
+
+        it('offers only the redis branch fields when policy: redis is already typed', () => {
+            // "count" and "policy" are already-typed siblings, so existingKeys filters them out.
+            expect(candidatesForPolicy('policy: redis')).toEqual(['redis_host']);
+        });
+
+        it('offers only the redis-cluster branch fields when policy: redis-cluster is already typed', () => {
+            expect(candidatesForPolicy('policy: redis-cluster')).toEqual(['redis_cluster_nodes']);
+        });
+
+        it('offers neither redis branch when policy: local is already typed', () => {
+            expect(candidatesForPolicy('policy: local')).toEqual([]);
         });
     });
 
