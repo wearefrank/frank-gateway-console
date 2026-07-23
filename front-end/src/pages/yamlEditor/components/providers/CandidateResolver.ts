@@ -1,6 +1,6 @@
 import type { JSONSchema as MonacoJsonSchema } from 'monaco-yaml';
-import type { ApisixConfig, SchemaCatalog } from '../../../actions/SchemaValidation';
-import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../config/categoryDefinitions';
+import type { ApisixConfig, SchemaCatalog } from '../../../../actions/SchemaValidation';
+import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../../config/categoryDefinitions';
 import type { CursorContext } from './CursorContext';
 
 export interface Candidate {

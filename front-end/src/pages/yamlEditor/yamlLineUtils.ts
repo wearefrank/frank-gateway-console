@@ -2,8 +2,8 @@ import {Document, LineCounter, parseDocument, type Node, isMap} from 'yaml';
 
 export type SegmentType = 'normal' | 'whitespace' | 'comment' | 'placeholder' | 'key';
 
-// Finds the first # in a line that is not inside quotes.
-function findCommentStart(line: string): number {
+// Finds the first '#' that starts a YAML comment (outside quotes, at start of text or after whitespace).
+export function findCommentStart(line: string): number {
     let inSingle = false;
     let inDouble = false;
     for (let i = 0; i < line.length; i++) {
@@ -12,7 +12,7 @@ function findCommentStart(line: string): number {
             inSingle = !inSingle;
         } else if (c === '"' && !inSingle) {
             inDouble = !inDouble;
-        } else if (c === '#' && !inSingle && !inDouble) {
+        } else if (c === '#' && !inSingle && !inDouble && (i === 0 || /\s/.test(line[i - 1]))) {
             return i;
         }
     }

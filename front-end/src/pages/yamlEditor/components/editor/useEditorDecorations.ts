@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import type { RefObject } from 'react';
 import type * as MonacoType from 'monaco-editor';
-import type { ValidationLog } from '../../../actions/ValidationLogger';
+import type { ValidationLog } from '../../../../actions/ValidationLogger';
 
 const MAX_LINE_NUMBER = 1_000_000_000;
 

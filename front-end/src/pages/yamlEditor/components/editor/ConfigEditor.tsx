@@ -2,17 +2,20 @@ import React, { useMemo, useRef, useCallback, useState, useEffect } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type * as MonacoType from 'monaco-editor';
 import { type MonacoYaml } from 'monaco-yaml';
-import { type ValidationLog } from '../../../actions/ValidationLogger';
-import { parseYamlDoc, resolvePathToNode, buildCategoryLineMap, type ParsedDoc } from '../yamlLineUtils';
+import { type ValidationLog } from '../../../../actions/ValidationLogger';
+import { parseYamlDoc, resolvePathToNode, buildCategoryLineMap, type ParsedDoc } from '../../yamlLineUtils';
 import { beforeMount, getMonacoTheme, monacoYamlInstance } from './monacoThemes';
 import { pushSchema } from './monacoSchemaSync';
-import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
-import type { ApisixConfig, SchemaCatalog } from '../../../actions/SchemaValidation';
+import { CATEGORY_DEFINITIONS } from '../../../../config/categoryDefinitions';
+import type { ApisixConfig, SchemaCatalog } from '../../../../actions/SchemaValidation';
+import type { DesignerSettings } from '../../../../hooks/useDesignerSettings';
 import { useEditorDecorations, type LogEntry } from './useEditorDecorations';
-import { useEditorProviders } from './useEditorProviders';
+import { useEditorProviders } from '../providers/useEditorProviders';
+import { useCursorWidgets } from '../widgets/useCursorWidgets';
+import { useIdTemplateWidget } from '../widgets/idTemplateWidget/useIdTemplateWidget';
 import { buildErrorAnnotations, buildReferenceAnnotations, buildIdLineMap } from './configEditorAnnotations';
-import styles from '../YamlEditor.module.css';
-import '../monacoStyles.css';
+import styles from '../../YamlEditor.module.css';
+import '../../monacoStyles.css';
 
 interface ConfigEditorProps {
     configText: string;
@@ -23,6 +26,7 @@ interface ConfigEditorProps {
     validationLogs?: ValidationLog[];
     config?: ApisixConfig | null;
     schema?: SchemaCatalog | null;
+    designerSettings?: DesignerSettings;
     onConfigChange: (newValue: string) => void;
     onToggleWhitespace: () => void;
     onToggleFillDefaults: () => void;
@@ -39,6 +43,7 @@ export const ConfigEditor = ({
     validationLogs = [],
     config,
     schema,
+    designerSettings,
     onConfigChange,
     onToggleWhitespace,
     onToggleFillDefaults,
@@ -54,6 +59,7 @@ export const ConfigEditor = ({
     const schemaRef = useRef<SchemaCatalog | null | undefined>(schema);
     const configRef = useRef<ApisixConfig | null | undefined>(config);
     const parsedDocRef = useRef<ParsedDoc | null>(null);
+    const designerSettingsRef = useRef<DesignerSettings | null | undefined>(designerSettings);
 
     // Callback refs (prevent stale closures in Monaco event handlers)
     const onLineClickRef = useRef(onLineClick);
@@ -120,6 +126,7 @@ export const ConfigEditor = ({
     useEffect(() => { onLineClickRef.current = onLineClick; }, [onLineClick]);
     useEffect(() => { scrollToTargetRef.current = scrollToTarget; }, [scrollToTarget]);
     useEffect(() => { configRef.current = config; }, [config]);
+    useEffect(() => { designerSettingsRef.current = designerSettings; }, [designerSettings]);
     useEffect(() => { parsedDocRef.current = parsedDoc; }, [parsedDoc]);
     useEffect(() => { categoryLineMapRef.current = categoryLineMap; }, [categoryLineMap]);
     useEffect(() => { referenceTargetMapRef.current = referenceTargetMap; }, [referenceTargetMap]);
@@ -171,6 +178,11 @@ export const ConfigEditor = ({
         idLineMapRef,
     );
 
+    // Cursor-triggered Monaco widgets
+    const idTemplateWidgetDef = useIdTemplateWidget(designerSettingsRef);
+    const cursorWidgetDefs = useMemo(() => [idTemplateWidgetDef], [idTemplateWidgetDef]);
+    const { registerCursorWidgets } = useCursorWidgets(cursorWidgetDefs);
+
     // Editor mount
 
     const handleMount: OnMount = useCallback((editor, monaco) => {
@@ -200,6 +212,7 @@ export const ConfigEditor = ({
 
         initCollections(editor, monaco);
         registerProviders(monaco);
+        registerCursorWidgets(editor, monaco);
 
         editor.onDidScrollChange(() => {
             const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
@@ -223,7 +236,7 @@ export const ConfigEditor = ({
                 editor.trigger('mouse', 'editor.action.referenceSearch.trigger', {});
             }
         });
-    }, [initCollections, registerProviders, errorLineLogMapRef, warningLineLogMapRef, idLineMapRef]);
+    }, [initCollections, registerProviders, registerCursorWidgets, errorLineLogMapRef, warningLineLogMapRef, idLineMapRef]);
 
     const handleJumpToCategory = useCallback((category: string) => {
         const line = categoryStartLines.get(category);

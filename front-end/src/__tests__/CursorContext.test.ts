@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveCursorContext } from '../pages/yamlEditor/components/CursorContext';
+import { resolveCursorContext } from '../pages/yamlEditor/components/providers/CursorContext';
 import { CATEGORY_DEFINITIONS } from '../config/categoryDefinitions';
 
 describe('resolveCursorContext', () => {

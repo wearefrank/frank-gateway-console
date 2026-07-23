@@ -1,4 +1,4 @@
-import type { CategoryDefinition } from '../../../config/categoryDefinitions';
+import type { CategoryDefinition } from '../../../../config/categoryDefinitions';
 import { buildCursorLocation, type CursorLocation } from './CursorLocation';
 
 export type CursorContext =
