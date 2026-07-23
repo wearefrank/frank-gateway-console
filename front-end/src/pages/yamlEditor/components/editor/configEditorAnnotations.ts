@@ -1,7 +1,7 @@
-import { resolvePathToNode, type ParsedDoc } from '../yamlLineUtils';
-import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../config/categoryDefinitions';
-import type { ApisixConfig } from '../../../actions/SchemaValidation';
-import type { ValidationLog } from '../../../actions/ValidationLogger';
+import { resolvePathToNode, type ParsedDoc } from '../../yamlLineUtils';
+import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../../config/categoryDefinitions';
+import type { ApisixConfig } from '../../../../actions/SchemaValidation';
+import type { ValidationLog } from '../../../../actions/ValidationLogger';
 import type { LogEntry } from './useEditorDecorations';
 
 // Line numbers aren't resolved here - offsets are handed to Monaco's model.getPositionAt() in

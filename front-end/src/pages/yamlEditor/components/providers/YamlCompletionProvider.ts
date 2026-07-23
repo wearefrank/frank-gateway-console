@@ -4,8 +4,8 @@
 //  * CandidateResolver.ts - resolves candidates from the schema (no Monaco dependency)
 
 import type * as MonacoType from 'monaco-editor';
-import type { ApisixConfig, SchemaCatalog } from '../../../actions/SchemaValidation';
-import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
+import type { ApisixConfig, SchemaCatalog } from '../../../../actions/SchemaValidation';
+import { CATEGORY_DEFINITIONS } from '../../../../config/categoryDefinitions';
 import { resolveCursorContext, type CursorContext } from './CursorContext';
 import { resolveCandidates, type Candidate } from './CandidateResolver';
 

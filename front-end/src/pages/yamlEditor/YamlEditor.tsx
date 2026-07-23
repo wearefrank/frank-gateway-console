@@ -2,10 +2,10 @@ import React, {useState, useEffect, useMemo, useRef, useCallback, startTransitio
 import {useSearchParams} from 'react-router-dom';
 import styles from './YamlEditor.module.css';
 import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLogger';
-import { FileUpload } from './components/FileUpload';
-import { ConfigEditor } from './components/ConfigEditor';
-import { ValidationLogs } from './components/ValidationLogs';
-import { OverviewPanel } from './components/OverviewPanel';
+import { FileUpload } from './components/panels/FileUpload';
+import { ConfigEditor } from './components/editor/ConfigEditor';
+import { ValidationLogs } from './components/panels/ValidationLogs';
+import { OverviewPanel } from './components/panels/OverviewPanel';
 import { useConfigManager } from '../../hooks/useConfigManager';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import { checkReferences } from './actions/checkReferences';
@@ -204,6 +204,7 @@ const YamlEditor = () => {
                     validationLogs={displayLogs}
                     config={config}
                     schema={schema}
+                    designerSettings={appSettings.designer}
                     onConfigChange={handleConfigChange}
                     onToggleWhitespace={() => setShowWhitespace(!showWhitespace)}
                     onToggleFillDefaults={toggleFillDefault}

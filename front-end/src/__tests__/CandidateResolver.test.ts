@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { resolveCandidates } from '../pages/yamlEditor/components/CandidateResolver';
-import { resolveCursorContext, type CursorContext } from '../pages/yamlEditor/components/CursorContext';
+import { resolveCandidates } from '../pages/yamlEditor/components/providers/CandidateResolver';
+import { resolveCursorContext, type CursorContext } from '../pages/yamlEditor/components/providers/CursorContext';
 import { CATEGORY_DEFINITIONS } from '../config/categoryDefinitions';
 import type { SchemaCatalog, ApisixConfig } from '../actions/SchemaValidation';
-import type { CursorLocation } from '../pages/yamlEditor/components/CursorLocation';
+import type { CursorLocation } from '../pages/yamlEditor/components/providers/CursorLocation';
 
 function loc(overrides: Partial<CursorLocation> = {}): CursorLocation {
     return {

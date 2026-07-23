@@ -4,10 +4,10 @@ import type * as MonacoType from 'monaco-editor';
 import { format } from 'prettier/standalone';
 import * as yamlPlugin from 'prettier/plugins/yaml';
 import * as estreePlugin from 'prettier/plugins/estree';
-import type { ApisixConfig, SchemaCatalog } from '../../../actions/SchemaValidation';
-import { CATEGORY_LABEL, CATEGORY_COLOR } from '../../../config/categoryDefinitions';
-import { getDisplayId } from '../actions/checkReferences';
-import type { ParsedDoc } from '../yamlLineUtils';
+import type { ApisixConfig, SchemaCatalog } from '../../../../actions/SchemaValidation';
+import { CATEGORY_LABEL, CATEGORY_COLOR } from '../../../../config/categoryDefinitions';
+import { getDisplayId } from '../../actions/checkReferences';
+import type { ParsedDoc } from '../../yamlLineUtils';
 import { YamlCompletionProvider } from './YamlCompletionProvider';
 import { ProviderContext } from './ProviderContext';
 

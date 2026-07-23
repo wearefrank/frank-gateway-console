@@ -1,4 +1,4 @@
-import { CATEGORY_KEY_MAP } from '../yamlLineUtils';
+import { CATEGORY_KEY_MAP, findCommentStart } from '../../yamlLineUtils';
 
 // Computed once per completion request; every consumer (CursorContext, CandidateResolver)
 // reads from this instead of re-deriving its own slice of cursor state.
@@ -190,18 +190,10 @@ function addSibling(siblings: Siblings, key: string, rawValue: string): void {
     siblings.values.set(key, normalizeScalarValue(rawValue));
 }
 
-// Strips a trailing "# comment" - only when "#" starts the text or follows whitespace,
-// per YAML convention.
-function stripInlineComment(text: string): string {
-    const hashIdx = text.indexOf('#');
-    if (hashIdx === -1) return text;
-    if (hashIdx === 0 || /\s/.test(text[hashIdx - 1])) return text.slice(0, hashIdx);
-    return text;
-}
-
 // Normalizes a raw "key: <this>" tail to what an if/then/else const/enum condition compares against.
-function normalizeScalarValue(raw: string): string {
-    const trimmed = stripInlineComment(raw).trim();
+export function normalizeScalarValue(raw: string): string {
+    const commentIdx = findCommentStart(raw);
+    const trimmed = (commentIdx === -1 ? raw : raw.slice(0, commentIdx)).trim();
     if (trimmed.length >= 2) {
         const first = trimmed[0];
         const last = trimmed[trimmed.length - 1];

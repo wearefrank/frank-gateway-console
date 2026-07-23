@@ -1,6 +1,6 @@
 import { type MonacoYaml, type JSONSchema as MonacoJsonSchema } from 'monaco-yaml';
-import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
-import type { SchemaCatalog } from '../../../actions/SchemaValidation';
+import { CATEGORY_DEFINITIONS } from '../../../../config/categoryDefinitions';
+import type { SchemaCatalog } from '../../../../actions/SchemaValidation';
 
 // Schema is inlined here instead of using $ref (like SchemaValidation.ts does) because the
 // monaco-yaml language service doesn't resolve $ref chains on its own. `definitions` is still
