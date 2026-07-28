@@ -1,4 +1,4 @@
-import { CATEGORY_KEY_MAP, findCommentStart } from '../../yamlLineUtils';
+import { CATEGORY_KEY_MAP, stripInlineComment } from '../../yamlLineUtils';
 
 // Computed once per completion request; every consumer (CursorContext, CandidateResolver)
 // reads from this instead of re-deriving its own slice of cursor state.
@@ -192,8 +192,8 @@ function addSibling(siblings: Siblings, key: string, rawValue: string): void {
 
 // Normalizes a raw "key: <this>" tail to what an if/then/else const/enum condition compares against.
 export function normalizeScalarValue(raw: string): string {
-    const commentIdx = findCommentStart(raw);
-    const trimmed = (commentIdx === -1 ? raw : raw.slice(0, commentIdx)).trim();
+    const trimmed = stripInlineComment(raw).trim();
+    // Need at least an opening and closing quote for this to be a quoted scalar.
     if (trimmed.length >= 2) {
         const first = trimmed[0];
         const last = trimmed[trimmed.length - 1];

@@ -19,6 +19,12 @@ export function findCommentStart(line: string): number {
     return -1;
 }
 
+// Removes a trailing "# comment" from a line, if one is present.
+export function stripInlineComment(line: string): string {
+    const commentIdx = findCommentStart(line);
+    return commentIdx === -1 ? line : line.slice(0, commentIdx);
+}
+
 // Returns the start/end positions of the key in a YAML line, or null if there is no key-value pair.
 function findYamlKey(line: string, commentIdx: number): { start: number; end: number } | null {
     let pos = 0;
