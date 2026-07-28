@@ -1,4 +1,4 @@
-import styles from '../YamlEditor.module.css';
+import styles from '../../YamlEditor.module.css';
 
 interface LoaderHeaderProps {
     schema: Record<string, unknown> | null;

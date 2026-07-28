@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCursorLocation } from '../pages/yamlEditor/components/CursorLocation';
+import { buildCursorLocation } from '../pages/yamlEditor/components/providers/CursorLocation';
 
 describe('buildCursorLocation', () => {
     it('returns null when the requested line is out of range', () => {

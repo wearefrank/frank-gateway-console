@@ -1,7 +1,7 @@
 import React from 'react';
-import { useConfigManager } from '../../../hooks/useConfigManager';
-import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_DEFINITIONS, getDisplayId } from '../../../config/categoryDefinitions';
-import loaderStyles from '../YamlEditor.module.css';
+import { useConfigManager } from '../../../../hooks/useConfigManager';
+import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_DEFINITIONS, getDisplayId } from '../../../../config/categoryDefinitions';
+import loaderStyles from '../../YamlEditor.module.css';
 import styles from './OverviewPanel.module.css';
 
 interface OverviewPanelProps {
@@ -33,7 +33,7 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({ headerExtra, onNav
                         No entries found. Load a config to see its resources here.
                     </p>
                 ) : (
-                    sections.map(({ category, def, entries }) => (
+                    sections.map(({ category, entries }) => (
                         <div key={category} className={styles.section}>
                             <div
                                 className={styles.sectionLabel}
