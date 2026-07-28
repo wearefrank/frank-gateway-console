@@ -35,6 +35,10 @@ export class YamlCompletionProvider {
                 const catalog = getSchema();
                 if (!catalog?.main) return { suggestions: [] };
 
+                // Only suggest at the end of a word - mid-word would splice text ahead of the rest.
+                const wordAtPosition = model.getWordAtPosition(position);
+                if (wordAtPosition && wordAtPosition.endColumn !== position.column) return { suggestions: [] };
+
                 // Force LF - a trailing \r on an otherwise-empty line defeats the blank-line indent checks
                 const context = resolveCursorContext(
                     model.getValue(monaco.editor.EndOfLinePreference.LF),

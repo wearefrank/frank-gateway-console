@@ -259,6 +259,9 @@ export const ConfigEditor = ({
             <div className="card-header flex align-center gap-sm">
                 Parsed Configuration
                 {statusClass && <span className={statusClass}>{statusLabel}</span>}
+                <span className="text-small text-muted" style={{ marginLeft: 'auto' }}>
+                    Ctrl+Space for suggestions
+                </span>
                 <button
                     className={`text-small ${styles.btnIcon} ${styles.settingsToggle}`}
                     onClick={() => setSettingsOpen(o => !o)}

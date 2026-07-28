@@ -14,6 +14,9 @@ export interface CursorLocation {
     readonly isEntryMarkerLine: boolean;
     readonly isUnderIndentedField: boolean;
     readonly valuePositionKey: string | null;
+    // A key was already typed earlier on this same physical line (e.g. "name: foo|") - YAML
+    // block style only allows one key per line, so nothing should offer another key there.
+    readonly hasKeyBeforeCursor: boolean;
 }
 
 // Splits text once and threads the lines through every helper below, so no helper needs
@@ -42,6 +45,7 @@ export function buildCursorLocation(text: string, line: number, column?: number)
         isEntryMarkerLine,
         isUnderIndentedField: !isEntryMarkerLine && markerIndent === indent,
         valuePositionKey: column !== undefined ? getValuePositionKey(lines[lineIdx] ?? '', column) : null,
+        hasKeyBeforeCursor: column !== undefined && hasKeyBeforeCursor(lines[lineIdx] ?? '', column),
     };
 }
 
@@ -309,4 +313,13 @@ function getValuePositionKey(lineText: string, column: number): string | null {
     if (!textUpToCursor.includes(': ')) return null;
     const match = textUpToCursor.match(/(?:^|[{,\s])([a-zA-Z_][a-zA-Z0-9_-]*):\s*$/);
     return match ? match[1] : null;
+}
+
+// True if a "key:" was already typed earlier on this line, outside any flow mapping (which
+// allows several comma-separated keys per line and is exempt).
+function hasKeyBeforeCursor(lineText: string, column: number): boolean {
+    if (findFlowOpenBrace(lineText, column - 1) !== -1) return false;
+    const textUpToCursor = lineText.substring(0, column - 1);
+    // `^\s*` indent, `(?:-\s+)?` optional "- " marker, `[A-Za-z_][\w-]*` key name, `:` colon.
+    return /^\s*(?:-\s+)?[A-Za-z_][\w-]*:/.test(textUpToCursor);
 }

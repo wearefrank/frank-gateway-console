@@ -63,6 +63,10 @@ export function resolveCursorContext(
         return { kind: 'value', category, location, schemaPath: valuePath };
     }
 
+    // A key was already typed earlier on this line - block style YAML allows only one, so
+    // there's nowhere valid to insert another.
+    if (location.hasKeyBeforeCursor) return { kind: 'unknown' };
+
     const pluginRest = pluginSubPath(location.schemaPath);
     if (pluginRest) {
         if (pluginRest.length === 0) return { kind: 'plugin-name', category, location };
