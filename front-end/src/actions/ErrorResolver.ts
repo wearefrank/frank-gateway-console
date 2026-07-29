@@ -95,8 +95,7 @@ class ErrorResolver {
                 if (branchIdx >= 0) {
                     // the leaf errors from AJV already contain the details (e.g. missing required field),
                     // we just need to find the ones that belong to the matching branch
-                    const prefix = `${error.schemaPath}/${branchIdx}/`;
-                    const branchLeaves = leaves.filter(leaf => leaf.schemaPath.startsWith(prefix));
+                    const branchLeaves = this.drillBranchLeaves(error.schemaPath, branchIdx, leaves);
                     for (const leaf of branchLeaves) {
                         resolvedErrors.push({
                             message: `${entry.parent}: ${this.formatDirectError(leaf)}`,
@@ -107,13 +106,20 @@ class ErrorResolver {
                     }
                 } else {
                     // the value's type doesn't match any branch at all (e.g. a boolean where only integer/string are allowed) -
-                    // there are no leaf errors to drill into here, so report the type mismatch directly
-                    const allowedTypes = (schema as Record<string, unknown>[])
-                        .map(b => typeof b.type === 'string' ? b.type : '(unknown)');
-                    const prop = error.instancePath.split('/').pop() || entry.parent;
+                    // there are no leaf errors to drill into here, so report the type mismatch directly.
+                    // dedupe since branches often share a type and only differ by format/pattern
+                    const allowedTypes = [...new Set(
+                        (schema as Record<string, unknown>[]).map(b => typeof b.type === 'string' ? b.type : '(unknown)')
+                    )];
+
+                    // a numeric last segment is an array index (e.g. whitelist/1), not a field name
+                    const lastSegment = error.instancePath.split('/').pop();
+                    const subject = !lastSegment
+                        ? `'${entry.parent}'`
+                        : /^\d+$/.test(lastSegment) ? `item ${lastSegment}` : `'${lastSegment}'`;
 
                     resolvedErrors.push({
-                        message: `${entry.parent}: '${prop}' must be ${allowedTypes.join(' or ')}, got ${dataType}`,
+                        message: `${entry.parent}: ${subject} must be ${allowedTypes.join(' or ')}, got ${dataType}`,
                         path: this.buildResolvedPath(entry, this.getExactPath(error)),
                         errorObject: entry,
                         sourceError: error,
@@ -138,6 +144,20 @@ class ErrorResolver {
                 continue;
             }
 
+            // try the specific leaf error (e.g. failed minimum) before falling back to guessing
+            const objectBranchLeaves = this.collectObjectBranchLeaves(schema, error.schemaPath, leaves);
+            if (objectBranchLeaves.length > 0) {
+                for (const leaf of objectBranchLeaves) {
+                    resolvedErrors.push({
+                        message: `${entry.parent}: ${this.formatDirectError(leaf)}`,
+                        path: this.buildResolvedPath(entry, this.getExactPath(leaf)),
+                        errorObject: entry,
+                        sourceError: leaf,
+                    });
+                }
+                continue;
+            }
+
             // no branch matched at all score each branch by how many of the user's fields appear in it
             const scored = this.matchOneOfErrors(schema, data);
 
@@ -157,6 +177,24 @@ class ErrorResolver {
         }
 
         return resolvedErrors;
+    }
+
+    // finds AJV's leaf errors nested under a given anyOf/oneOf branch index
+    private drillBranchLeaves(schemaPath: string, branchIdx: number, leaves: ErrorObject[]): ErrorObject[] {
+        const prefix = `${schemaPath}/${branchIdx}/`;
+        return leaves.filter(leaf => leaf.schemaPath.startsWith(prefix));
+    }
+
+    // only branches explicitly typed "object" are treated as candidates for the data
+    private collectObjectBranchLeaves(schema: unknown, schemaPath: string, leaves: ErrorObject[]): ErrorObject[] {
+        if (!Array.isArray(schema)) return [];
+
+        const result: ErrorObject[] = [];
+        schema.forEach((branch, idx) => {
+            if (!this.isObject(branch) || branch.type !== 'object') return;
+            result.push(...this.drillBranchLeaves(schemaPath, idx, leaves));
+        });
+        return result;
     }
 
     private matchOneOfErrors(branch: unknown, data:unknown): string[][] {
@@ -224,7 +262,61 @@ class ErrorResolver {
             return subOptions;
         }
 
+        // array-of-objects form (e.g. nodes: [{host, port, weight}])
+        if (this.isObject(branch.items)) {
+            const items = branch.items;
+            if (Array.isArray(items.required)) {
+                return [`array of {${items.required.join(', ')}}`];
+            }
+            if (this.isObject(items.properties)) {
+                return [`array of {${Object.keys(items.properties).join(', ')}}`];
+            }
+            return ['array'];
+        }
+
+        // map form (e.g. nodes: {"host:port": weight})
+        if (this.isObject(branch.patternProperties)) {
+            return ['object (key: value map)'];
+        }
+
+        // mutual-exclusion guard (e.g. "neither host nor hosts is set") - describe by what it excludes
+        if (this.isObject(branch.not)) {
+            const excluded = this.gatherRequiredFields(branch.not);
+            if (excluded.length > 0) {
+                return [`none of: ${excluded.join(', ')}`];
+            }
+        }
+
+        // bare type with no further constraints (e.g. oneOf: [{type: "string"}, {type: "object"}])
+        if (typeof branch.type === 'string') {
+            return [branch.type];
+        }
+
+        // fixed value(s) with no type of their own (e.g. anyOf: [{type: "array", ...}, {enum: ["*"]}])
+        if (Array.isArray(branch.enum)) {
+            return [`value: ${branch.enum.map(String).join(' or ')}`];
+        }
+        if ('const' in branch) {
+            return [`value: ${String(branch.const)}`];
+        }
+
         return ['(unknown variant)'];
+    }
+
+    // collects "required" field names from a schema and its direct anyOf/oneOf sub-branches
+    private gatherRequiredFields(schema: unknown): string[] {
+        if (!this.isObject(schema)) return [];
+
+        if (Array.isArray(schema.required)) {
+            return schema.required.map(String);
+        }
+
+        const subBranches = schema.anyOf ?? schema.oneOf;
+        if (Array.isArray(subBranches)) {
+            return subBranches.flatMap(b => this.gatherRequiredFields(b));
+        }
+
+        return [];
     }
 
     private classifyErrors(errors: ErrorObject[]): ClassifiedErrors {
@@ -492,6 +584,17 @@ class ErrorResolver {
                 return `'${prop}' must have at least ${err.params?.limit} items`;
             case 'pattern':
                 return `'${prop}' does not match required pattern: ${err.params?.pattern ?? 'unknown'}`;
+            case 'not': {
+                // schema-form "dependencies" compiles to a bare "not" error with no field names in params
+                const excluded = this.gatherRequiredFields(err.schema);
+                if (excluded.length > 0) {
+                    const trigger = err.schemaPath.match(/\/dependencies\/([^/]+)\/not$/)?.[1];
+                    return trigger
+                        ? `'${trigger}' cannot be combined with: ${excluded.join(', ')}`
+                        : `must not also set: ${excluded.join(', ')}`;
+                }
+                return err.message ?? 'unknown validation error';
+            }
             default:
                 return err.message ?? 'unknown validation error';
         }

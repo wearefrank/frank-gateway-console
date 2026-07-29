@@ -490,3 +490,226 @@ describe('ErrorResolver — oneOf with array data', () => {
         expect(result[0].message).toContain("missing required property 'host'");
     });
 });
+
+// ---------------------------------------------------------------------------
+// Block 9 — anyOf with object data: drills into a structurally-matching
+// "type: object" branch's leaf errors instead of showing "(unknown variant)"
+// ---------------------------------------------------------------------------
+
+describe('ErrorResolver — anyOf with object data (nodes map form)', () => {
+    const resolver = new ErrorResolver();
+
+    it('surfaces the specific leaf error (e.g. negative weight) instead of "no variant matched"', () => {
+        const err = makeError(
+            'anyOf', '/upstream/nodes',
+            {},
+            '#/properties/nodes/anyOf',
+            {
+                schema: [
+                    { type: 'array', items: { required: ['host', 'weight'] } },
+                    { type: 'object', patternProperties: { '.*': { type: 'integer', minimum: 0 } } },
+                ],
+                data: { 'host.docker.internal:3004': -1 },
+            }
+        );
+        const leaf = makeError(
+            'minimum', '/upstream/nodes/host.docker.internal:3004',
+            { limit: 0 },
+            '#/properties/nodes/anyOf/1/patternProperties/.*/minimum'
+        );
+        const result = resolver.resolve([makeCollection([err, leaf])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toBe("route: 'host.docker.internal:3004' must be >= 0");
+        expect(result[0].message).not.toContain('unknown variant');
+    });
+
+    it('falls back to labelled (not "unknown variant") options when no branch has leaf errors to drill into', () => {
+        const err = makeError(
+            'anyOf', '/upstream/nodes',
+            {},
+            '#/properties/nodes/anyOf',
+            {
+                schema: [
+                    { type: 'array', items: { required: ['host', 'weight'] } },
+                    { type: 'object', patternProperties: { '.*': { type: 'integer', minimum: 0 } } },
+                ],
+                data: { 'host.docker.internal:3004': -1 },
+            }
+        );
+        // no matching leaf errors supplied this time - forces the scoring/label fallback
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('array of {host, weight}');
+        expect(result[0].message).toContain('object (key: value map)');
+        expect(result[0].message).not.toContain('unknown variant');
+    });
+
+    // mirrors the real APISIX route schema's mutual-exclusion guard for host/hosts
+    // (and remote_addr/remote_addrs): oneOf [not-either, host, hosts]
+    it('labels a "not" mutual-exclusion branch instead of "(unknown variant)"', () => {
+        const err = makeError(
+            'oneOf', '/route',
+            {},
+            '#/route/allOf/1/oneOf',
+            {
+                schema: [
+                    { not: { anyOf: [{ required: ['host'] }, { required: ['hosts'] }] } },
+                    { required: ['host'] },
+                    { required: ['hosts'] },
+                ],
+                data: {},
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('none of: host, hosts');
+        expect(result[0].message).not.toContain('unknown variant');
+    });
+
+    // mirrors plugin _meta.error_response: oneOf [{type: "string"}, {type: "object"}] -
+    // branches with no required/properties/items/patternProperties/not, just a bare type
+    it('labels a bare-type branch by its type instead of "(unknown variant)"', () => {
+        const err = makeError(
+            'oneOf', '/error_response',
+            {},
+            '#/_meta/properties/error_response/oneOf',
+            {
+                schema: [{ type: 'string' }, { type: 'object' }],
+                data: {},
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('string');
+        expect(result[0].message).toContain('object');
+        expect(result[0].message).not.toContain('unknown variant');
+    });
+
+    // mirrors the gzip plugin's "types" field: anyOf [array-of-strings, {enum: ["*"]}] -
+    // the enum branch has no type/required/properties of its own
+    it('labels an enum-only branch by its allowed value(s) instead of "(unknown variant)"', () => {
+        const err = makeError(
+            'anyOf', '/types',
+            {},
+            '#/properties/types/anyOf',
+            {
+                schema: [
+                    { type: 'array', items: { type: 'string' } },
+                    { enum: ['*'] },
+                ],
+                data: {},
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('value: *');
+        expect(result[0].message).not.toContain('unknown variant');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Block 10 — schema-form "dependencies" (compiles to a bare "not" error)
+// ---------------------------------------------------------------------------
+
+describe('ErrorResolver — "not" from a schema-form dependencies entry', () => {
+    const resolver = new ErrorResolver();
+
+    // mirrors upstream.tls.dependencies: setting client_cert_id excludes client_cert/client_key
+    it('names the triggering field and what it excludes, not the raw AJV message', () => {
+        const err = makeError(
+            'not', '/upstream/tls',
+            {},
+            '#/definitions/upstream/properties/tls/dependencies/client_cert_id/not',
+            {
+                schema: { required: ['client_cert', 'client_key'] },
+                message: 'must NOT be valid',
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toBe(
+            "route: 'client_cert_id' cannot be combined with: client_cert, client_key"
+        );
+        expect(result[0].message).not.toContain('must NOT be valid');
+    });
+
+    // mirrors response-rewrite.dependencies: body and filters exclude each other, each
+    // producing its own "not" error - they must stay distinguishable, not identical
+    it('produces distinct messages for each side of a two-way exclusion', () => {
+        const bodyErr = makeError(
+            'not', '/plugins/response-rewrite',
+            {},
+            '#/dependencies/body/not',
+            { schema: { required: ['filters'] } }
+        );
+        const filtersErr = makeError(
+            'not', '/plugins/response-rewrite',
+            {},
+            '#/dependencies/filters/not',
+            { schema: { required: ['body'] } }
+        );
+        const result = resolver.resolve([makeCollection([bodyErr, filtersErr])]);
+        expect(result).toHaveLength(2);
+        expect(result[0].message).toContain("'body' cannot be combined with: filters");
+        expect(result[1].message).toContain("'filters' cannot be combined with: body");
+        expect(result[0].message).not.toBe(result[1].message);
+    });
+
+    it('falls back to the raw AJV message when the negated schema has no required/anyOf fields', () => {
+        const err = makeError(
+            'not', '/upstream/scheme',
+            {},
+            '#/properties/scheme/not',
+            { schema: { enum: ['grpc'] }, message: 'must NOT be valid' }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toContain('must NOT be valid');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Block 11 — anyOf/oneOf with array data, no branch's type matches at all
+// ---------------------------------------------------------------------------
+
+describe('ErrorResolver — anyOf with array data and no matching branch type', () => {
+    const resolver = new ErrorResolver();
+
+    // mirrors ip-restriction.whitelist: a 4-branch anyOf that's all "type: string",
+    // distinguished only by format/pattern - a wrong-typed item used to render as
+    // "'1' must be string or string or string or string, got number"
+    it('dedupes repeated types and describes an array item by index, not as a quoted field', () => {
+        const err = makeError(
+            'anyOf', '/whitelist/1',
+            {},
+            '#/properties/whitelist/items/anyOf',
+            {
+                schema: [
+                    { type: 'string', format: 'ipv4' },
+                    { type: 'string', pattern: 'ipv4-cidr' },
+                    { type: 'string', format: 'ipv6' },
+                    { type: 'string', pattern: 'ipv6-cidr' },
+                ],
+                data: 8080,
+            }
+        );
+        const result = resolver.resolve([makeCollection([err], 'ip-restriction', 'ip-restriction')]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toBe('ip-restriction: item 1 must be string, got number');
+    });
+
+    it('still quotes a named field (non-numeric last path segment)', () => {
+        const err = makeError(
+            'anyOf', '/upstream/scheme',
+            {},
+            '#/properties/scheme/anyOf',
+            {
+                schema: [{ type: 'string' }, { type: 'integer' }],
+                data: true,
+            }
+        );
+        const result = resolver.resolve([makeCollection([err])]);
+        expect(result).toHaveLength(1);
+        expect(result[0].message).toBe("route: 'scheme' must be string or integer, got boolean");
+    });
+});

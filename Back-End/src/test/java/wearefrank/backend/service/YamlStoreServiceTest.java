@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 import wearefrank.backend.dto.YamlApisixConfig;
 
 import java.io.File;
@@ -27,10 +26,8 @@ class YamlStoreServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new YamlStoreService();
         File testFile = tempDir.resolve("apisix_config.yaml").toFile();
-        ReflectionTestUtils.setField(service, "file", testFile);
-        service.ensureConfigExist();
+        service = new YamlStoreService(testFile.getAbsolutePath());
     }
 
     @Test
@@ -68,7 +65,7 @@ class YamlStoreServiceTest {
         File testFile = tempDir.resolve("apisix_config.yaml").toFile();
         yamlMapper.writeValue(testFile, new YamlApisixConfig(null, null, null, new ArrayList<>()));
 
-        assertThat(service.getControlUrl()).isEqualTo("http://127.0.0.1:9092");
+        assertThat(service.getControlUrl()).isEqualTo("http://127.0.0.1:9882");
     }
 
     @Test
@@ -85,7 +82,7 @@ class YamlStoreServiceTest {
         File testFile = tempDir.resolve("apisix_config.yaml").toFile();
         yamlMapper.writeValue(testFile, new YamlApisixConfig(null, null, null, new ArrayList<>()));
 
-        assertThat(service.getMetricsUrl()).isEqualTo("http://127.0.0.1:9091");
+        assertThat(service.getMetricsUrl()).isEqualTo("http://127.0.0.1:9881");
     }
 
     @Test

@@ -1,4 +1,4 @@
-import { CATEGORY_KEY_MAP } from '../yamlLineUtils';
+import { CATEGORY_KEY_MAP, stripInlineComment } from '../../yamlLineUtils';
 
 // Computed once per completion request; every consumer (CursorContext, CandidateResolver)
 // reads from this instead of re-deriving its own slice of cursor state.
@@ -7,10 +7,16 @@ export interface CursorLocation {
     readonly category: string | undefined;
     readonly schemaPath: string[];
     readonly existingKeys: Set<string>;
+    // Raw scalar text typed per sibling key (quotes/comments stripped) - lets completion
+    // evaluate if/then/else discriminator fields.
+    readonly existingValues: Map<string, string>;
     readonly markerIndent: number | null;
     readonly isEntryMarkerLine: boolean;
     readonly isUnderIndentedField: boolean;
     readonly valuePositionKey: string | null;
+    // A key was already typed earlier on this same physical line (e.g. "name: foo|") - YAML
+    // block style only allows one key per line, so nothing should offer another key there.
+    readonly hasKeyBeforeCursor: boolean;
 }
 
 // Splits text once and threads the lines through every helper below, so no helper needs
@@ -27,16 +33,19 @@ export function buildCursorLocation(text: string, line: number, column?: number)
     const entry = walkEntryStructure(lines, lineIdx, column);
     const markerIndent = isEntryMarkerLine ? getIndent(lines[lineIdx]) : entry.markerIndent;
     const schemaPath = appendFlowParentKey(entry.path, lines[lineIdx], column);
+    const siblings = getExistingSiblings(lines, lineIdx, indent, isEntryMarkerLine, column);
 
     return {
         indent,
         category,
         schemaPath,
-        existingKeys: getExistingKeys(lines, lineIdx, indent, isEntryMarkerLine, column),
+        existingKeys: siblings.keys,
+        existingValues: siblings.values,
         markerIndent,
         isEntryMarkerLine,
         isUnderIndentedField: !isEntryMarkerLine && markerIndent === indent,
         valuePositionKey: column !== undefined ? getValuePositionKey(lines[lineIdx] ?? '', column) : null,
+        hasKeyBeforeCursor: column !== undefined && hasKeyBeforeCursor(lines[lineIdx] ?? '', column),
     };
 }
 
@@ -173,30 +182,54 @@ function appendFlowParentKey(path: string[], lineText: string, column: number | 
     return flowKey ? [...path, flowKey] : path;
 }
 
-// Sibling keys (what's already used in the cursor's current mapping)
+// Sibling keys/values (what's already used in the cursor's current mapping)
 
-// collectKeysAbove/Below only see block-style YAML, so a flow object's own siblings have to
+interface Siblings {
+    keys: Set<string>;
+    values: Map<string, string>;
+}
+
+function addSibling(siblings: Siblings, key: string, rawValue: string): void {
+    siblings.keys.add(key);
+    siblings.values.set(key, normalizeScalarValue(rawValue));
+}
+
+// Normalizes a raw "key: <this>" tail to what an if/then/else const/enum condition compares against.
+export function normalizeScalarValue(raw: string): string {
+    const trimmed = stripInlineComment(raw).trim();
+    // Need at least an opening and closing quote for this to be a quoted scalar.
+    if (trimmed.length >= 2) {
+        const first = trimmed[0];
+        const last = trimmed[trimmed.length - 1];
+        if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+            return trimmed.slice(1, -1);
+        }
+    }
+    return trimmed;
+}
+
+// collectSiblingsAbove/Below only see block-style YAML, so a flow object's own siblings have to
 // be parsed directly from the text before the cursor. Returns null outside a flow object.
-function getFlowSiblingKeys(line: string, col: number): Set<string> | null {
+function getFlowSiblings(line: string, col: number): Siblings | null {
     const openBracePos = findFlowOpenBrace(line, col);
     if (openBracePos === -1) return null;
 
     const content = line.substring(openBracePos + 1, col);
-    const keys = new Set<string>();
+    const siblings: Siblings = { keys: new Set(), values: new Map() };
     for (const part of content.split(',')) {
         const c = part.indexOf(':');
         if (c > 0) {
             const k = part.substring(0, c).trim();
-            if (k) keys.add(k);
+            if (k) addSibling(siblings, k, part.substring(c + 1));
         }
     }
-    return keys;
+    return siblings;
 }
 
 // Stops at the entry's own marker line rather than scanning the whole file, so a previous
 // entry's keys are never picked up as siblings.
-function collectKeysAbove(lines: string[], lineIdx: number, targetIndent: number, cursorIsMarker: boolean): Set<string> {
-    const keys = new Set<string>();
+function collectSiblingsAbove(lines: string[], lineIdx: number, targetIndent: number, cursorIsMarker: boolean): Siblings {
+    const siblings: Siblings = { keys: new Set(), values: new Map() };
 
     for (let i = lineIdx - 1; i >= 0; i--) {
         const raw = lines[i];
@@ -212,7 +245,7 @@ function collectKeysAbove(lines: string[], lineIdx: number, targetIndent: number
             if (trimmed.startsWith('- ')) {
                 const rest = trimmed.slice(2).trim();
                 const c = rest.indexOf(':');
-                if (c > 0) keys.add(rest.substring(0, c).trim());
+                if (c > 0) addSibling(siblings, rest.substring(0, c).trim(), rest.substring(c + 1));
             }
             break;
         }
@@ -222,16 +255,16 @@ function collectKeysAbove(lines: string[], lineIdx: number, targetIndent: number
         if (isMarker) break;
 
         const c = trimmed.indexOf(':');
-        if (c > 0) keys.add(trimmed.substring(0, c).trim());
+        if (c > 0) addSibling(siblings, trimmed.substring(0, c).trim(), trimmed.substring(c + 1));
     }
 
-    return keys;
+    return siblings;
 }
 
-// Downward counterpart to collectKeysAbove - here a same-indent marker always starts a new
+// Downward counterpart to collectSiblingsAbove - here a same-indent marker always starts a new
 // entry, so it ends the scan unconditionally.
-function collectKeysBelow(lines: string[], lineIdx: number, targetIndent: number): Set<string> {
-    const keys = new Set<string>();
+function collectSiblingsBelow(lines: string[], lineIdx: number, targetIndent: number): Siblings {
+    const siblings: Siblings = { keys: new Set(), values: new Map() };
 
     for (let i = lineIdx + 1; i < lines.length; i++) {
         const raw = lines[i];
@@ -244,28 +277,31 @@ function collectKeysBelow(lines: string[], lineIdx: number, targetIndent: number
         if (isListMarkerLine(trimmed)) break;
 
         const c = trimmed.indexOf(':');
-        if (c > 0) keys.add(trimmed.substring(0, c).trim());
+        if (c > 0) addSibling(siblings, trimmed.substring(0, c).trim(), trimmed.substring(c + 1));
     }
 
-    return keys;
+    return siblings;
 }
 
-function getExistingKeys(
+function getExistingSiblings(
     lines: string[],
     lineIdx: number,
     indent: number,
     isEntryMarkerLine: boolean,
     column: number | undefined,
-): Set<string> {
+): Siblings {
     if (column !== undefined) {
-        const flowKeys = getFlowSiblingKeys(lines[lineIdx], column - 1);
-        if (flowKeys) return flowKeys;
+        const flowSiblings = getFlowSiblings(lines[lineIdx], column - 1);
+        if (flowSiblings) return flowSiblings;
     }
-    if (indent === 0) return new Set();
+    if (indent === 0) return { keys: new Set(), values: new Map() };
 
-    const above = collectKeysAbove(lines, lineIdx, indent, isEntryMarkerLine);
-    const below = collectKeysBelow(lines, lineIdx, indent);
-    return new Set([...above, ...below]);
+    const above = collectSiblingsAbove(lines, lineIdx, indent, isEntryMarkerLine);
+    const below = collectSiblingsBelow(lines, lineIdx, indent);
+    return {
+        keys: new Set([...above.keys, ...below.keys]),
+        values: new Map([...above.values, ...below.values]),
+    };
 }
 
 // Value position (is the cursor right after "key: ")
@@ -277,4 +313,13 @@ function getValuePositionKey(lineText: string, column: number): string | null {
     if (!textUpToCursor.includes(': ')) return null;
     const match = textUpToCursor.match(/(?:^|[{,\s])([a-zA-Z_][a-zA-Z0-9_-]*):\s*$/);
     return match ? match[1] : null;
+}
+
+// True if a "key:" was already typed earlier on this line, outside any flow mapping (which
+// allows several comma-separated keys per line and is exempt).
+function hasKeyBeforeCursor(lineText: string, column: number): boolean {
+    if (findFlowOpenBrace(lineText, column - 1) !== -1) return false;
+    const textUpToCursor = lineText.substring(0, column - 1);
+    // `^\s*` indent, `(?:-\s+)?` optional "- " marker, `[A-Za-z_][\w-]*` key name, `:` colon.
+    return /^\s*(?:-\s+)?[A-Za-z_][\w-]*:/.test(textUpToCursor);
 }

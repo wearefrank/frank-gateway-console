@@ -367,9 +367,69 @@
 }
 
 .logHeader {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: baseline;
+    gap: 8px;
     font-size: 11px;
     font-weight: 600;
     color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.logTimestamp {
+    grid-column: 3;
+    justify-self: end;
+    flex-shrink: 0;
+}
+
+.logContext {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.logContextType {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
+    background-color: var(--bg-secondary);
+    border-radius: 4px;
+    padding: 1px 6px;
+}
+
+.logHeader .logContextType {
+    grid-column: 2;
+    justify-self: center;
+}
+
+.logContextLabel {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.logContextValue {
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.logContextParent::before {
+    content: '\2192';
+    margin-right: 4px;
+    color: var(--text-secondary);
+}
+
+.logContextParent {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    word-break: break-word;
 }
 
 .logFooter {

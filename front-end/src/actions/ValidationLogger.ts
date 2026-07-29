@@ -78,6 +78,19 @@ export class ValidationLog {
         return getParentName(this.path);
     }
 
+    // resourceName often comes as "Label: value" (e.g. "Id: my-route"); split so callers
+    // can de-emphasize the label and highlight the value separately.
+    getResourceNameParts(config: ApisixConfig | null): { label?: string; value: string } | undefined {
+        const resourceName = this.getResourceName(config);
+        if (!resourceName) return undefined;
+
+        const match = resourceName.match(/^(\w+):\s*(.+)$/);
+        if (match) {
+            return { label: match[1], value: match[2] };
+        }
+        return { value: resourceName };
+    }
+
     getErrorObject(): ErrorObject | undefined {
         return this.errorObject;
     }

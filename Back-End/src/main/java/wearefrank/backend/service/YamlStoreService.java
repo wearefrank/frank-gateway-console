@@ -3,6 +3,7 @@ package wearefrank.backend.service;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import wearefrank.backend.dto.YamlApisixConfig;
 
@@ -13,11 +14,12 @@ import java.util.ArrayList;
 @Service
 public class YamlStoreService {
 
-    private final File file = new File("apisix_config.yaml");
+    private final File file;
     private final ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    public YamlStoreService() {
+    public YamlStoreService(@Value("${apisix.config.file:apisix_config.yaml}") String configFilePath) {
+        this.file = new File(configFilePath);
         ensureConfigExist();
     }
 
@@ -74,14 +76,14 @@ public class YamlStoreService {
     public String getControlUrl() {
         YamlApisixConfig config = getFullConfig();
         String host = config.host() != null ? config.host() : "http://127.0.0.1";
-        int port = config.controlPort() != null ? config.controlPort() : 9092;
+        int port = config.controlPort() != null ? config.controlPort() : 9882;
         return host + ":" + port;
     }
 
     public String getMetricsUrl() {
         YamlApisixConfig config = getFullConfig();
         String host = config.host() != null ? config.host() : "http://127.0.0.1";
-        int port = config.metricsPort() != null ? config.metricsPort() : 9091;
+        int port = config.metricsPort() != null ? config.metricsPort() : 9881;
         return host + ":" + port;
     }
 

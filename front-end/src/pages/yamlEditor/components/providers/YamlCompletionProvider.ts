@@ -4,8 +4,8 @@
 //  * CandidateResolver.ts - resolves candidates from the schema (no Monaco dependency)
 
 import type * as MonacoType from 'monaco-editor';
-import type { ApisixConfig, SchemaCatalog } from '../../../actions/SchemaValidation';
-import { CATEGORY_DEFINITIONS } from '../../../config/categoryDefinitions';
+import type { ApisixConfig, SchemaCatalog } from '../../../../actions/SchemaValidation';
+import { CATEGORY_DEFINITIONS } from '../../../../config/categoryDefinitions';
 import { resolveCursorContext, type CursorContext } from './CursorContext';
 import { resolveCandidates, type Candidate } from './CandidateResolver';
 
@@ -34,6 +34,10 @@ export class YamlCompletionProvider {
             provideCompletionItems(model: MonacoType.editor.ITextModel, position: MonacoType.Position) {
                 const catalog = getSchema();
                 if (!catalog?.main) return { suggestions: [] };
+
+                // Only suggest at the end of a word - mid-word would splice text ahead of the rest.
+                const wordAtPosition = model.getWordAtPosition(position);
+                if (wordAtPosition && wordAtPosition.endColumn !== position.column) return { suggestions: [] };
 
                 // Force LF - a trailing \r on an otherwise-empty line defeats the blank-line indent checks
                 const context = resolveCursorContext(

@@ -1,4 +1,4 @@
-import type { CategoryDefinition } from '../../../config/categoryDefinitions';
+import type { CategoryDefinition } from '../../../../config/categoryDefinitions';
 import { buildCursorLocation, type CursorLocation } from './CursorLocation';
 
 export type CursorContext =
@@ -6,7 +6,7 @@ export type CursorContext =
     | { kind: 'key';          category: string; location: CursorLocation }
     | { kind: 'value';        category: string; location: CursorLocation; schemaPath: string[] }
     | { kind: 'plugin-name';  category: string; location: CursorLocation }
-    | { kind: 'plugin-key';   category: string; location: CursorLocation; pluginName: string }
+    | { kind: 'plugin-key';   category: string; location: CursorLocation; pluginName: string; schemaPath: string[] }
     | { kind: 'plugin-value'; category: string; location: CursorLocation; pluginName: string; schemaPath: string[] }
     | { kind: 'reference';    category: string; field: string;      targetCategory: string }
     | { kind: 'unknown' }
@@ -63,11 +63,15 @@ export function resolveCursorContext(
         return { kind: 'value', category, location, schemaPath: valuePath };
     }
 
+    // A key was already typed earlier on this line - block style YAML allows only one, so
+    // there's nowhere valid to insert another.
+    if (location.hasKeyBeforeCursor) return { kind: 'unknown' };
+
     const pluginRest = pluginSubPath(location.schemaPath);
     if (pluginRest) {
         if (pluginRest.length === 0) return { kind: 'plugin-name', category, location };
         // pluginRest[0] = plugin name, pluginRest[1+] = nested path within plugin schema
-        return { kind: 'plugin-key', category, location, pluginName: pluginRest[0] };
+        return { kind: 'plugin-key', category, location, pluginName: pluginRest[0], schemaPath: pluginRest.slice(1) };
     }
 
     return { kind: 'key', category, location };

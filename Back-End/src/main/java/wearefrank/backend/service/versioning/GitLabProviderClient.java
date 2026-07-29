@@ -92,7 +92,8 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
             get(fileUrl + "?ref=" + c.branch(), c.token());
             fileAlreadyExists = true;
         } catch (ResponseStatusException e) {
-            fileAlreadyExists = e.getStatusCode().value() != 404;
+            if (e.getStatusCode().value() != 404) throw e;
+            fileAlreadyExists = false;
         }
 
         if (fileAlreadyExists) {

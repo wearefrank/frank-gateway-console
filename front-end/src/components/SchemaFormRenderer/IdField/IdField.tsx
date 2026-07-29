@@ -1,30 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FieldProps } from "../SchemaFormRenderer";
+import { parseTemplate, tryParseTemplateValue, type TemplatePart } from "../../../config/idTemplate";
 import styles from "./IdField.module.css";
 
 export interface IdFieldSettings {
     prefix?: string;
     template?: string;
     placeHolderOptions?: Record<string, string[]>;
-}
-
-type TemplatePart =
-    | { kind: "static"; text: string }
-    | { kind: "placeholder"; name: string };
-
-/**
- * split the template in placeholder par
- *
- * @param template - string that serves as the template
- */
-function parseTemplate(template: string): TemplatePart[] {
-    return template.split(/({[^}]+})/).filter(Boolean).map(part => {
-        // if encapsulated with "{}" its a placeholder part
-        if (part.startsWith('{') && part.endsWith('}')) {
-            return { kind: "placeholder", name: part.slice(1, -1) };
-        }
-        return { kind: "static", text: part };
-    });
 }
 
 // deconstructs an existing id string back into per-placeholder segment values
@@ -37,26 +19,8 @@ function parseIdValue(existing: unknown, parts: TemplatePart[]): Record<string, 
     );
     if (!existing || typeof existing !== "string") return empty;
 
-    const result = { ...empty };
-    let rem = existing;
-    parts.forEach((part, i) => {
-        if (part.kind === "static") {
-            if (rem.startsWith(part.text)) rem = rem.slice(part.text.length);
-        } else {
-            // look ahead to find where this placeholder ends (at the next static separator)
-            const nextStatic = parts
-                .slice(i + 1)
-                .find((p): p is Extract<TemplatePart, { kind: "static" }> => p.kind === "static");
-            const endIdx = nextStatic ? rem.indexOf(nextStatic.text) : rem.length;
-            if (endIdx !== -1) {
-                result[part.name] = rem.slice(0, endIdx);
-                rem = rem.slice(endIdx);
-            }
-        }
-    });
-    // verify round-trip to catch cases where the stored value doesn't match the template
-    const reassembled = parts.map((p) => (p.kind === "static" ? p.text : result[p.name] ?? "")).join("");
-    return reassembled === existing ? result : empty;
+    const matched = tryParseTemplateValue(existing, parts);
+    return matched ? { ...empty, ...matched } : empty;
 }
 
 function assembleValue(parts: TemplatePart[], segments: Record<string, string>): string {
@@ -123,7 +87,7 @@ function InputSegment({ part, value, options, onChange }: PillSegmentProps) {
     );
 }
 
-function TemplatedIdField({
+export function TemplatedIdField({
     field,
     value,
     onChange,
