@@ -14,6 +14,7 @@ import { useEditorProviders } from '../providers/useEditorProviders';
 import { useCursorWidgets } from '../widgets/useCursorWidgets';
 import { useIdTemplateWidget } from '../widgets/idTemplateWidget/useIdTemplateWidget';
 import { buildErrorAnnotations, buildReferenceAnnotations, buildIdLineMap } from './configEditorAnnotations';
+import { ToggleButton } from '../../../../components/ToggleButton/ToggleButton';
 import styles from '../../YamlEditor.module.css';
 import '../../monacoStyles.css';
 
@@ -273,20 +274,20 @@ export const ConfigEditor = ({
 
             {settingsOpen && (
                 <div className={styles.editorToolbar}>
-                    <button
-                        className={showWhitespace ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
-                        onClick={onToggleWhitespace}
-                        title="Show Whitespace"
+                    <ToggleButton
+                        checked={showWhitespace}
+                        onToggle={onToggleWhitespace}
+                        className={`text-small ${styles.btnIcon}`}
                     >
                         {showWhitespace ? 'Hide Whitespaces' : 'Show Whitespaces'}
-                    </button>
-                    <button
-                        className={fillDefaults ? `btn-primary text-small ${styles.btnIcon}` : `text-small ${styles.btnIcon}`}
-                        onClick={onToggleFillDefaults}
-                        title="Fill in Defaults"
+                    </ToggleButton>
+                    <ToggleButton
+                        checked={fillDefaults}
+                        onToggle={onToggleFillDefaults}
+                        className={`text-small ${styles.btnIcon}`}
                     >
                         {fillDefaults ? "Don't fill defaults" : 'Fill defaults'}
-                    </button>
+                    </ToggleButton>
                 </div>
             )}
 
