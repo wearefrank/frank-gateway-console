@@ -148,6 +148,16 @@ a:hover {
   color: var(--text-primary);
 }
 
+.card-body {
+  overflow: auto;
+  /* saves spaces for the scrollbar so text doesn't disappear behind it */
+  scrollbar-gutter: stable;
+}
+
+.max-height-400px {
+  max-height: 400px;
+}
+
 /* Form elements */
 
 .form-group {

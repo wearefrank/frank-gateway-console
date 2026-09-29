@@ -4,7 +4,7 @@ import { toNodeList } from './upstreamNodes';
 import styles from './Dashboard.module.css';
 
 export const LiveUpstreamItem = ({ upstream }: { upstream: LiveUpstream }) => (
-    <div className={styles.statsList}>
+    <div className={styles.statGroup}>
         <div className={styles.statRow}>
             <strong>Upstream {upstream.value.id}</strong>
             <span className="text-muted text-small">{upstream.value.type}</span>

@@ -70,10 +70,27 @@
     margin: 0.75rem 0;
 }
 
+/* rows that belong together (one upstream or service) inside a statsList for the dashboard */
+.statGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0.2rem 0;
+}
+
 .statRow {
     display: flex;
     justify-content: space-between;
+    gap: 0.75rem;
     font-size: 0.9rem;
+}
+
+/* overflow for text so it cuts off with "..." */
+.truncate {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tagList {

@@ -8,7 +8,7 @@ export const LiveServiceItem = ({ service }: { service: LiveService }) => {
     const pluginNames = Object.keys(plugins ?? {});
 
     return (
-        <div className={styles.statsList}>
+        <div className={styles.statGroup}>
             <div className={styles.statRow}>
                 <strong>{name ?? `Service ${id}`}</strong>
                 <span className="text-muted text-small">id: {id}</span>

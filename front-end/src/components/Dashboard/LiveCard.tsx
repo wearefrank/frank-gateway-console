@@ -30,7 +30,9 @@ function body<T>(
     if (state.error) return <Hint>Unavailable</Hint>;
     if (!Array.isArray(state.data)) return null;
     if (state.data.length === 0) return <Hint>{emptyText}</Hint>;
-    return <>{state.data.map(renderItem)}</>;
+    return <div className={`card-body max-height-400px ${styles.statsList}`}>
+        {state.data.map(renderItem)}
+    </div>;
 }
 
 const Hint = ({ children }: { children: ReactNode }) => (
