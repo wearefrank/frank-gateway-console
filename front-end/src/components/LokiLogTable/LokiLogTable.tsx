@@ -20,8 +20,6 @@ import { normalizeKinds } from './logKinds';
 import type { LogKinds } from './types';
 import styles from './LokiLogTable.module.css';
 
-export type { LogEntry, LogKind, LogKinds, LogPage } from './types';
-
 interface LokiLogTableProps {
     title: string;
     /**
@@ -29,10 +27,7 @@ interface LokiLogTableProps {
      * one table, e.g. kind={['messages', 'error']}.
      */
     kind: LogKinds;
-    /** A LogQL selector overriding the one `kind` would pick. */
-    query?: string;
     defaultPageSize?: number;
-    defaultRange?: TimeRange;
     search?: string;
     range?: TimeRange;
     refreshKey: number;
@@ -45,9 +40,7 @@ interface LokiLogTableProps {
 const LokiLogTablePanel = ({
     title,
     kind,
-    query,
     defaultPageSize = 25,
-    defaultRange,
     search: searchProp,
     range: rangeProp,
     refreshKey,
@@ -59,9 +52,7 @@ const LokiLogTablePanel = ({
 
     const log = useLogPage({
         kind: type,
-        query,
         defaultPageSize,
-        defaultRange,
         searchProp,
         rangeProp,
         refreshKey,
@@ -171,7 +162,7 @@ const LokiLogTablePanel = ({
             />
 
             <div className={styles.controls}>
-                <TimeRangePicker value={log.range} onChange={log.changeRange} />
+                <TimeRangePicker value={log.range} onChange={log.setRange} />
                 <NamespaceFilter
                     namespaces={namespaces.known}
                     value={namespaces.namespace}
@@ -220,7 +211,6 @@ const LokiLogTablePanel = ({
                     badge={showNewLines && (
                         <NewLinesBadge
                             kind={type}
-                            query={query}
                             search={log.search}
                             searchField={log.searchField}
                             anchor={log.anchor!}

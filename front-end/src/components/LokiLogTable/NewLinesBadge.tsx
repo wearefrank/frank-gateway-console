@@ -1,11 +1,11 @@
 import { useFetch } from '../../hooks/useFetch';
 import type { LogCount } from '../MessagesCounter/messageVolume';
+import { setSearchParams } from './useLogPage';
 import styles from './LokiLogTable.module.css';
 
 interface NewLinesBadgeProps {
     /** The normalised ?type= - see kindParam. */
     kind: string;
-    query?: string;
     search: string;
     /** The column the search is confined to, so the badge counts what the table shows. */
     searchField: string;
@@ -21,7 +21,6 @@ interface NewLinesBadgeProps {
  */
 export const NewLinesBadge = ({
     kind,
-    query,
     search,
     searchField,
     anchor,
@@ -31,9 +30,7 @@ export const NewLinesBadge = ({
     // Nanoseconds to seconds by dropping nine digits, not dividing - a JS number is not exact
     // at that size.
     const params = new URLSearchParams({ type: kind, startTime: anchor.slice(0, -9) || '0' });
-    if (query) params.set('query', query);
-    if (search) params.set('search', search);
-    if (search && searchField) params.set('searchField', searchField);
+    setSearchParams(params, search, searchField);
     // Not memoised: useFetch compares the endpoint by value, and an equal string is a no-op.
     const countFetch = useFetch<LogCount>(`/logs/count?${params}`, refreshKey);
 

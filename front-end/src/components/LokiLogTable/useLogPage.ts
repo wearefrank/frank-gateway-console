@@ -6,7 +6,6 @@ import {
     DEFAULT_RANGE,
     rangeKey,
     rangeToQuery,
-    saveRange,
     type TimeRange,
 } from '../TimeRangePicker/timeRange';
 import type { LogPage } from './types';
@@ -17,12 +16,20 @@ const SEARCH_DEBOUNCE_MS = 300;
 /** Searching every column at once, which is the default and what a term alone has always meant. */
 export const ALL_COLUMNS = '';
 
+/**
+ * Adds the search term and its column to a /logs request. Shared with NewLinesBadge, so the
+ * badge always counts the same lines the table shows.
+ */
+export function setSearchParams(params: URLSearchParams, search: string, searchField: string): void {
+    if (!search) return;
+    params.set('search', search);
+    if (searchField !== ALL_COLUMNS) params.set('searchField', searchField);
+}
+
 interface UseLogPageOptions {
     /** The normalised ?type= - see kindParam. */
     kind: string;
-    query?: string;
     defaultPageSize: number;
-    defaultRange?: TimeRange;
     /** A term pushed in from outside, e.g. the route picked in the traffic table. */
     searchProp?: string;
     /** A window pushed in from outside, e.g. the span zoomed into on the traffic chart. */
@@ -38,15 +45,13 @@ interface UseLogPageOptions {
  */
 export function useLogPage({
     kind,
-    query,
     defaultPageSize,
-    defaultRange,
     searchProp,
     rangeProp,
     refreshKey,
 }: UseLogPageOptions) {
 
-    const [range, setRange] = usePersistedState<TimeRange>('logRange', defaultRange ?? DEFAULT_RANGE)
+    const [range, setRange] = usePersistedState<TimeRange>('logRange', DEFAULT_RANGE)
 
     const [searchInput, setSearchInput] = useState(searchProp ?? '');
     // Debounced apart from the input, so typing does not fire a Loki query per keystroke.
@@ -64,11 +69,6 @@ export function useLogPage({
     const sortId = sorting[0]?.id ?? 'timestamp';
     const sortDesc = sorting[0]?.desc ?? true;
 
-    const changeRange = useCallback((next: TimeRange) => {
-        setRange(next);
-        saveRange(kind, next);
-    }, [kind, setRange]);
-
     useEffect(() => {
         const timer = setTimeout(() => setSearch(searchInput), SEARCH_DEBOUNCE_MS);
         return () => clearTimeout(timer);
@@ -83,7 +83,7 @@ export function useLogPage({
     }
 
     // Same again for the window. Compared by identity on purpose, so applying the same span
-    // twice still lands. Not persisted, so a reload returns to the reader's own window.
+    // twice still lands.
     const [lastRangeProp, setLastRangeProp] = useState(rangeProp);
     if (rangeProp !== undefined && rangeProp !== lastRangeProp) {
         setLastRangeProp(rangeProp);
@@ -93,7 +93,7 @@ export function useLogPage({
     // Identifies a result set. Changing it invalidates the page number and the anchor, which
     // describe a different set of lines. Adjusted during render so no throwaway request goes
     // out with the stale page.
-    const resetKey = `${kind}|${query ?? ''}|${search}|${searchField}|${rangeKey(range)}|${sortId}|${sortDesc}`;
+    const resetKey = `${kind}|${search}|${searchField}|${rangeKey(range)}|${sortId}|${sortDesc}`;
     const [seenResetKey, setSeenResetKey] = useState(resetKey);
     if (seenResetKey !== resetKey) {
         setSeenResetKey(resetKey);
@@ -122,14 +122,11 @@ export function useLogPage({
             sort: sortId,
             direction: sortDesc ? 'backward' : 'forward',
         });
-        if (query) params.set('query', query);
-        if (search) params.set('search', search);
-        // Only ever alongside a term: a column with nothing to look for narrows nothing.
-        if (search && searchField) params.set('searchField', searchField);
+        setSearchParams(params, search, searchField);
         const end = rangeAnchor ?? anchor;
         if (end) params.set('anchor', end);
         return `/logs/page?${params}`;
-    }, [kind, query, search, searchField, windowSeconds, rangeAnchor, pagination, sortId, sortDesc, anchor]);
+    }, [kind, search, searchField, windowSeconds, rangeAnchor, pagination, sortId, sortDesc, anchor]);
 
     const pageFetch = useFetch<LogPage>(endpoint, tick);
     const data = pageFetch.data;
@@ -153,7 +150,7 @@ export function useLogPage({
 
     return {
         range,
-        changeRange,
+        setRange,
         searchInput,
         setSearchInput,
         search,
