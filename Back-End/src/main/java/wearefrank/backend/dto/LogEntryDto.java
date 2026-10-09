@@ -1,22 +1,19 @@
 package wearefrank.backend.dto;
 
+import java.util.Map;
+
 /**
  * One log line, flattened.
  *
  * Two shapes arrive from Loki and both land here, told apart by {@link #type()}:
  *
- *   audit - the loki-logger plugin's access record, a nested JSON object per request;
- *           carries the route, the status and the upstream latency.
- *   error - APISIX's nginx error log, plain text; carries a level, the module that wrote
- *           it, the message, and whatever request context nginx appended.
+ *   audit - the loki-logger plugin's access record, a nested JSON object per request.
+ *   error - APISIX's nginx error log, plain text, taken apart by {@code NginxErrorLine}.
  *
- * They share more than they differ - both name a method, a path, a host, a client and an
- * upstream - so one record serves both rather than two nearly-identical ones. What that
- * costs is fields that only ever apply to one kind, which is why every field but type,
- * timestamp, tsNanos and raw is nullable. The dashboard shows a different column set per
- * table; nothing here has to be non-null for a row to be worth rendering.
+ * What a line carries is whatever {@link LogFields} declares, so it sits in {@link #fields()}
+ * keyed by field id rather than in fixed components. A key the line did not carry is absent.
  *
- * A line that parses as neither still gets a row, with its text in message and raw.
+ * A line that parses as neither still gets a row, with its text in raw.
  */
 public record LogEntryDto(
         /** {@link LogKind#param()} - "messages" or "error". Decided by the line, not the query. */
@@ -41,26 +38,7 @@ public record LogEntryDto(
          * re-requesting lines it already has.
          */
         String tsNanos,
-        /** audit: always INFO. error: nginx's own, uppercased - INFO, WARN, ERROR, CRIT. */
-        String level,
-        String routeName,
-        String routeId,
-        String method,
-        String path,
-        String host,
-        Integer status,
-        Double latencyMs,
-        /** The caller's address: the audit record's source, the error line's `client:`. */
-        String source,
-        /** audit: the resolved upstream address. error: the upstream URL nginx was calling. */
-        String upstream,
-        /** error only - nginx's `request_id:`, the handle for tracing one request. */
-        String requestId,
-        /** error only - what wrote the line, e.g. "[lua] plugin.lua:898". */
-        String module,
-        /** error only - the message itself, with the module prefix and context stripped. */
-        String message,
-        /** audit only - the tenant the gateway logs under. */
-        String gemeenteCode,
+        /** Field id to value: a String, or an Integer/Double for STATUS/DURATION fields. */
+        Map<String, Object> fields,
         String raw
 ) {}

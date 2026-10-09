@@ -32,11 +32,5 @@ public enum LogFieldType {
     STATUS,
 
     /** Seconds in - nginx reports them that way - milliseconds out. */
-    DURATION,
-
-    /**
-     * The route, which is two fields: the name, falling back to the id. A route without a
-     * name still has one, and an unnamed route is more use identified than blank.
-     */
-    ROUTE
+    DURATION
 }

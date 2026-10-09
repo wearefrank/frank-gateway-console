@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import wearefrank.backend.dto.LogFields;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -14,7 +15,7 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 
 @Configuration
-@EnableConfigurationProperties(GitLockProperties.class)
+@EnableConfigurationProperties({GitLockProperties.class, LogFields.class})
 public class AppConfig {
 
     @Bean

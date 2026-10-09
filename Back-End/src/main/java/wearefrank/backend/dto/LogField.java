@@ -5,22 +5,20 @@ import java.util.Set;
 
 /**
  * One field of a log line: where it is read from, what it means, and whether its column
- * starts open.
+ * starts open. Bound from the {@code logs.fields} list in log-fields.yaml.
  *
- * See {@link LogFields} for the catalogue these make up and why it exists.
+ * See {@link LogFields} for the list these make up and why it exists.
  *
- * @param id          the {@link LogEntryDto} component this fills, and the column's id.
+ * @param id          the key in {@link LogEntryDto#fields()}, and the column's id.
  * @param label       the column header and its name in the visibility menu. Null for a
- *                    field that is mapped but draws no column of its own - {@code routeId}
- *                    is read so that {@code routeName} can fall back to it, and shown by
- *                    that column rather than one of its own.
- * @param type        what the value means - see {@link LogFieldType}.
- * @param auditPaths  dot paths into the loki-logger plugin's JSON, tried in order, first
+ *                    field that is read but draws no column of its own.
+ * @param type        what the value means - see {@link LogFieldType}. TEXT when left out.
+ * @param paths       dot paths into the loki-logger plugin's JSON, tried in order, first
  *                    one that resolves wins. Empty when the access record has no such field.
- *                    A list rather than one path because the same thing is written under
- *                    more than one key: the route id is nested under `audit` and repeated at
- *                    the top level, and `source` comes from $http_x_forwarded_for, which the
- *                    APISIX image leaves empty, with source_addr as the local stand-in.
+ *                    A list rather than one path so a later key can stand in for an absent
+ *                    one: the route name falls back to the route id, and `source` comes from
+ *                    $http_x_forwarded_for, which the APISIX image leaves empty, with
+ *                    source_addr as the local stand-in.
  * @param errorSource the {@code NginxErrorLine} component that fills this, or null when the
  *                    error log carries nothing of the sort.
  * @param visibleFor  the kinds whose table starts with this column open. Independent of
@@ -34,18 +32,24 @@ public record LogField(
         String id,
         String label,
         LogFieldType type,
-        List<String> auditPaths,
+        List<String> paths,
         String errorSource,
         Set<LogKind> visibleFor
 ) {
 
+    public LogField {
+        type = type == null ? LogFieldType.TEXT : type;
+        paths = paths == null ? List.of() : List.copyOf(paths);
+        visibleFor = visibleFor == null ? Set.of() : Set.copyOf(visibleFor);
+    }
+
     /**
-     * Which kinds fill this field, derived rather than declared: an audit path means the
-     * access record has it, an error source means the error line does. Declaring it
-     * separately would only be a second thing to keep in step with the first.
+     * Which kinds fill this field, derived rather than declared: a path means the access
+     * record has it, an error source means the error line does. Declaring it separately
+     * would only be a second thing to keep in step with the first.
      */
     public boolean fills(LogKind kind) {
-        return kind.isAccessRecord() ? !auditPaths.isEmpty() : errorSource != null;
+        return kind.isAccessRecord() ? !paths.isEmpty() : errorSource != null;
     }
 
     /** Whether this field draws a column at all - see {@link #label()}. */

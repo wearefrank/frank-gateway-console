@@ -5,6 +5,9 @@ export type LogKind = 'audit' | 'messages' | 'error';
 /** What a table is pointed at: one stream, or several to show merged. */
 export type LogKinds = LogKind | LogKind[];
 
+/** One cell's value: a number for STATUS/DURATION fields, text otherwise. */
+export type LogFieldValue = string | number | null;
+
 /**
  * Mirrors Java LogEntryDto.
  */
@@ -16,23 +19,8 @@ export interface LogEntry {
     timestamp: string;
     // Nanoseconds, kept as a string. Never Number() this - a rounded value breaks paging.
     tsNanos: string;
-    level: string | null;
-    routeName: string | null;
-    routeId: string | null;
-    method: string | null;
-    path: string | null;
-    host: string | null;
-    status: number | null;
-    latencyMs: number | null;
-    // The caller: the audit record's source, the error line's `client:`.
-    source: string | null;
-    upstream: string | null;
-    // error only
-    requestId: string | null;
-    module: string | null;
-    message: string | null;
-    // audit only
-    gemeenteCode: string | null;
+    // Keyed by LogFieldDescriptor.id; a key the line did not carry is absent.
+    fields: Record<string, LogFieldValue>;
     raw: string;
 }
 
@@ -48,12 +36,11 @@ export type LogFieldType =
     | 'MESSAGE'
     | 'LEVEL'
     | 'STATUS'
-    | 'DURATION'
-    | 'ROUTE';
+    | 'DURATION';
 
 /** Mirrors LogFieldDto - one column, as GET /logs/fields?type= describes it, in column order. */
 export interface LogFieldDescriptor {
-    id: keyof LogEntry;
+    id: string;
     label: string;
     type: LogFieldType;
     defaultVisible: boolean;

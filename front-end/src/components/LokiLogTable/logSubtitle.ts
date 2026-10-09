@@ -2,23 +2,15 @@ import { describeRange, type TimeRange } from '../TimeRangePicker/timeRange';
 import { ALL_NAMESPACES } from './useNamespaceFilter';
 import type { LogKind } from './types';
 
-// What an empty result means, per kind. An empty error log is good news and should not read
-// like something is misconfigured.
-const EMPTY_HINT: Record<LogKind, string> = {
-    messages: 'No log lines yet — send requests through APISIX to populate this table',
-    // An empty audit stream means the gateway config moved on, not that traffic stopped.
-    audit: 'No lines under the audit label — the gateway writes these as "messages" now',
-    error: 'No errors logged in this window',
-};
-
 /**
  * What an empty table says. Merged, the per-stream hints contradict each other - an empty
  * error log is good news, an empty access log is not - so the access log's wins.
  */
-export function emptyHint(kinds: LogKind[]): string {
-    if (kinds.includes('messages')) return EMPTY_HINT.messages;
-    if (kinds.includes('audit')) return EMPTY_HINT.audit;
-    return EMPTY_HINT.error;
+function emptyHint(kinds: LogKind[]): string {
+    if (kinds.includes('messages')) return 'No log lines yet — send requests through APISIX to populate this table';
+    // An empty audit stream means the gateway config moved on, not that traffic stopped.
+    if (kinds.includes('audit')) return 'No lines under the audit label — the gateway writes these as "messages" now';
+    return 'No errors logged in this window';
 }
 
 export interface LogSubtitleInput {

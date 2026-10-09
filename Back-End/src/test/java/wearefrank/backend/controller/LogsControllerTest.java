@@ -13,6 +13,7 @@ import wearefrank.backend.service.LogsService;
 import wearefrank.backend.service.LokiScope;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -34,15 +35,17 @@ class LogsControllerTest {
     LokiScope lokiScope;
 
     private static final LogEntryDto AUDIT_ENTRY = new LogEntryDto(
-            "audit", "gem-a", "2023-11-14T22:13:20Z", "1700000000000000000", "INFO", "centric", "12",
-            "GET", "/anything/x", "apisix", 200, 12.0, "172.18.0.4", "172.18.0.7:8080",
-            null, null, null, "0484", "{}");
+            "audit", "gem-a", "2023-11-14T22:13:20Z", "1700000000000000000",
+            Map.of("level", "INFO", "routeName", "centric", "method", "GET", "path", "/anything/x",
+                    "status", 200, "latencyMs", 12.0, "gemeenteCode", "0484"),
+            "{}");
 
     private static final LogEntryDto ERROR_ENTRY = new LogEntryDto(
-            "error", "gem-b", "2023-11-14T22:13:20Z", "1700000000000000000", "WARN", null, null,
-            "GET", "/test/anything", "gw.example.nl", null, null, "109.94.148.130",
-            "http://100.65.84.218:80/anything", "d5ea29ea7e7f00b9", "[lua] plugin.lua:898",
-            "conf_version(): loaded", null, "2026/08/26 ...");
+            "error", "gem-b", "2023-11-14T22:13:20Z", "1700000000000000000",
+            Map.of("level", "WARN", "method", "GET", "path", "/test/anything",
+                    "requestId", "d5ea29ea7e7f00b9", "module", "[lua] plugin.lua:898",
+                    "message", "conf_version(): loaded"),
+            "2026/08/26 ...");
 
     @Test
     void getRecentLogs_returnsFlattenedEntries() throws Exception {
@@ -51,10 +54,10 @@ class LogsControllerTest {
         mockMvc.perform(get("/api/logs/recent"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("audit"))
-                .andExpect(jsonPath("$[0].routeName").value("centric"))
-                .andExpect(jsonPath("$[0].method").value("GET"))
-                .andExpect(jsonPath("$[0].status").value(200))
-                .andExpect(jsonPath("$[0].latencyMs").value(12.0))
+                .andExpect(jsonPath("$[0].fields.routeName").value("centric"))
+                .andExpect(jsonPath("$[0].fields.method").value("GET"))
+                .andExpect(jsonPath("$[0].fields.status").value(200))
+                .andExpect(jsonPath("$[0].fields.latencyMs").value(12.0))
                 // The timestamp has to stay a string - the dashboard renders it directly.
                 .andExpect(jsonPath("$[0].timestamp").value("2023-11-14T22:13:20Z"));
     }
@@ -67,10 +70,10 @@ class LogsControllerTest {
         mockMvc.perform(get("/api/logs/recent").param("type", "error"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("error"))
-                .andExpect(jsonPath("$[0].level").value("WARN"))
-                .andExpect(jsonPath("$[0].module").value("[lua] plugin.lua:898"))
-                .andExpect(jsonPath("$[0].message").value("conf_version(): loaded"))
-                .andExpect(jsonPath("$[0].requestId").value("d5ea29ea7e7f00b9"));
+                .andExpect(jsonPath("$[0].fields.level").value("WARN"))
+                .andExpect(jsonPath("$[0].fields.module").value("[lua] plugin.lua:898"))
+                .andExpect(jsonPath("$[0].fields.message").value("conf_version(): loaded"))
+                .andExpect(jsonPath("$[0].fields.requestId").value("d5ea29ea7e7f00b9"));
 
         verify(logsService).getRecentLogs("error", null, null, null, null, null);
     }
@@ -118,7 +121,7 @@ class LogsControllerTest {
         mockMvc.perform(get("/api/logs/page").param("type", "error").param("page", "2"))
                 .andExpect(status().isOk());
 
-        verify(logsService).getPage("error", null, null, null, null, null, 2, null, null, null);
+        verify(logsService).getPage("error", null, null, null, false, null, null, 2, null, null, null);
     }
 
     @Test
@@ -128,7 +131,7 @@ class LogsControllerTest {
                         .param("direction", "forward"))
                 .andExpect(status().isOk());
 
-        verify(logsService).getPage(null, null, null, null, null, null, null, null, "forward", "status");
+        verify(logsService).getPage(null, null, null, null, false, null, null, null, null, "forward", "status");
     }
 
     @Test
@@ -136,7 +139,15 @@ class LogsControllerTest {
         mockMvc.perform(get("/api/logs/count").param("type", "error"))
                 .andExpect(status().isOk());
 
-        verify(logsService).countLogs("error", null, null, null, null);
+        verify(logsService).countLogs("error", null, null, null, false, null);
+    }
+
+    @Test
+    void countLogs_passesErrorsOnlyThrough() throws Exception {
+        mockMvc.perform(get("/api/logs/count").param("errorsOnly", "true"))
+                .andExpect(status().isOk());
+
+        verify(logsService).countLogs(null, null, null, null, true, null);
     }
 
     @Test

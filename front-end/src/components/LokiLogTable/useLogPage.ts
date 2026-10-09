@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { PaginationState, SortingState } from '@tanstack/react-table';
 import { useFetch } from '../../hooks/useFetch';
 import { useTickWhile } from '../../hooks/useTickWhile';
@@ -16,11 +16,14 @@ const SEARCH_DEBOUNCE_MS = 300;
 /** Searching every column at once, which is the default and what a term alone has always meant. */
 export const ALL_COLUMNS = '';
 
-/**
- * Adds the search term and its column to a /logs request. Shared with NewLinesBadge, so the
- * badge always counts the same lines the table shows.
- */
-export function setSearchParams(params: URLSearchParams, search: string, searchField: string): void {
+/** Adds the error filter, search term and its column to a /logs request; shared with NewLinesBadge. */
+export function setSearchParams(
+    params: URLSearchParams,
+    search: string,
+    searchField: string,
+    errorsOnly: boolean,
+): void {
+    if (errorsOnly) params.set('errorsOnly', 'true');
     if (!search) return;
     params.set('search', search);
     if (searchField !== ALL_COLUMNS) params.set('searchField', searchField);
@@ -37,12 +40,7 @@ interface UseLogPageOptions {
     refreshKey: number;
 }
 
-/**
- * One page of a Loki log, and every control that decides which page that is.
- *
- * The awkward part is that the rows live on the server: paging, sorting and searching all
- * become query parameters, and a page has to stay still while new lines arrive underneath.
- */
+/** One server-side page of a Loki log, plus the paging, sorting and search controls behind it. */
 export function useLogPage({
     kind,
     defaultPageSize,
@@ -56,9 +54,10 @@ export function useLogPage({
     const [searchInput, setSearchInput] = useState(searchProp ?? '');
     // Debounced apart from the input, so typing does not fire a Loki query per keystroke.
     const [search, setSearch] = useState('');
-    // Which column the term is looked for in, or ALL_COLUMNS for the whole line. Not
-    // debounced - picking one is a single click, not a stream of keystrokes.
+    // Which column the term is looked for in, or ALL_COLUMNS for the whole line.
     const [searchField, setSearchField] = useState(ALL_COLUMNS);
+    // Only lines with a 4xx/5xx status, filtered by Loki.
+    const [errorsOnly, setErrorsOnly] = useState(false);
     const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: defaultPageSize });
     // Time descending is newest-first, which is Loki's `direction=backward`.
     const [sorting, setSorting] = useState<SortingState>([{ id: 'timestamp', desc: true }]);
@@ -74,26 +73,22 @@ export function useLogPage({
         return () => clearTimeout(timer);
     }, [searchInput]);
 
-    // A term from outside replaces the box, but only when it actually changes - otherwise
-    // every render would overwrite what the reader has typed since.
+    // Only copy an outside term in when it changes, so it doesn't overwrite what the reader typed.
     const [lastSearchProp, setLastSearchProp] = useState(searchProp);
     if (searchProp !== undefined && searchProp !== lastSearchProp) {
         setLastSearchProp(searchProp);
         setSearchInput(searchProp);
     }
 
-    // Same again for the window. Compared by identity on purpose, so applying the same span
-    // twice still lands.
+    // Compared by identity on purpose, so applying the same span twice still lands.
     const [lastRangeProp, setLastRangeProp] = useState(rangeProp);
     if (rangeProp !== undefined && rangeProp !== lastRangeProp) {
         setLastRangeProp(rangeProp);
         setRange(rangeProp);
     }
 
-    // Identifies a result set. Changing it invalidates the page number and the anchor, which
-    // describe a different set of lines. Adjusted during render so no throwaway request goes
-    // out with the stale page.
-    const resetKey = `${kind}|${search}|${searchField}|${rangeKey(range)}|${sortId}|${sortDesc}`;
+    // A new result set resets page and anchor during render, so no stale request goes out.
+    const resetKey = `${kind}|${search}|${searchField}|${errorsOnly}|${rangeKey(range)}|${sortId}|${sortDesc}`;
     const [seenResetKey, setSeenResetKey] = useState(resetKey);
     if (seenResetKey !== resetKey) {
         setSeenResetKey(resetKey);
@@ -101,52 +96,41 @@ export function useLogPage({
         setAnchor(null);
     }
 
-    // Page 1 of a relative window follows the log; anywhere else the page is pinned and takes
-    // no ticks, so rows cannot move under the reader. NewLinesBadge says what is waiting.
+    // Page 1 of a relative window follows the log; any other page is pinned and takes no ticks.
     const following = range.kind === 'relative' && pagination.pageIndex === 0;
     const tick = useTickWhile(refreshKey, following);
-    if (following && anchor) {
-        setAnchor(null);
-    }
+    if (following && anchor) setAnchor(null);
 
-    const endpoint = useMemo(() => {
-        // A duration plus the instant it ends at: the backend hangs both ends of the window
-        // off the anchor, so every page covers the same span.
-        const params = new URLSearchParams({
-            type: kind,
-            windowSeconds: String(windowSeconds),
-            page: String(pagination.pageIndex + 1),
-            pageSize: String(pagination.pageSize),
-            // Resolved server-side: Time becomes Loki's own `direction`, any other column is
-            // ordered over the window before the page is cut from it.
-            sort: sortId,
-            direction: sortDesc ? 'backward' : 'forward',
-        });
-        setSearchParams(params, search, searchField);
-        const end = rangeAnchor ?? anchor;
-        if (end) params.set('anchor', end);
-        return `/logs/page?${params}`;
-    }, [kind, search, searchField, windowSeconds, rangeAnchor, pagination, sortId, sortDesc, anchor]);
+    const params = new URLSearchParams({
+        type: kind,
+        windowSeconds: String(windowSeconds),
+        page: String(pagination.pageIndex + 1),
+        pageSize: String(pagination.pageSize),
+        sort: sortId,
+        direction: sortDesc ? 'backward' : 'forward',
+    });
+    setSearchParams(params, search, searchField, errorsOnly);
+    const end = rangeAnchor ?? anchor;
+    if (end) params.set('anchor', end);
 
-    const pageFetch = useFetch<LogPage>(endpoint, tick);
+    const pageFetch = useFetch<LogPage>(`/logs/page?${params}`, tick);
     const data = pageFetch.data;
 
-    // True only while the reader waits on a page they asked for; a tick asks for the page
-    // already shown, so it stays quiet.
+    // Busy only while fetching a page the reader asked for, not on a background tick.
     const userBusy = pageFetch.loading && data != null
         && (data.page !== pagination.pageIndex + 1 || data.pageSize !== pagination.pageSize);
 
     /** Pins the snapshot as the reader navigates, adopting the backend's anchor. */
-    const pinAnchor = useCallback(() => {
+    const pinAnchor = () => {
         // An absolute range already ends at a fixed instant, so there is nothing to pin.
         if (range.kind === 'absolute') return;
         if (!anchor && data?.anchor) setAnchor(data.anchor);
-    }, [range.kind, anchor, data]);
+    };
 
     /** Unpins, so the next fetch follows the log again. */
-    const dropAnchor = useCallback(() => setAnchor(null), []);
+    const dropAnchor = () => setAnchor(null);
 
-    const entries = useMemo(() => data?.entries ?? NO_ENTRIES, [data?.entries]);
+    const entries = data?.entries ?? NO_ENTRIES;
 
     return {
         range,
@@ -156,6 +140,8 @@ export function useLogPage({
         search,
         searchField,
         setSearchField,
+        errorsOnly,
+        setErrorsOnly,
         pagination,
         setPagination,
         sorting,
@@ -171,12 +157,10 @@ export function useLogPage({
         error: pageFetch.error,
         userBusy,
         totalCount: data?.totalCount ?? 0,
-        // The server decides how deep paging can go (Loki caps a query at 5000 entries), so
-        // its page count wins over anything derived from the row count.
+        // The server's page count wins, since Loki caps a query at 5000 entries.
         serverPageCount: data?.totalPages ?? 1,
     };
 }
 
-// A stable identity for the empty case, so `data` going undefined does not hand the table a
-// fresh array and invalidate everything memoised off it.
+// Stable empty array, so a missing page doesn't invalidate memos in the table.
 const NO_ENTRIES: never[] = [];

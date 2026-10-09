@@ -96,8 +96,10 @@ public class LogsController {
             @RequestParam(required = false) String search,
             // Which column the search is confined to - see the same parameter on /page.
             @RequestParam(required = false) String searchField,
+            // See the same parameter on /page.
+            @RequestParam(defaultValue = "false") boolean errorsOnly,
             @RequestParam(required = false) Long startTime) {
-        return logsService.countLogs(type, query, search, searchField, startTime);
+        return logsService.countLogs(type, query, search, searchField, errorsOnly, startTime);
     }
 
     /**
@@ -128,6 +130,8 @@ public class LogsController {
             // the term matches anywhere in the line, which is the default. Anything this log
             // has no column for falls back to that too.
             @RequestParam(required = false) String searchField,
+            // Only access records with a 4xx or 5xx status, filtered by Loki.
+            @RequestParam(defaultValue = "false") boolean errorsOnly,
             // How far back from the anchor to look, in seconds. 0 means the retention
             // window. A duration rather than an absolute start, so the caller does not have
             // to pin "now" itself - see LogsService.getPage.
@@ -140,7 +144,7 @@ public class LogsController {
             // Which column to order by: a log field id, or "timestamp" for time order, which
             // is the default. Anything this log has no column for falls back to time.
             @RequestParam(required = false) String sort) {
-        return logsService.getPage(type, query, search, searchField, windowSeconds, anchor, page,
+        return logsService.getPage(type, query, search, searchField, errorsOnly, windowSeconds, anchor, page,
                 pageSize, direction, sort);
     }
 

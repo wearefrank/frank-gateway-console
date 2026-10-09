@@ -29,13 +29,11 @@ public final class LogSearchField {
      * column can go stale simply because the table switched kind, and dropping the user on
      * a 400 for that is worse than searching everywhere.
      */
-    public static String resolve(String requested) {
+    public static String resolve(LogFields fields, String requested) {
         if (requested == null || requested.isBlank()) return null;
         String id = requested.trim();
         if (NAMESPACE.equals(id)) return id;
-        return LogFields.ALL.stream()
-                .filter(LogField::hasColumn)
-                .anyMatch(field -> field.id().equals(id)) ? id : null;
+        return fields.isColumn(id) ? id : null;
     }
 
     /**
@@ -48,15 +46,15 @@ public final class LogSearchField {
      * and a duration is written in the line as seconds and shown in the column as
      * milliseconds, so "45" in the box would prune away the row reading "45 ms".
      */
-    public static boolean prefiltersLine(String id) {
+    public static boolean prefiltersLine(LogFields fields, String id) {
         if (id == null) return true;
         if (NAMESPACE.equals(id)) return false;
-        return typeOf(id) != LogFieldType.DURATION;
+        return fields.typeOf(id) != LogFieldType.DURATION;
     }
 
     /** Whether the cell this column draws for {@code entry} contains {@code term}. */
-    public static boolean matches(LogEntryDto entry, String id, String term) {
-        String cell = cellText(entry, id);
+    public static boolean matches(LogFields fields, LogEntryDto entry, String id, String term) {
+        String cell = cellText(fields, entry, id);
         if (cell == null) return false;
         return cell.toLowerCase(Locale.ROOT).contains(term.trim().toLowerCase(Locale.ROOT));
     }
@@ -65,25 +63,15 @@ public final class LogSearchField {
      * What the cell shows, so that what matches is what the reader can see in that column.
      *
      * Keyed off the field's type rather than its name, as the cell renderer and the sort
-     * comparator both are: Route is two fields behind one column, and a latency is held in
-     * milliseconds and drawn rounded, so the row reading "45 ms" has to be found by "45".
+     * comparator both are: a latency is held in milliseconds and drawn rounded, so the row
+     * reading "45 ms" has to be found by "45".
      */
-    private static String cellText(LogEntryDto entry, String id) {
-        if (NAMESPACE.equals(id)) return entry.namespace();
+    private static String cellText(LogFields fields, LogEntryDto entry, String id) {
         Object value = LogSort.value(entry, id);
-        return switch (typeOf(id)) {
-            case ROUTE -> entry.routeName() != null ? entry.routeName() : entry.routeId();
-            case DURATION -> value == null ? null : String.format(Locale.ROOT, "%.0f", (Double) value);
-            default -> value == null ? null : String.valueOf(value);
-        };
-    }
-
-    private static LogFieldType typeOf(String id) {
-        return LogFields.ALL.stream()
-                .filter(field -> field.id().equals(id))
-                .map(LogField::type)
-                .findFirst()
-                .orElse(LogFieldType.TEXT);
+        if (value == null) return null;
+        return fields.typeOf(id) == LogFieldType.DURATION
+                ? String.format(Locale.ROOT, "%.0f", (Double) value)
+                : String.valueOf(value);
     }
 
     private LogSearchField() {}

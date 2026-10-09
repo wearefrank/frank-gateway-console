@@ -19,6 +19,7 @@ import { NewLinesBadge } from './NewLinesBadge';
 import { normalizeKinds } from './logKinds';
 import type { LogKinds } from './types';
 import styles from './LokiLogTable.module.css';
+import { ToggleButton } from '../ToggleButton/ToggleButton';
 
 interface LokiLogTableProps {
     title: string;
@@ -117,9 +118,7 @@ const LokiLogTablePanel = ({
             toggle: () => column.toggleVisibility(),
         }));
 
-    const searchColumns: SearchScopeOption[] = columnToggles
-        .filter(column => column.id !== 'timestamp')
-        .map(({ id, label }) => ({ id, label }));
+    const searchColumns: SearchScopeOption[] = columnToggles.filter(column => column.id !== 'timestamp');
 
     const searchedColumn = searchColumns.find(column => column.id === log.searchField);
 
@@ -148,8 +147,6 @@ const LokiLogTablePanel = ({
     // Waits on the descriptors as well as the rows: the columns come from them, so drawing
     // early means a three-column table widening under the reader a moment later.
     const showTable = fields != null && (log.entries.length > 0 || log.loading);
-    // Only where the table has stopped following the log: a relative window, past page 1.
-    const showNewLines = log.range.kind === 'relative' && log.anchor != null && currentPage !== 1;
 
     return (
         <div className={`card ${styles.fullWidthCard}`}>
@@ -162,6 +159,9 @@ const LokiLogTablePanel = ({
             />
 
             <div className={styles.controls}>
+                <ToggleButton checked={log.errorsOnly} onToggle={log.setErrorsOnly}>
+                    Filter errors
+                </ToggleButton>
                 <TimeRangePicker value={log.range} onChange={log.setRange} />
                 <NamespaceFilter
                     namespaces={namespaces.known}
@@ -178,7 +178,7 @@ const LokiLogTablePanel = ({
                 <PageSizeSelect value={log.pagination.pageSize} onChange={changePageSize} />
                 <MatchCount
                     count={log.totalCount}
-                    firstLoad={log.loading && log.data == null}
+                    loading={log.loading}
                     failed={log.error != null}
                     hasData={log.data != null}
                 />
@@ -208,12 +208,14 @@ const LokiLogTablePanel = ({
                     onGoTo={goToPage}
                     depthCapped={log.data?.depthCapped ?? false}
                     sortedByTime={log.sortId === 'timestamp'}
-                    badge={showNewLines && (
+                    // Only set when the table has stopped following the log.
+                    badge={log.anchor && (
                         <NewLinesBadge
                             kind={type}
                             search={log.search}
                             searchField={log.searchField}
-                            anchor={log.anchor!}
+                            errorsOnly={log.errorsOnly}
+                            anchor={log.anchor}
                             refreshKey={refreshKey}
                             onJump={goToNewest}
                         />

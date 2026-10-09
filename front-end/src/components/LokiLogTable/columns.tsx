@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { textOn } from '../chart/palette';
-import type { LogEntry, LogFieldDescriptor, LogFieldType } from './types';
+import type { LogEntry, LogFieldDescriptor, LogFieldType, LogFieldValue } from './types';
 import type { logTableFeatures } from './features';
 import styles from './LokiLogTable.module.css';
 
@@ -23,13 +23,6 @@ const levelClass = (level: string): string | undefined => {
     if (level === 'WARN') return styles.levelWarn;
     return undefined;
 };
-
-/**
- * What every generated column's accessor returns. One shared type on purpose: the generated
- * columns cannot be a tuple, so a per-column value type would widen to a union the table
- * rejects. The renderer narrows it by the field's type instead.
- */
-type LogFieldValue = string | number | null;
 
 /**
  * How each kind of value is drawn, keyed by what it means rather than by which field it is.
@@ -65,16 +58,7 @@ const buildRenderers = (colorMap: Record<string, string>): Record<LogFieldType, 
     )),
 
     DURATION: value => (value == null ? dash : `${Number(value).toFixed(0)} ms`),
-
-    ROUTE: value => value ?? dash,
 });
-
-// ROUTE is the one column reading two fields: an unnamed route is more use identified by id
-// than left blank.
-const valueOf = (row: LogEntry, field: LogFieldDescriptor): LogFieldValue =>
-    field.type === 'ROUTE'
-        ? row.routeName ?? row.routeId
-        : (row[field.id] as LogFieldValue);
 
 const columnHelper = createColumnHelper<typeof logTableFeatures, LogEntry>();
 
@@ -91,7 +75,7 @@ const columnHelper = createColumnHelper<typeof logTableFeatures, LogEntry>();
 export const buildColumns = (
     fields: LogFieldDescriptor[],
     colorMap: Record<string, string>,
-    showDate = false,
+    showDate: boolean,
 ) => {
     const renderers = buildRenderers(colorMap);
     // columnHelper.columns() rather than a plain array: it preserves each column's own value
@@ -107,7 +91,6 @@ export const buildColumns = (
         }),
         columnHelper.accessor('timestamp', {
             header: 'Time',
-            enableSorting: true,
             sortDescFirst: true,
             cell: info => <span className={styles.muted}>{formatTime(info.getValue(), showDate)}</span>,
             meta: { label: 'Time' },
@@ -119,7 +102,7 @@ export const buildColumns = (
             cell: info => <span className={styles.muted}>{info.getValue() ?? '—'}</span>,
             meta: { label: 'Namespace' },
         }),
-        ...fields.map(field => columnHelper.accessor(row => valueOf(row, field), {
+        ...fields.map(field => columnHelper.accessor(row => row.fields[field.id] ?? null, {
             id: field.id,
             header: field.label,
             // Falls back rather than indexing straight in: a LogFieldType added on the Java

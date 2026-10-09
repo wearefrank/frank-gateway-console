@@ -1,14 +1,9 @@
 package wearefrank.backend.dto;
 
-import java.lang.reflect.Method;
-import java.lang.reflect.RecordComponent;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Which column a page of logs is ordered by, and how that column compares.
@@ -19,8 +14,7 @@ import java.util.stream.Collectors;
  *
  * Sortable is derived from {@link LogFields} rather than listed again: any field that draws
  * a column can be sorted on, plus the two structural columns the table shows - Time and
- * Namespace. A field added to the gateway's log format becomes a sortable column with no
- * change here.
+ * Namespace. A field added to log-fields.yaml becomes a sortable column with no change here.
  *
  * How a column compares comes from its {@link LogFieldType}, for the same reason the cell
  * renderer does: status is an integer even though it arrives as text, latency is a number,
@@ -45,29 +39,17 @@ public final class LogSort {
             List.of("DEBUG", "INFO", "NOTICE", "WARN", "ERROR", "CRIT", "ALERT", "EMERG");
 
     /**
-     * The record accessor per component name, so a column id can be read off an entry
-     * without restating the field list as a switch. A {@link LogField}'s id is a component
-     * of {@link LogEntryDto} - {@code LogFieldsTest} holds the two together - so every
-     * sortable id resolves here.
-     */
-    private static final Map<String, Method> ACCESSORS =
-            Arrays.stream(LogEntryDto.class.getRecordComponents())
-                    .collect(Collectors.toMap(RecordComponent::getName, RecordComponent::getAccessor));
-
-    /**
      * The requested column, or {@link #TIME} when it is absent or names something this log
      * has no column for.
      *
      * Falls back rather than rejecting: a sort can go stale simply because the table
      * switched kind, and dropping the user on a 400 for that is worse than newest-first.
      */
-    public static String resolve(String requested) {
+    public static String resolve(LogFields fields, String requested) {
         if (requested == null || requested.isBlank()) return TIME;
         String id = requested.trim();
         if (TIME.equals(id) || NAMESPACE.equals(id)) return id;
-        return LogFields.ALL.stream()
-                .filter(LogField::hasColumn)
-                .anyMatch(field -> field.id().equals(id)) ? id : TIME;
+        return fields.isColumn(id) ? id : TIME;
     }
 
     /** Whether this column is the one Loki can order itself, via its `direction`. */
@@ -86,10 +68,10 @@ public final class LogSort {
      * lines sharing a status could swap places between the request for page 1 and the one
      * for page 2, and a row would show up on both or on neither.
      */
-    public static Comparator<LogEntryDto> comparator(String id, boolean ascending) {
+    public static Comparator<LogEntryDto> comparator(LogFields fields, String id, boolean ascending) {
         Comparator<LogEntryDto> byColumn = isTime(id)
                 ? byKey(entry -> Long.valueOf(entry.tsNanos()), ascending)
-                : byKey(keyOf(id), ascending);
+                : byKey(keyOf(fields, id), ascending);
         return byColumn.thenComparing(
                 entry -> Long.valueOf(entry.tsNanos()), Comparator.reverseOrder());
     }
@@ -99,19 +81,11 @@ public final class LogSort {
      * so this stays a list of meanings rather than a list of columns.
      */
     @SuppressWarnings("rawtypes")
-    private static Function<LogEntryDto, Comparable> keyOf(String id) {
-        LogFieldType type = LogFields.ALL.stream()
-                .filter(field -> field.id().equals(id))
-                .map(LogField::type)
-                .findFirst()
-                // Namespace is a column but not a log field - it comes off the Loki stream.
-                .orElse(LogFieldType.TEXT);
-        return switch (type) {
-            // Already Integer and Double on the record: coerce() read them out of the line.
+    private static Function<LogEntryDto, Comparable> keyOf(LogFields fields, String id) {
+        return switch (fields.typeOf(id)) {
+            // Already Integer and Double: coerce() read them out of the line.
             case STATUS, DURATION -> entry -> (Comparable) value(entry, id);
             case LEVEL -> entry -> severity((String) value(entry, id));
-            // Two fields behind one column, ordered by what the cell actually shows.
-            case ROUTE -> entry -> text(entry.routeName() != null ? entry.routeName() : entry.routeId());
             default -> entry -> text((String) value(entry, id));
         };
     }
@@ -135,15 +109,9 @@ public final class LogSort {
         return Comparator.comparing(key, Comparator.nullsLast(order));
     }
 
-    /** Package-private rather than private: {@link LogSearchField} reads a column the same way. */
+    /** A column's value off an entry; namespace is the one column held outside the map. */
     static Object value(LogEntryDto entry, String id) {
-        Method accessor = ACCESSORS.get(id);
-        if (accessor == null) return null;
-        try {
-            return accessor.invoke(entry);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Cannot read log field: " + id, e);
-        }
+        return NAMESPACE.equals(id) ? entry.namespace() : entry.fields().get(id);
     }
 
     private LogSort() {}

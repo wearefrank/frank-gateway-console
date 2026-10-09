@@ -216,6 +216,10 @@ public class LokiScope {
                 }
             } else if (c == '"' || c == '`') {
                 quote = c;
+            } else if (c == '#') {
+                // A LogQL comment can hide a quote, and with it a second selector, from this scan.
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "query must not contain a # comment while LOKI_NAMESPACE is set");
             } else if (c == '{') {
                 if (open >= 0) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

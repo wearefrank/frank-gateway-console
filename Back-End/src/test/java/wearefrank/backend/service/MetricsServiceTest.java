@@ -82,6 +82,17 @@ class MetricsServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void getLiveUpstreams_dropsSecrets() {
+        when(apisixClient.controlGet("/v1/upstreams")).thenReturn(
+                "[{\"key\":\"/upstreams/u1\",\"value\":{\"id\":\"u1\",\"tls\":{\"client_key\":\"secret\"}}}]");
+
+        Object result = metricsService.getLiveUpstreams();
+
+        assertThat((List<Object>) result).containsExactly(Map.of("key", "/upstreams/u1", "value", Map.of("id", "u1")));
+    }
+
+    @Test
     void getLiveRoutes_throwsOnInvalidJson() {
         when(apisixClient.controlGet("/v1/routes")).thenReturn("not-json");
 

@@ -6,9 +6,6 @@ import { spansMoreThanADay, type TimeRange } from '../TimeRangePicker/timeRange'
 import { buildColumns, defaultVisibility } from './columns';
 import type { LogEntry, LogFieldDescriptor } from './types';
 
-// A stable identity for the empty case, so a failed fetch does not invalidate the columns memo.
-const NO_FIELDS: never[] = [];
-
 /**
  * The table's columns, described by the server rather than declared here - see LogFields on
  * the back end. A field added to the gateway's log format becomes a column on its own.
@@ -30,17 +27,19 @@ export function useLogColumns(kind: string, entries: LogEntry[], range: TimeRang
 
     // Status colours off the shared palette, so a 502 is the same red as everywhere else.
     const colorMap = useMemo(() => {
-        const codes = entries
-            .map(entry => (entry.status == null ? null : String(entry.status)))
-            .filter((code): code is string => code !== null);
+        const statusIds = (fields ?? []).filter(field => field.type === 'STATUS').map(field => field.id);
+        const codes = entries.flatMap(entry => statusIds
+            .map(id => entry.fields[id])
+            .filter(code => code != null)
+            .map(String));
         return buildCodeMaps([...new Set(codes)]).colorMap;
-    }, [entries]);
+    }, [entries, fields]);
 
     // A window that can cross midnight needs the date in the Time column.
     const showDate = spansMoreThanADay(range);
 
     const columns = useMemo(
-        () => buildColumns(fields ?? NO_FIELDS, colorMap, showDate),
+        () => buildColumns(fields ?? [], colorMap, showDate),
         [fields, colorMap, showDate],
     );
 

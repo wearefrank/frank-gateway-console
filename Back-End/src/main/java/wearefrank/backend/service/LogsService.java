@@ -7,9 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import wearefrank.backend.dto.LogCountDto;
 import wearefrank.backend.dto.LogEntryDto;
-import wearefrank.backend.dto.LogField;
 import wearefrank.backend.dto.LogFieldDto;
-import wearefrank.backend.dto.LogFieldType;
 import wearefrank.backend.dto.LogFields;
 import wearefrank.backend.dto.LogKind;
 import wearefrank.backend.dto.LogPageDto;
@@ -17,48 +15,40 @@ import wearefrank.backend.dto.LogSearchField;
 import wearefrank.backend.dto.LogSort;
 import wearefrank.backend.dto.MessageVolumeDto;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
-/**
- * Reads logs from Loki, either raw or flattened into rows for the dashboard table.
- *
- * Every entry point takes a ?type= naming the {@link LogKind}s to read - one, or several
- * comma-separated to get the streams merged into one page.
- */
+import static wearefrank.backend.service.LogLineParser.text;
+
+/** Reads Loki logs, raw or as table rows; ?type= takes one or more {@link LogKind}s. */
 @Service
 public class LogsService {
 
     private static final int DEFAULT_LIMIT = 100;
-    // Loki's own cap is 5000; staying under it keeps a mistyped limit from pulling a week
-    // of traffic into the browser.
+    // Under Loki's 5000 cap so a typo can't pull a week of logs.
     private static final int MAX_LIMIT = 1000;
-    /** Default comparison window for {@link #messageVolume}. */
     private static final long WEEK_SECONDS = 7 * 24 * 3600L;
     private static final long NANOS_PER_SECOND = 1_000_000_000L;
-    /**
-     * Loki refuses a query asking for more than this. A page is cut from one over-fetch,
-     * so this is also the deepest any page number can reach.
-     */
+    /** Loki's per-query max, so also the deepest reachable page. */
     private static final int MAX_FETCH = 5000;
     private static final int DEFAULT_PAGE_SIZE = 25;
 
     private final LokiClient lokiClient;
     private final ObjectMapper objectMapper;
     private final LokiScope scope;
+    private final LogFields logFields;
+    private final LogLineParser lineParser;
 
-    public LogsService(LokiClient lokiClient, ObjectMapper objectMapper, LokiScope scope) {
+    public LogsService(LokiClient lokiClient, ObjectMapper objectMapper, LokiScope scope, LogFields logFields,
+                       LogLineParser lineParser) {
         this.lokiClient = lokiClient;
         this.objectMapper = objectMapper;
         this.scope = scope;
+        this.logFields = logFields;
+        this.lineParser = lineParser;
     }
 
     // raw passthrough: startTime=null -> last hour, startTime=0 -> the whole retention window
@@ -79,18 +69,11 @@ public class LogsService {
         return parseStreams(body, resolveLimit(limit));
     }
 
-    /** The columns a table of these kinds should draw, in order - see {@link LogFields}. */
     public List<LogFieldDto> describeFields(String type) {
-        return LogFields.describe(scope.resolveKinds(type));
+        return logFields.describe(scope.resolveKinds(type));
     }
 
-    /**
-     * Upper bound of the query window, in nanoseconds.
-     *
-     * The cursor is a string because a nanosecond timestamp is bigger than the 2^53 a JSON
-     * number survives; rounded to the microsecond, pages start overlapping. Loki treats
-     * `end` as exclusive, so passing back the previous page's oldest line does not repeat it.
-     */
+    // String cursor: nanos exceed JSON's 2^53; Loki's end is exclusive so pages don't overlap.
     private long resolveEndNanos(String endCursor, long now) {
         if (endCursor == null || endCursor.isBlank()) {
             return now * NANOS_PER_SECOND;
@@ -104,35 +87,19 @@ public class LogsService {
         }
     }
 
-    /**
-     * How many lines match, counted by Loki over the whole window. Counting the returned
-     * page instead would only ever report the limit back.
-     */
-    public LogCountDto countLogs(String type, String query, String search, String searchField, Long startTime) {
-        return countLogs(scope.resolveKinds(type), query, search, searchField, startTime, null);
-    }
-
-    LogCountDto countLogs(Set<LogKind> kinds, String query, String search, String searchField,
-                          Long startTime, Long anchorNanos) {
+    /** Counted by Loki over the whole window, not the returned page. */
+    public LogCountDto countLogs(String type, String query, String search, String searchField,
+                                 boolean errorsOnly, Long startTime) {
         long now = System.currentTimeMillis() / 1000;
-        // Counted as of the anchor, so the total a pager was drawn from stays put while
-        // the user clicks through it.
-        long end = anchorNanos != null ? anchorNanos / NANOS_PER_SECOND : now;
-        long start = resolveStart(startTime, now);
-        return countBetween(kinds, query, search, searchField, start, end, anchorNanos);
+        return countBetween(scope.resolveKinds(type), query, search, searchField, errorsOnly,
+                resolveStart(startTime, now), now, null);
     }
 
-    /**
-     * The count over an explicit span. count_over_time takes a range plus an evaluation
-     * point, not two absolute ends, so the span is (end - start) seconds evaluated at end.
-     *
-     * @param evalNanos where to evaluate, or null for now. Must agree with {@code endSec},
-     *                  or the counted span is not the one asked for.
-     */
+    // count_over_time takes range + eval point, so span = end-start evaluated at evalNanos (null = now).
     private LogCountDto countBetween(Set<LogKind> kinds, String query, String search, String searchField,
-                                     long startSec, long endSec, Long evalNanos) {
+                                     boolean errorsOnly, long startSec, long endSec, Long evalNanos) {
         String column = searchColumn(search, searchField);
-        String pipeline = buildPipeline(kinds, query, search, column);
+        String pipeline = buildPipeline(kinds, query, search, column, errorsOnly);
         if (column != null) {
             return countColumn(pipeline, search, column, startSec, endSec, evalNanos);
         }
@@ -148,55 +115,40 @@ public class LogsService {
         }
     }
 
-    /**
-     * The count when the search names a column. Loki matches whole lines, so the lines come
-     * back and are counted here - capped at the fetch budget, reported as depthCapped.
-     */
+    /** Column search: Loki matches lines, so count here, capped at MAX_FETCH. */
     private LogCountDto countColumn(String pipeline, String search, String column,
                                     long startSec, long endSec, Long evalNanos) {
         long endNanos = evalNanos != null ? evalNanos : endSec * NANOS_PER_SECOND;
         long count = window(pipeline, startSec * NANOS_PER_SECOND, endNanos, MAX_FETCH).stream()
-                .filter(entry -> LogSearchField.matches(entry, column, search))
+                .filter(entry -> LogSearchField.matches(logFields, entry, column, search))
                 .count();
         return new LogCountDto(count, pipeline, endSec - startSec);
     }
 
     /** The column the search is confined to, or null when it runs over the whole line. */
-    private static String searchColumn(String search, String searchField) {
-        String column = LogSearchField.resolve(searchField);
+    private String searchColumn(String search, String searchField) {
+        String column = LogSearchField.resolve(logFields, searchField);
         return (search == null || search.isBlank()) ? null : column;
     }
 
-    /** The newest {@code budget} lines of a window - see {@link #MAX_FETCH}. */
     private List<LogEntryDto> window(String pipeline, long startNanos, long endNanos, int budget) {
         return parseStreams(lokiClient.queryRange(pipeline, startNanos, endNanos, budget, "backward"), budget);
     }
 
-    /**
-     * This window against the one before it - a week against the previous week, by default.
-     *
-     * The spans are adjacent and disjoint: (now-w, now] and (now-2w, now-w]. The previous
-     * count is evaluated at the boundary because count_over_time has no offset; asking for
-     * [2w] and subtracting would count a boundary line into both halves.
-     *
-     * Two round trips rather than one range query with a 1w step, whose buckets align to
-     * Loki's step boundaries instead of to "the last seven days".
-     */
+    // Adjacent windows; previous is evaluated at the boundary since count_over_time has no offset.
     public MessageVolumeDto messageVolume(String type, String query, String search, Long windowSeconds) {
         Set<LogKind> kinds = scope.resolveKinds(type);
         long window = resolveVolumeWindow(windowSeconds);
         long now = System.currentTimeMillis() / 1000;
         long boundary = now - window;
 
-        LogCountDto currentCount = countBetween(kinds, query, search, null, boundary, now, null);
-        LogCountDto previousCount = countBetween(kinds, query, search, null,
+        LogCountDto currentCount = countBetween(kinds, query, search, null, false, boundary, now, null);
+        LogCountDto previousCount = countBetween(kinds, query, search, null, false,
                 boundary - window, boundary, boundary * NANOS_PER_SECOND);
 
         long current = currentCount.count();
         long previous = previousCount.count();
-        // Null when there is nothing to compare against. A previous window of zero is also
-        // what a window older than retention returns, so the UI must tell that apart from
-        // a real drop to nothing.
+        // Null, not 0%: an empty previous window may just be past retention.
         Double changePercent = previous == 0
                 ? null
                 : Math.round((current - previous) * 1000.0 / previous) / 10.0;
@@ -204,10 +156,6 @@ public class LogsService {
         return new MessageVolumeDto(current, previous, changePercent, window, currentCount.query());
     }
 
-    /**
-     * Window length for the comparison, a week by default. Non-positive is a caller mistake:
-     * a window of zero has no previous window to sit beside.
-     */
     private long resolveVolumeWindow(Long windowSeconds) {
         if (windowSeconds == null) return WEEK_SECONDS;
         if (windowSeconds <= 0) {
@@ -217,29 +165,17 @@ public class LogsService {
         return windowSeconds;
     }
 
-    /**
-     * One numbered page.
-     *
-     * Loki has no offset - it accepts the parameter and ignores it - so a page is cut from
-     * a single over-fetch of page*pageSize lines, newest-first. That is one round trip and
-     * real random access, at the price of a depth ceiling reported as depthCapped.
-     *
-     * {@code sort} names the column and {@code direction} the order ("forward" is ascending).
-     * Time is Loki's own ordering; any other column is sorted here over the whole reachable
-     * window - see {@code sortedPage}. {@code searchField} narrows the search to one column,
-     * which Loki also cannot do - see {@code columnSearchPage}.
-     */
+    /** Loki ignores offset, so a page is sliced from one over-fetch; depth capped at MAX_FETCH. */
     public LogPageDto getPage(String type, String query, String search, String searchField,
-                              Long windowSeconds, String anchor, Integer page, Integer pageSize,
+                              boolean errorsOnly, Long windowSeconds, String anchor, Integer page, Integer pageSize,
                               String direction, String sort) {
         Set<LogKind> kinds = scope.resolveKinds(type);
         long now = System.currentTimeMillis() / 1000;
         long anchorNanos = resolveEndNanos(anchor, now);
-        // Both ends hang off the anchor, so a page asked for ten minutes into a session
-        // covers the same span as the first one.
+        // Both ends hang off the anchor so later pages cover the same span.
         long window = (windowSeconds == null) ? 3600L
                 : (windowSeconds == 0 ? scope.retentionSeconds() : windowSeconds);
-        long startSec = (anchorNanos / NANOS_PER_SECOND) - window;
+        long anchorSec = anchorNanos / NANOS_PER_SECOND;
 
         int size = resolvePageSize(pageSize);
         int reachablePages = Math.max(1, MAX_FETCH / size);
@@ -248,25 +184,23 @@ public class LogsService {
         // Clamped rather than 404'd: a page number goes stale simply because the search narrowed.
         int requested = (page == null || page < 1) ? 1 : page;
 
-        // "forward" is ascending - oldest-first for time, A-Z for a text column.
-        String resolvedDirection = "forward".equals(direction) ? "forward" : "backward";
-        boolean ascending = "forward".equals(resolvedDirection);
-        String resolvedSort = LogSort.resolve(sort);
+        boolean ascending = "forward".equals(direction);
+        String resolvedDirection = ascending ? "forward" : "backward";
+        String resolvedSort = LogSort.resolve(logFields, sort);
         String column = searchColumn(search, searchField);
 
-        String pipeline = buildPipeline(kinds, query, search, column);
-        long startNanos = startSec * NANOS_PER_SECOND;
+        String pipeline = buildPipeline(kinds, query, search, column, errorsOnly);
+        long startNanos = anchorNanos - window * NANOS_PER_SECOND;
 
         if (column != null) {
             return columnSearchPage(pipeline, startNanos, anchorNanos, requested, size, budget,
                     resolvedSort, ascending, resolvedDirection, search, column);
         }
 
-        // Evaluated 1ns before the anchor on purpose: count_over_time covers (T-range, T]
-        // while query_range covers [start, end), so a line sitting on the boundary would be
-        // counted but not returned - a last page holding one row more than the total allows.
-        long total = countLogs(kinds, query, search, null, startSec, anchorNanos - 1).count();
-        int totalPages = total == 0 ? 1 : (int) Math.min(reachablePages, (total + size - 1) / size);
+        // Full window at anchor-1ns: count_over_time's (T-r, T] then equals query_range's [start, end).
+        long total = countBetween(kinds, query, search, null, errorsOnly, anchorSec - window,
+                anchorSec, anchorNanos - 1).count();
+        int totalPages = (int) Math.min(reachablePages, Math.max(1, (total + size - 1) / size));
         boolean depthCapped = total > (long) budget;
 
         int resolvedPage = Math.min(requested, totalPages);
@@ -280,45 +214,32 @@ public class LogsService {
                 String.valueOf(anchorNanos), depthCapped, resolvedDirection, resolvedSort, null);
     }
 
-    /**
-     * A page whose search names one column. Loki matches lines, not columns, so the whole
-     * reachable window comes back and both the matching and the count happen here - making
-     * even page 1 a full-depth fetch.
-     *
-     * Counting Loki's line-filter matches instead would number the pages off a superset and
-     * offer pages that turn out to be empty. A window that fills the budget reports
-     * depthCapped: the matches are the newest ones, not all of them.
-     */
+    /** Column search: fetch the whole window, match and count here so pages are never empty. */
     private LogPageDto columnSearchPage(String pipeline, long startNanos, long anchorNanos,
                                         int requested, int size, int budget, String sort,
                                         boolean ascending, String direction, String search,
                                         String column) {
         List<LogEntryDto> fetched = window(pipeline, startNanos, anchorNanos, budget);
         List<LogEntryDto> matched = new ArrayList<>(fetched.stream()
-                .filter(entry -> LogSearchField.matches(entry, column, search))
+                .filter(entry -> LogSearchField.matches(logFields, entry, column, search))
                 .toList());
 
         long total = matched.size();
-        int totalPages = total == 0 ? 1 : (int) ((total + size - 1) / size);
+        int totalPages = (int) Math.max(1, (total + size - 1) / size);
         int resolvedPage = Math.min(requested, totalPages);
 
-        matched.sort(LogSort.comparator(sort, ascending));
+        matched.sort(LogSort.comparator(logFields, sort, ascending));
 
         return new LogPageDto(slice(matched, resolvedPage, size), resolvedPage, size, total, totalPages,
                 String.valueOf(anchorNanos), fetched.size() >= budget, direction, sort, column);
     }
 
-    /**
-     * A page in time order, which Loki resolves itself: it fills from whichever end
-     * `direction` names, so the over-fetch only has to reach the page.
-     */
     private List<LogEntryDto> timePage(String pipeline, long startNanos, long anchorNanos,
                                        int page, int size, String direction) {
         int needed = page * size;
         String body = lokiClient.queryRange(pipeline, startNanos, anchorNanos, needed, direction);
 
-        // parseStreams normalises to newest-first, so a forward page has to be flipped back:
-        // the slice must come off the same end Loki filled from.
+        // parseStreams sorts newest-first; flip back for forward.
         List<LogEntryDto> overFetched = new ArrayList<>(parseStreams(body, needed));
         if ("forward".equals(direction)) {
             Collections.reverse(overFetched);
@@ -326,19 +247,12 @@ public class LogsService {
         return slice(overFetched, page, size);
     }
 
-    /**
-     * A page ordered by a column Loki knows nothing about, so the whole reachable window is
-     * fetched, sorted here, then sliced. Sorting only the page would order twenty-five rows
-     * and pass it off as the window: page 2 of "slowest first" could beat page 1.
-     *
-     * The cost is a full-budget fetch on every page, and an ordering that covers what paging
-     * can reach rather than the whole window - which is what depthCapped already says.
-     */
+    /** Non-time sort: sort the whole reachable window, not just the page. */
     private List<LogEntryDto> sortedPage(String pipeline, long startNanos, long anchorNanos,
                                          int page, int size, int budget, String sort, boolean ascending) {
         // Always backward: the budget is a depth from the anchor, whichever way the column sorts.
         List<LogEntryDto> reachable = new ArrayList<>(window(pipeline, startNanos, anchorNanos, budget));
-        reachable.sort(LogSort.comparator(sort, ascending));
+        reachable.sort(LogSort.comparator(logFields, sort, ascending));
         return slice(reachable, page, size);
     }
 
@@ -361,25 +275,24 @@ public class LogsService {
         return startTime;
     }
 
-    /** The LogQL for these kinds, pinned and line-filtered - see {@link LokiScope#pipeline}. */
     String buildPipeline(Set<LogKind> kinds, String query, String search) {
-        return buildPipeline(kinds, query, search, null);
+        return buildPipeline(kinds, query, search, null, false);
     }
 
-    /** The single-kind spelling, for tests - no production path builds a pipeline this way. */
-    String buildPipeline(LogKind kind, String query, String search) {
-        return buildPipeline(EnumSet.of(kind), query, search, null);
+    /** Keeps Loki's line filter only when the column's text appears in the line (see prefiltersLine). */
+    String buildPipeline(Set<LogKind> kinds, String query, String search, String column, boolean errorsOnly) {
+        return scope.pipeline(kinds, query, LogSearchField.prefiltersLine(logFields, column) ? search : null)
+                + errorFilter(errorsOnly);
     }
 
-    /**
-     * The same, for a search aimed at one column - null means the whole line.
-     *
-     * The line filter stays on where the column's text is part of the line, since it is then
-     * a superset of the matches and only saves work - see {@link LogSearchField#prefiltersLine}.
-     * Otherwise Loki gets an unfiltered pipeline and every match is decided here.
-     */
-    String buildPipeline(Set<LogKind> kinds, String query, String search, String column) {
-        return scope.pipeline(kinds, query, LogSearchField.prefiltersLine(column) ? search : null);
+    /** LogQL that keeps 4xx/5xx access records and every nginx error line, or "" when off. */
+    private String errorFilter(boolean errorsOnly) {
+        String statusPath = logFields.statusPath();
+        if (!errorsOnly || statusPath == null) return "";
+        // Regex, not >=: it can't fail on a missing status, so dropping the nginx lines' JSON error is safe.
+        return " | json status=\"" + statusPath + "\""
+                + " | log_type=\"" + LogKind.ERROR.param() + "\" or status=~\"[45][0-9][0-9]\""
+                + " | drop __error__, __error_details__";
     }
 
     private int resolveLimit(Integer limit) {
@@ -387,8 +300,7 @@ public class LogsService {
         return Math.min(limit, MAX_LIMIT);
     }
 
-    // One [timestampNanos, line] pair, kept numeric so the sort below does not use the
-    // formatted timestamp, plus the namespace off the stream - the line itself has none.
+    // Numeric ts for sorting; namespace and kind come off the stream.
     private record RawLine(long tsNanos, String line, String namespace, LogKind streamKind) {}
 
     private List<LogEntryDto> parseStreams(String body, int limit) {
@@ -396,12 +308,8 @@ public class LogsService {
         try {
             JsonNode result = objectMapper.readTree(body).path("data").path("result");
             for (JsonNode stream : result) {
-                // Once per stream: every line in a Loki stream shares its label set. Read
-                // under the configured label, so a collector that relabels still resolves;
-                // null when the stream carries none.
-                String namespace = text(stream.path("stream"), scope.namespaceLabel());
-                // Also once per stream: which label it carries, so a merged table can still
-                // say which stream a row came out of.
+                // Labels are per stream, so read namespace and kind once.
+                String namespace = text(stream.path("stream").path(scope.namespaceLabel()));
                 LogKind streamKind = streamKind(stream.path("stream"));
                 for (JsonNode value : stream.path("values")) {
                     try {
@@ -415,147 +323,16 @@ public class LogsService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse Loki response: " + e.getMessage(), e);
         }
-        // Loki orders within a stream, not across them, so multiple label sets come back
-        // interleaved. The table wants newest first overall.
+        // Loki sorts within a stream only.
         lines.sort(Comparator.comparingLong(RawLine::tsNanos).reversed());
-        return lines.stream().limit(limit).map(this::toEntry).toList();
+        return lines.stream().limit(limit)
+                .map(raw -> lineParser.parse(raw.tsNanos(), raw.line(), raw.namespace(), raw.streamKind()))
+                .toList();
     }
 
-    /**
-     * Which shape a line is, decided by the line and not by the stream it came from: a JSON
-     * object is an access record, anything else is read as an nginx error line.
-     *
-     * APISIX writes the odd non-JSON line into the access stream, and a shared Loki can hold
-     * either kind under either label, so the ?type= is not always right. The parse was
-     * happening anyway, and this way neither table can render a line against wrong fields.
-     */
-    private LogEntryDto toEntry(RawLine raw) {
-        String timestamp = Instant.ofEpochSecond(raw.tsNanos() / 1_000_000_000L, raw.tsNanos() % 1_000_000_000L)
-                .toString();
-        String tsNanos = String.valueOf(raw.tsNanos());
-
-        JsonNode json;
-        try {
-            json = objectMapper.readTree(raw.line());
-        } catch (Exception e) {
-            json = null;
-        }
-        return (json == null || !json.isObject())
-                ? errorEntry(raw.namespace(), timestamp, tsNanos, raw.line())
-                : auditEntry(raw.streamKind(), raw.namespace(), timestamp, tsNanos, raw.line(), json);
-    }
-
-    /**
-     * Which access-record kind a stream's log_type label names - the label is the only thing
-     * telling audit and messages apart. MESSAGES when there is no usable label, that being
-     * what the gateway writes today.
-     */
+    /** Access kind from the log_type label; MESSAGES if missing. */
     private LogKind streamKind(JsonNode labels) {
-        LogKind kind = LogKind.fromParam(text(labels, "log_type"));
+        LogKind kind = LogKind.fromParam(text(labels.path("log_type")));
         return (kind != null && kind.isAccessRecord()) ? kind : LogKind.MESSAGES;
-    }
-
-    /**
-     * The loki-logger plugin's access record, flattened out of its nesting. Which key holds
-     * what lives in {@link LogFields}, so one declaration serves both the mapping and the
-     * columns the dashboard draws.
-     */
-    private LogEntryDto auditEntry(LogKind kind, String namespace, String timestamp, String tsNanos,
-                                   String line, JsonNode json) {
-        Map<String, Object> fields = new HashMap<>();
-        for (LogField field : LogFields.ALL) {
-            if (!field.fills(kind)) continue;
-            for (String path : field.auditPaths()) {
-                String value = textAtPath(json, path);
-                // First path that resolves wins - a later one is a fallback, not an override.
-                if (value != null) {
-                    fields.put(field.id(), coerce(field.type(), value));
-                    break;
-                }
-            }
-        }
-        return entry(kind, namespace, timestamp, tsNanos, line, fields);
-    }
-
-    /** An nginx error line, or - when it matches nothing - its text kept as the message. */
-    private LogEntryDto errorEntry(String namespace, String timestamp, String tsNanos, String line) {
-        Map<String, String> parsed = NginxErrorLine.parse(line).asMap();
-        Map<String, Object> fields = new HashMap<>();
-        for (LogField field : LogFields.ALL) {
-            if (!field.fills(LogKind.ERROR)) continue;
-            String value = parsed.get(field.errorSource());
-            if (value != null) {
-                fields.put(field.id(), coerce(field.type(), value));
-            }
-        }
-        return entry(LogKind.ERROR, namespace, timestamp, tsNanos, line, fields);
-    }
-
-    /**
-     * Binds the mapped fields onto the record by name, so a {@link LogField}'s id has to be
-     * a component of {@link LogEntryDto} - {@code LogFieldsTest} enforces it. Anything the
-     * line did not carry is absent from the map and lands as null.
-     */
-    private LogEntryDto entry(LogKind kind, String namespace, String timestamp, String tsNanos,
-                              String line, Map<String, Object> fields) {
-        // The five that describe the line rather than come out of it - see LogFields.STRUCTURAL.
-        fields.put("type", kind.param());
-        fields.put("namespace", namespace);
-        fields.put("timestamp", timestamp);
-        fields.put("tsNanos", tsNanos);
-        fields.put("raw", line);
-        return objectMapper.convertValue(fields, LogEntryDto.class);
-    }
-
-    /**
-     * Turns the raw string into what the field means. The plugin interpolates every nginx
-     * variable as a string, so "$status" arrives as "200".
-     */
-    private Object coerce(LogFieldType type, String value) {
-        return switch (type) {
-            case STATUS -> integer(value);
-            case DURATION -> millis(value);
-            case LEVEL -> value.toUpperCase(Locale.ROOT);
-            default -> value;
-        };
-    }
-
-    private Integer integer(String value) {
-        try {
-            return Integer.valueOf(value.trim());
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    /**
-     * nginx reports response times in seconds - hence the x1000. A request that hit more
-     * than one upstream carries them comma-separated; the first served the response.
-     */
-    private Double millis(String value) {
-        try {
-            return Double.parseDouble(value.split(",")[0].trim()) * 1000;
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    /** {@link #text} down a dot path, for the fields the log format nests. */
-    private String textAtPath(JsonNode root, String path) {
-        JsonNode node = root;
-        String rest = path;
-        for (int dot = rest.indexOf('.'); dot >= 0; dot = rest.indexOf('.')) {
-            node = node.path(rest.substring(0, dot));
-            rest = rest.substring(dot + 1);
-        }
-        return text(node, rest);
-    }
-
-    private String text(JsonNode node, String field) {
-        JsonNode value = node.path(field);
-        if (value.isMissingNode() || value.isNull()) return null;
-        String asText = value.asText();
-        // nginx writes "-" for a variable that was never set on this request.
-        return (asText.isEmpty() || "-".equals(asText)) ? null : asText;
     }
 }

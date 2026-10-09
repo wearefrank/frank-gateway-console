@@ -9,6 +9,7 @@ interface NewLinesBadgeProps {
     search: string;
     /** The column the search is confined to, so the badge counts what the table shows. */
     searchField: string;
+    errorsOnly: boolean;
     /** Nanosecond instant the visible snapshot was cut from. */
     anchor: string;
     refreshKey: number;
@@ -23,6 +24,7 @@ export const NewLinesBadge = ({
     kind,
     search,
     searchField,
+    errorsOnly,
     anchor,
     refreshKey,
     onJump,
@@ -30,7 +32,7 @@ export const NewLinesBadge = ({
     // Nanoseconds to seconds by dropping nine digits, not dividing - a JS number is not exact
     // at that size.
     const params = new URLSearchParams({ type: kind, startTime: anchor.slice(0, -9) || '0' });
-    setSearchParams(params, search, searchField);
+    setSearchParams(params, search, searchField, errorsOnly);
     // Not memoised: useFetch compares the endpoint by value, and an equal string is a no-op.
     const countFetch = useFetch<LogCount>(`/logs/count?${params}`, refreshKey);
 

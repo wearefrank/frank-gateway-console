@@ -1,9 +1,11 @@
 package wearefrank.backend.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import wearefrank.backend.dto.MetricsDto;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,15 +41,17 @@ public class MetricsService {
         return getLiveEntities("/v1/services", "services");
     }
 
-    // the control API answers with a [{key, value}, ...] array for each entity type
-    @SuppressWarnings("unchecked")
+    // the control API answers with a [{key, value}, ...] array for each entity type,
+    // secrets included - LiveEntityFilter keeps only what the dashboard reads
     private List<Object> getLiveEntities(String path, String label) {
         try {
-            Object parsed = objectMapper.readValue(apisixClient.controlGet(path), Object.class);
-            if (parsed instanceof List<?> list) {
-                return (List<Object>) list;
+            JsonNode parsed = objectMapper.readTree(apisixClient.controlGet(path));
+            if (!parsed.isArray()) return List.of();
+            List<Object> entities = new ArrayList<>();
+            for (JsonNode entry : parsed) {
+                entities.add(objectMapper.convertValue(LiveEntityFilter.filter(entry), Object.class));
             }
-            return List.of();
+            return entities;
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse live " + label, e);
         }
