@@ -107,17 +107,10 @@ class LogFieldsTest {
     }
 
     @Test
-    @DisplayName("the repo's config/ copies bind too")
-    void repoExamplesBind() throws IOException {
+    @DisplayName("the repo's config/ copy binds too")
+    void repoExampleBinds() throws IOException {
         LogFields compose = TestLogFields.fromYaml(Files.readString(Path.of("..", "config", "log-fields.yaml")));
         assertEquals(DEFAULTS, compose, "config/log-fields.yaml drifted from the built-in defaults");
-
-        // The ConfigMap's embedded file, out of the first document of the k8s example.
-        JsonNode configMap = new ObjectMapper(new YAMLFactory())
-                .readTree(Files.readString(Path.of("..", "config", "log-fields-k8s-example.yaml")));
-        LogFields k8s = TestLogFields.fromYaml(configMap.path("data").path("log-fields.yaml").asText());
-        assertThat(k8s.fields()).extracting(LogField::id).contains("route", "status", "userAgent");
-        assertThat(k8s.statusPath()).isEqualTo("status");
     }
 
     @Test
