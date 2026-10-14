@@ -87,7 +87,7 @@ export const Header = () => {
           {/*<NavLink to="/designer" className={({ isActive }) => (isActive ? 'active' : undefined)}>*/}
           {/*  Config Designer*/}
           {/*</NavLink>*/}
-          <NavLink to="/topology" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+          <NavLink to="/topology" end className={({ isActive }) => (isActive ? 'active' : undefined)}>
             Topology
           </NavLink>
           <NavLink to="/topology/live" className={({ isActive }) => (isActive ? 'active' : undefined)}>
