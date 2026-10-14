@@ -81,6 +81,21 @@ For local accounts, see option c in `.env.example`.
 
 The version history page saves your gateway config in a Git repo. By default each user pastes a personal access token. With Keycloak you can do better: users link their GitHub or GitLab account once, and the token never reaches the browser.
 
+### Personal access token permissions
+
+The console only lists commits and reads and writes the config file, so a token needs read and write access to that one repo:
+
+| Provider | Token permissions |
+|---|---|
+| GitHub (fine-grained, recommended) | Only the config repo, **Contents: Read and write** |
+| GitHub (classic) | `repo` (covers all of the user's repos) |
+| GitLab | `api`, plus at least the Developer role and push rights on the branch. `write_repository` isn't enough, because the console commits through the API. |
+| Gitea | `write:repository` |
+
+The same goes for `GIT_TOKEN`. Everyone who can sign in writes with it, so limit it to the config repo.
+
+### Linking accounts through Keycloak
+
 The local `keycloak` profile already has this set up in its test realm, `frank`. Just fill in the `GITHUB_IDP_*` / `GITLAB_IDP_*` values in `.env`, and set the callback URL of your GitHub OAuth app to `http://localhost:8081/realms/frank/broker/github/endpoint` (for GitLab, use `gitlab` in the path). On your own Keycloak the callback is `https://<keycloak-host>/realms/<realm>/broker/<alias>/endpoint`. Linked accounts are only kept in memory, so you'll have to link again after recreating the Keycloak container.
 
 On your own Keycloak, a realm admin needs to:
