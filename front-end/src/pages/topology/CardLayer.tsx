@@ -74,7 +74,6 @@ export function CardLayer({
                                 <div className={styles.cardActionsLabel}>Open in</div>
                                 <div className={styles.cardActionsBtns}>
                                     <Link to={configFocusHref} className={styles.cardActionBtn}>YAML Editor</Link>
-                                    <Link to={`/designer?category=${card.data.category}&focusId=${focusId}`} className={styles.cardActionBtn}>Config Designer</Link>
                                 </div>
                             </div>
                         )}
