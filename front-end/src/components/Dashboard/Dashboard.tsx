@@ -1,353 +1,126 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer } from 'recharts';
+import { useCallback, useState } from 'react';
 import { useFetch } from '../../hooks/useFetch';
-import { client } from '../../api/client';
+import { LokiLogTable } from '../LokiLogTable/LokiLogTable';
+import { MessagesCounter } from '../MessagesCounter/MessagesCounter';
+import { RouteStatsTable } from '../RouteStatsTable/RouteStatsTable';
+import type { LogFilter, RouteStats } from '../RouteStatsTable/RouteStatsTable';
+import type { TimeRange } from '../TimeRangePicker/timeRange';
+import { ApisixStatusCard } from './ApisixStatusCard';
+import { LiveCard } from './LiveCard';
+import { LiveRouteItem } from './LiveRouteItem';
+import { LiveServiceItem } from './LiveServiceItem';
+import { LiveUpstreamItem } from './LiveUpstreamItem';
+import { RefreshIndicator } from './RefreshIndicator';
+import { useControlStatus } from './useControlStatus';
+import { useDashboardRefresh } from './useDashboardRefresh';
+import type { ConnectionConfig, LiveRoute, LiveService, LiveUpstream } from './dashboardTypes';
+import type { LogKinds } from '../LokiLogTable/types';
 import styles from './Dashboard.module.css';
-import { PromLineChart, RangeToggle, ChartTooltip, buildCodeMaps, RANGE_OPTIONS } from '../PromLineChart/PromLineChart';
-import type { RangeLabel } from '../PromLineChart/PromLineChart';
 
-interface PromResult {
-    metric: Record<string, string>;
-    value: [number, string];
-}
+/**
+ * Which streams the three Loki panels read. One constant, or the counter, the per-route
+ * table and the log quietly disagree about what a message is. Both access labels here, so
+ * lines from before the gateway config renamed it still count.
+ */
+const LOG_KIND: LogKinds = ['messages', 'audit'];
 
-interface PromQueryResponse {
-    status: string;
-    data: {
-        resultType: string;
-        result: PromResult[];
-    };
-}
+export const Dashboard = () => {
+    const refreshKey = useDashboardRefresh();
+    // Null while the flag is still loading, which the panels treat as off and the status
+    // card as still checking.
+    // A failed call counts as on, for an older backend without the endpoint.
+    const lokiEnabledFetch = useFetch<boolean>('/logs/enabled');
+    const lokiFlag = lokiEnabledFetch.error ? true : lokiEnabledFetch.data;
+    const lokiOn = lokiFlag === true;
 
-interface ConnectionConfig {
-    host: string;
-    controlPort: number;
-}
+    const configFetch = useFetch<ConnectionConfig>('/config', refreshKey);
+    const routesFetch = useFetch<LiveRoute[]>('/metrics/routes', refreshKey);
+    const upstreamsFetch = useFetch<LiveUpstream[]>('/metrics/upstreams', refreshKey);
+    const servicesFetch = useFetch<LiveService[]>('/metrics/services', refreshKey);
+    // Empty endpoint means no fetch, so the health probe stays off while Loki is.
+    const lokiHealthEndpoint = lokiOn ? '/logs/recent?limit=1&startTime=0' : '';
+    const lokiHealthFetch = useFetch<unknown[]>(lokiHealthEndpoint, refreshKey);
 
-interface MetricsDto {
-    totalRequests: number;
-    connections: Record<string, number>;
-    version: string | null;
-    hostname: string | null;
-}
+    // The flag and the first probe are both "no verdict yet", so the card gets them as one.
+    const lokiProbing = lokiHealthFetch.loading && lokiHealthFetch.data == null && !lokiHealthFetch.error;
+    const lokiChecking = lokiFlag === null || lokiProbing;
 
-interface LiveNode {
-    host: string;
-    port: number;
-    weight: number;
-}
+    const controlStatus = useControlStatus(configFetch.data != null);
 
-interface LiveRouteValue {
-    id: string;
-    uri: string;
-    status: number;
-    plugins?: Record<string, unknown>;
-    upstream_id?: number;
-}
+    const [selectedRoute, setSelectedRoute] = useState<RouteStats | null>(null);
 
-interface LiveRoute {
-    key: string;
-    value: LiveRouteValue;
-}
+    const [logFilter, setLogFilter] = useState<LogFilter | null>(null);
 
-interface LiveUpstreamValue {
-    id: string;
-    type: string;
-    nodes: LiveNode[];
-}
-
-interface LiveUpstream {
-    key: string;
-    value: LiveUpstreamValue;
-}
-
-type ConnectionStatus = 'checking' | 'online' | 'offline';
-
-export const Dashboard: React.FC = () => {
-    const connectionConfigFetch = useFetch<ConnectionConfig>('/config');
-    const metricsFetch = useFetch<MetricsDto>('/metrics/prometheus');
-    const liveRoutesFetch = useFetch<LiveRoute[]>('/metrics/routes');
-    const liveUpstreamsFetch = useFetch<LiveUpstream[]>('/metrics/upstreams');
-    const [barRangeLabel, setBarRangeLabel] = useState<RangeLabel>('All');
-    const [routeTableRangeLabel, setRouteTableRangeLabel] = useState<RangeLabel>('All');
-    const [refreshKey, setRefreshKey] = useState(0);
-    const selectedBarRange = RANGE_OPTIONS.find(r => r.label === barRangeLabel)!;
-    const selectedRouteTableRange = RANGE_OPTIONS.find(r => r.label === routeTableRangeLabel)!;
-    const barEndpoint = useMemo(() => {
-        const query = `sum by (code) (last_over_time(apisix_http_status[${selectedBarRange.barWindow}]))`;
-        return '/metrics/prom-query?query=' + encodeURIComponent(query);
-    }, [selectedBarRange.barWindow]);
-    const routeTableEndpoint = useMemo(() => {
-        const query = `sum by (route, code) (last_over_time(apisix_http_status[${selectedRouteTableRange.barWindow}]))`;
-        return '/metrics/prom-query?query=' + encodeURIComponent(query);
-    }, [selectedRouteTableRange.barWindow]);
-    const httpStatusFetch = useFetch<PromQueryResponse>(barEndpoint);
-    const routeTableFetch = useFetch<PromQueryResponse>(routeTableEndpoint);
-
-    const [controlStatus, setControlStatus] = useState<ConnectionStatus>('checking');
-    const [countdown, setCountdown] = useState<number>(30);
-
-    const barChartData = useMemo(() => {
-        if (!httpStatusFetch.data?.data?.result?.length) return null;
-        const sorted = [...httpStatusFetch.data.data.result]
-            .sort((a, b) => (a.metric.code ?? '').localeCompare(b.metric.code ?? ''))
-            .map(r => ({ code: r.metric.code ?? '?', count: Number(r.value[1]) }));
-        const { colorMap } = buildCodeMaps(sorted.map(d => d.code));
-        return { sorted, colorMap };
-    }, [httpStatusFetch.data]);
-
-    const routeTableData = useMemo(() => {
-        if (!routeTableFetch.data?.data?.result?.length) return null;
-        const routeMap: Record<string, Record<string, number>> = {};
-        const allCodes = new Set<string>();
-        for (const r of routeTableFetch.data.data.result) {
-            const route = r.metric.route ?? '(none)';
-            const code = r.metric.code ?? '?';
-            allCodes.add(code);
-            if (!routeMap[route]) routeMap[route] = {};
-            routeMap[route][code] = Number(r.value[1]);
-        }
-        const routes = Object.keys(routeMap).sort();
-        const codes = [...allCodes].sort();
-        const { colorMap } = buildCodeMaps(codes);
-        return { routeMap, routes, codes, colorMap };
-    }, [routeTableFetch.data]);
-
-    const barTooltipContent = useCallback(({ active, payload, label }: { active?: boolean; payload?: ReadonlyArray<{ value?: unknown }>; label?: unknown }) => {
-        const code = label as string;
-        const entries = [{ key: code, label: 'requests', color: barChartData?.colorMap[code] ?? '', value: Number(payload?.[0]?.value ?? 0) }];
-        return <ChartTooltip active={active} header={`HTTP ${code}`} entries={entries} />;
-    }, [barChartData?.colorMap]);
-
-    const httpStatusRefetchRef = useRef(httpStatusFetch.refetch);
-    useEffect(() => { httpStatusRefetchRef.current = httpStatusFetch.refetch; });
-    const routeTableRefetchRef = useRef(routeTableFetch.refetch);
-    useEffect(() => { routeTableRefetchRef.current = routeTableFetch.refetch; });
-
-    useEffect(() => {
-        if (!connectionConfigFetch.data) return;
-        client<boolean>('/config/check?api=control', { method: 'POST', body: connectionConfigFetch.data })
-            .then(ok => setControlStatus(ok ? 'online' : 'offline'))
-            .catch(() => setControlStatus('offline'));
-    }, [connectionConfigFetch.data]);
-
-    useEffect(() => {
-        const refresh = setInterval(() => {
-            connectionConfigFetch.refetch();
-            metricsFetch.refetch();
-            liveRoutesFetch.refetch();
-            liveUpstreamsFetch.refetch();
-            httpStatusRefetchRef.current();
-            routeTableRefetchRef.current();
-            setRefreshKey(k => k + 1);
-            setCountdown(30);
-        }, 30_000);
-        const tick = setInterval(() => {
-            setCountdown(prev => (prev <= 1 ? 30 : prev - 1));
-        }, 1_000);
-        return () => {
-            clearInterval(refresh);
-            clearInterval(tick);
-        };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const applyRangeToLogs = useCallback((range: TimeRange, route: RouteStats | null) => {
+        setLogFilter({range: range, route: route})
     }, []);
 
-    const statusDotClass =
-        controlStatus === 'online'  ? styles.statusDotOnline  :
-        controlStatus === 'offline' ? styles.statusDotOffline :
-        styles.statusDotChecking;
-
-    let barSubtitle: string;
-    if (httpStatusFetch.loading) barSubtitle = 'Loading…';
-    else if (httpStatusFetch.error) barSubtitle = 'Prometheus unavailable';
-    else if (httpStatusFetch.data?.data?.result?.length === 0) barSubtitle = 'No data yet — send requests through APISIX to populate this chart';
-    else barSubtitle = `via Prometheus: last_over_time(apisix_http_status[${selectedBarRange.barWindow}])`;
-
-    let routeTableSubtitle: string;
-    if (routeTableFetch.loading) routeTableSubtitle = 'Loading…';
-    else if (routeTableFetch.error) routeTableSubtitle = 'Prometheus unavailable';
-    else if (routeTableFetch.data?.data?.result?.length === 0) routeTableSubtitle = 'No data yet — send requests through APISIX to populate this table';
-    else routeTableSubtitle = `via Prometheus: last_over_time(apisix_http_status[${selectedRouteTableRange.barWindow}]) grouped by route and code`;
+    const refreshing = configFetch.loading || routesFetch.loading || upstreamsFetch.loading
+        || servicesFetch.loading || lokiHealthFetch.loading;
 
     return (
         <div className="container">
-            <h1>Dashboard
-                <span className="material-icons text-muted" style={{ fontSize: '1rem', verticalAlign: 'middle', marginLeft: '4px'  }}>sync</span>
-                <span className="text-small text-muted" style={{ verticalAlign: 'middle'}}>{countdown}s</span>
+            <h1>
+                Dashboard
+                <RefreshIndicator refreshing={refreshing} refreshKey={refreshKey} />
             </h1>
 
             <div className={styles.grid}>
-                <div className="card">
-                    <div className="card-header">APISIX Status</div> {/* Card title */}
-                    <div className={styles.statusRow}>
-                        <span className={`${styles.statusDot} ${statusDotClass}`} />
-                        {controlStatus === 'checking' && 'Checking...'}
-                        {controlStatus === 'online'   && 'Online'}
-                        {controlStatus === 'offline'  && 'Offline'}
-                    </div>
-                    {connectionConfigFetch.data && (
-                        <div className={styles.endpoint}>
-                            {connectionConfigFetch.data.host}:{connectionConfigFetch.data.controlPort}
-                        </div>
-                    )}
-                    <div className={styles.statsList}>
-                        <div className={`${styles.statRow} ${metricsFetch.loading ? '' : metricsFetch.data ? 'text-success' : 'text-error'}`}>
-                            <span>Prometheus</span>
-                            <strong>
-                                {metricsFetch.loading ? 'Checking' : metricsFetch.data ? 'Active' : 'Inactive'}
-                            </strong>
-                        </div>
-                    </div>
-                    {metricsFetch.data && (
-                        <div className={styles.statsList}>
-                            {metricsFetch.data.version && (
-                                <div className={styles.statRow}><span>Version</span><strong>{metricsFetch.data.version}</strong></div>
-                            )}
-                            {metricsFetch.data.hostname && (
-                                <div className={styles.statRow}><span>Hostname</span><strong>{metricsFetch.data.hostname}</strong></div>
-                            )}
-                            <div className={styles.statRow}><span>Total Requests</span><strong>{metricsFetch.data.totalRequests.toLocaleString()}</strong></div>
-                            {Object.entries(metricsFetch.data.connections).map(([state, count]) => (
-                                <div key={state} className={styles.statRow}>
-                                    <span>Connections ({state})</span><strong>{count}</strong>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    <Link to="/config" className={styles.cardLink}>Configure</Link>
-                </div>
+                {lokiOn && (
+                    <MessagesCounter title="Messages Handled" kind={LOG_KIND} refreshKey={refreshKey} />
+                )}
 
-                <div className="card">
-                    <div className="card-header">Live Routes</div> {/* Card title */}
-                    {/* loading */}
-                    {liveRoutesFetch.loading && <div className={`text-small text-muted ${styles.emptyHint}`}>Loading...</div>}
-                    {/* Unavailable */}
-                    {liveRoutesFetch.error && <div className={`text-small text-muted ${styles.emptyHint}`}>Unavailable</div>}
-                    {Array.isArray(liveRoutesFetch.data) && liveRoutesFetch.data.length === 0 && (
-                        <div>No routes loaded</div>
-                    )}
-                    {Array.isArray(liveRoutesFetch.data) && liveRoutesFetch.data.map(r => (
-                        <div key={r.key} className={styles.statsList}>
-                            <div className={styles.statRow}>
-                                <span>
-                                    <span className={`${styles.statusDot} ${r.value.status === 1 ? styles.statusDotOnline : styles.statusDotOffline}`} />
-                                    <code>{r.value.uri}</code>
-                                </span>
-                                <span className="text-muted text-small">id: {r.value.id}</span>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                <ApisixStatusCard
+                    status={controlStatus}
+                    config={configFetch.data}
+                    lokiEnabled={lokiFlag !== false}
+                    lokiChecking={lokiChecking}
+                    lokiFailed={lokiHealthFetch.error != null}
+                />
 
-                <div className="card">
-                    <div className="card-header">Live Upstreams</div> {/* Card title */}
-                    {liveUpstreamsFetch.loading && <div className={`text-small text-muted ${styles.emptyHint}`}>Loading...</div>}
-                    {liveUpstreamsFetch.error && <div className={`text-small text-muted ${styles.emptyHint}`}>Unavailable</div>}
-                    {Array.isArray(liveUpstreamsFetch.data) && liveUpstreamsFetch.data.length === 0 && (
-                        <div className={`text-small text-muted ${styles.emptyHint}`}>No upstreams loaded</div>
-                    )}
-                    {Array.isArray(liveUpstreamsFetch.data) && liveUpstreamsFetch.data.map(u => (
-                        <div key={u.key} className={styles.statsList}>
-                            <div className={styles.statRow}>
-                                <strong>Upstream {u.value.id}</strong>
-                                <span className="text-muted text-small">{u.value.type}</span>
-                            </div>
-                            {u.value.nodes?.map(n => (
-                                <div key={`${n.host}:${n.port}`} className={styles.statRow}>
-                                    <code className="text-small">{n.host}:{n.port}</code>
-                                    <span className="text-muted text-small">weight: {n.weight}</span>
-                                </div>
-                            ))}
-                        </div>
-                    ))}
-                </div>
-                <div className={`card ${styles.fullWidthCard}`}>
-                    <div className="card-header">HTTP Status Codes — All Time</div> {/* Card title */}
-                    <RangeToggle value={barRangeLabel} onChange={setBarRangeLabel} />
-                    <div className={`text-small text-muted ${styles.emptyHint}`}>{barSubtitle}</div>
-                    <div className={styles.chartArea}>
-                    {barChartData && (
-                        <ResponsiveContainer width="100%" height={220}>
-                            <BarChart data={barChartData.sorted} margin={{ top: 12, right: 24, left: 0, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-dim)" />
-                                <XAxis dataKey="code" tick={{ fontSize: 13, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
-                                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} width={48} axisLine={false} tickLine={false} />
-                                <Tooltip cursor={{ fill: 'var(--border-dim)' }} content={barTooltipContent} />
-                                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                                    {barChartData.sorted.map(entry => (
-                                        <Cell key={entry.code} fill={barChartData.colorMap[entry.code]} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    )}
-                    </div>
-                </div>
-                <div className={`card ${styles.fullWidthCard}`}>
-                    <div className="card-header">Status Codes per Route</div> {/* Card title */}
-                    <RangeToggle value={routeTableRangeLabel} onChange={setRouteTableRangeLabel} />
-                    <div className={`text-small text-muted ${styles.emptyHint}`}>{routeTableSubtitle}</div>
-                    <div className={`${styles.chartArea} ${styles.chartAreaTable}`}>
-                        {routeTableData && (
-                            <table className={styles.routeTable}>
-                                <thead>
-                                    <tr>
-                                        <th>Route</th>
-                                        {routeTableData.codes.map(code => <th key={code}>HTTP {code}</th>)}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {routeTableData.routes.map(route => (
-                                        <tr key={route}>
-                                            <td><code>{route}</code></td>
-                                            {routeTableData.codes.map(code => {
-                                                const count = routeTableData.routeMap[route][code] ?? 0;
-                                                return (
-                                                    <td key={code}>
-                                                        {count > 0
-                                                            ? <span className={styles.codeBadge} style={{ background: routeTableData.colorMap[code] }}>{count.toLocaleString()}</span>
-                                                            : <span className={styles.chartAreaMessage}>—</span>}
-                                                    </td>
-                                                );
-                                            })}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                </div>
-                <PromLineChart
-                    title="HTTP Status Codes"
-                    queryTemplate="round(sum by (code) (increase(apisix_http_status[$RANGE])))"
-                    seriesKey="code"
-                    seriesDisplay={k => `HTTP ${k}`}
-                    buildMaps={buildCodeMaps}
-                    subtitle={r => `Via Prometheus: increase(apisix_http_status[${r.promRange}]) · ${r.label === 'All' ? 'all time' : `last ${r.label}`} · ${r.promRange} buckets`}
-                    refreshKey={refreshKey}
+                <LiveCard
+                    title="Live Routes"
+                    state={routesFetch}
+                    emptyText="No routes loaded"
+                    renderItem={route => <LiveRouteItem key={route.key} route={route} />}
                 />
-                <PromLineChart
-                    title="Requests by Route"
-                    queryTemplate="round(sum by (route) (increase(apisix_http_status[$RANGE])))"
-                    seriesKey="route"
-                    subtitle={r => `Via Prometheus: increase(apisix_http_status[${r.promRange}]) grouped by route · ${r.label === 'All' ? 'all time' : `last ${r.label}`}`}
-                    refreshKey={refreshKey}
+
+                <LiveCard
+                    title="Live Upstreams"
+                    state={upstreamsFetch}
+                    emptyText="No upstreams loaded"
+                    renderItem={upstream => <LiveUpstreamItem key={upstream.key} upstream={upstream} />}
                 />
-                {/*<PromLineChart*/}
-                {/*    title="Avg Request Latency by Route (ms)"*/}
-                {/*    queryTemplate={`round(sum by (route) (increase(apisix_http_latency_sum{type="request"}[$RANGE])) / clamp_min(sum by (route) (increase(apisix_http_latency_count{type="request"}[$RANGE])), 1))`}*/}
-                {/*    seriesKey="route"*/}
-                {/*    subtitle={r => `Via Prometheus: avg request latency per route · ${r.promRange} buckets`}*/}
-                {/*    refreshKey={refreshKey}*/}
-                {/*/>*/}
-                {/*<PromLineChart*/}
-                {/*    title="Egress Bandwidth by Route (bytes)"*/}
-                {/*    queryTemplate={`round(sum by (route) (increase(apisix_bandwidth{type="egress"}[$RANGE])))`}*/}
-                {/*    seriesKey="route"*/}
-                {/*    subtitle={r => `Via Prometheus: increase(apisix_bandwidth{egress}) · ${r.promRange} buckets`}*/}
-                {/*    refreshKey={refreshKey}*/}
-                {/*/>*/}
+
+                <LiveCard
+                    title="Live Services"
+                    state={servicesFetch}
+                    emptyText="No services loaded"
+                    renderItem={service => <LiveServiceItem key={service.key} service={service} />}
+                />
+
+                {lokiOn && (
+                    <>
+                        <RouteStatsTable
+                            title="Traffic per Route"
+                            kind={LOG_KIND}
+                            selectedRoute={selectedRoute}
+                            onSelectRoute={setSelectedRoute}
+                            appliedLogFilter={logFilter}
+                            onApplyRangeToLogs={applyRangeToLogs}
+                            refreshKey={refreshKey}
+                        />
+
+                        <LokiLogTable
+                            title="Messages Log"
+                            kind={LOG_KIND}
+                            defaultPageSize={25}
+                            search={logFilter?.route?.routeId ?? ''}
+                            range={logFilter?.range}
+                            refreshKey={refreshKey}
+                        />
+                    </>
+                )}
             </div>
         </div>
     );

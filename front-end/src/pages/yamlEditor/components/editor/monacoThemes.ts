@@ -1,3 +1,4 @@
+import { readPersisted } from '../../../../hooks/usePersistedState';
 import { configureMonacoYaml, type MonacoYaml } from 'monaco-yaml';
 import type { BeforeMount } from '@monaco-editor/react';
 import type * as MonacoType from 'monaco-editor';
@@ -7,7 +8,8 @@ import type * as MonacoType from 'monaco-editor';
 export let monacoYamlInstance: MonacoYaml | null = null;
 
 export function getMonacoTheme(): string {
-    const saved = localStorage.getItem('theme');
+    // Same key and format as ThemeToggle's usePersistedState, read without a hook.
+    const saved = readPersisted<string | null>('theme', null);
     const isDark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
     return isDark ? 'fedgw-dark' : 'fedgw-light';
 }
@@ -109,8 +111,8 @@ const LIGHT_THEME: MonacoType.editor.IStandaloneThemeData = {
 
 export const beforeMount: BeforeMount = (monaco) => {
     if (!monacoYamlInstance) {
-        // monaco-yaml's hover provider calls its worker's doHover, which never connects in this
-        // app's Vite setup - wrap it so the resulting error returns null instead of throwing.
+        // Defensive: monaco-yaml's providers reject when their worker is unreachable, so wrap
+        // provideHover to return null instead of throwing.
         const origRegisterHover = monaco.languages.registerHoverProvider.bind(monaco.languages);
         (monaco.languages as unknown as Record<string, unknown>).registerHoverProvider = (
             selector: Parameters<typeof monaco.languages.registerHoverProvider>[0],
@@ -129,7 +131,7 @@ export const beforeMount: BeforeMount = (monaco) => {
             return origRegisterHover(selector, provider);
         };
 
-        // Same worker problem as hover above, for doDefinition - return undefined instead of throwing.
+        // Same guard as hover above, for doDefinition - return undefined instead of throwing.
         const origRegisterDefinition = monaco.languages.registerDefinitionProvider.bind(monaco.languages);
         (monaco.languages as unknown as Record<string, unknown>).registerDefinitionProvider = (
             selector: Parameters<typeof monaco.languages.registerDefinitionProvider>[0],
@@ -148,7 +150,7 @@ export const beforeMount: BeforeMount = (monaco) => {
             return origRegisterDefinition(selector, provider);
         };
 
-        // Same worker problem as hover above, for getCodeAction - return no actions instead of throwing.
+        // Same guard as hover above, for getCodeAction - return no actions instead of throwing.
         const origRegister = monaco.languages.registerCodeActionProvider.bind(monaco.languages);
         (monaco.languages as unknown as Record<string, unknown>).registerCodeActionProvider = (
             selector: Parameters<typeof monaco.languages.registerCodeActionProvider>[0],
@@ -170,8 +172,8 @@ export const beforeMount: BeforeMount = (monaco) => {
         // fileMatch ['**'] matches any URI including in-memory models
         // (e.g. inmemory://model/apisix-config.yaml). Schema starts empty
         // and is pushed via update() once ConfigEditor receives the catalog.
-        // format: false - same broken worker as hover/definition/codeAction above;
-        // useEditorProviders.ts registers a main-thread prettier formatter instead.
+        // format stays off: useEditorProviders.ts registers a prettier formatter instead,
+        // so the editor formats the same way the rest of the toolchain does.
         monacoYamlInstance = configureMonacoYaml(monaco as never, {
             validate: false,
             completion: false,

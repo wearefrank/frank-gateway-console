@@ -1,161 +1,171 @@
 # FederatedGateWay
 
-A management UI for [Frank!Gateway](https://github.com/wearefrank/frank-gateway), an Apache APISIX-based API gateway built by WeareFrank. FederatedGateWay lets you configure and monitor the gateway through a browser instead of editing YAML files by hand.
+A web console for [Frank!Gateway](https://github.com/wearefrank/frank-gateway), the APISIX-based API gateway from WeAreFrank. Instead of editing YAML by hand, you manage the gateway from your browser.
 
-## What it does
+With it you can:
 
-- Design and manage routes, upstreams, consumers and services via a form-based UI
-- Validate APISIX config files against the live schema
-- Topology in React flow build from the config your editing
+- Create and edit routes, upstreams, consumers and services through forms
+- Check a config file against the live APISIX schema
+- See your config as a topology graph
+- Watch traffic on a dashboard built on Prometheus and Loki
 
----
+## Quick start
 
-## Prerequisites
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-
----
-
-## Quick Start
-
-**Prerequisite:** [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-
-Both the gateway and the console are published as ready-to-run images, so you don't need to clone this repo just to run it — grab the compose file on its own:
+All you need is [Docker Desktop](https://www.docker.com/products/docker-desktop/). The images are published, so nothing gets built. You do need the repo though, because the compose file reads its configs from the `config/` folder:
 
 ```bash
-curl -O https://raw.githubusercontent.com/wearefrank/frank-gateway-console/master/docker-compose.yaml
+git clone https://github.com/wearefrank/frank-gateway-console.git
+cd frank-gateway-console
+SPRING_PROFILES_ACTIVE=localdev docker compose --profile ui up
 ```
 
-**Option A — Just the gateway**
-```bash
-docker compose up
-```
-Starts Frank!Gateway (APISIX) and Prometheus. Routes are configured by editing the inline YAML under `configs:` in `docker-compose.yaml`.
+Open http://localhost:8080 and log in with `admin`/`admin` or `user`/`user`. These accounts are for local use only.
 
-**Option B — Gateway + management console**
-```bash
-docker compose --profile ui up
-```
-Adds the FederatedGateWay console, so you can configure and monitor everything from a browser instead.
+Leave out `--profile ui` if you only want the gateway without the console.
 
-| Service | URL | Included in |
-|---|---|---|
-| APISIX (proxy) | http://localhost:9880 | A & B |
-| APISIX Control API | http://localhost:9882 | A & B |
-| Prometheus | http://localhost:9090 | A & B |
-| **Console UI** | http://localhost:8080 | B only |
+| Service | URL |
+|---|---|
+| Console | http://localhost:8080 |
+| APISIX proxy | http://localhost:9880 |
+| APISIX Control API | http://localhost:9882 |
+| Prometheus | http://localhost:9090 |
+| Loki | http://localhost:3100 |
+| Grafana | http://localhost:3000 |
+| Keycloak (`--profile keycloak`) | http://localhost:8081 |
 
-> **Note:** When routing traffic to services on your host machine, use `host.docker.internal` instead of `127.0.0.1` in your upstream nodes.
+Tip: to reach a service running on your own machine, use `host.docker.internal` in your upstream, not `127.0.0.1`.
 
----
+## Changing the gateway config
 
-## Using the images in your own setup
+The gateway reads two files from `config/`:
 
-Both images are on GHCR, so you can drop them into infrastructure you already manage instead of using this repo's compose file or Helm chart directly.
+- `apisix.yaml` holds your routes, upstreams, services and consumers. Changes are picked up within a second.
+- `apisix-config.yaml` holds the gateway settings and enabled plugins. After changing it, restart with `docker compose up -d --force-recreate apisix`.
 
-- **Gateway:** `ghcr.io/wearefrank/frank-gateway:master`
-- **Console:** `ghcr.io/wearefrank/federated-gateway-console:latest`
+## Environment variables
 
-### In your own docker-compose file
+Every setting is listed with a short explanation in [`.env.example`](.env.example). Copy it to `.env` next to `docker-compose.yaml` and change what you need. The ones you'll touch most:
 
-```yaml
-services:
-  apisix:
-    image: ghcr.io/wearefrank/frank-gateway:master
-    ports:
-      - "9880:9080"   # HTTP proxy
-      - "9882:9092"   # Control API
-      - "9881:9091"   # Prometheus metrics
-    volumes:
-      - ./apisix.yaml:/usr/local/apisix/conf/apisix.yaml
-      - ./config.yaml:/usr/local/apisix/conf/config.yaml
+| Variable | What it does |
+|---|---|
+| `APISIX_HOST` | Where the console finds the gateway |
+| `PROMETHEUS_URL` | Where the metrics for the charts come from |
+| `GIT_SETTINGS_LOCKED` | Locks the console to one Git repo and file, so users can't change it |
+| `GIT_TOKEN` | A shared Git token, so users don't need their own |
 
-  console:
-    image: ghcr.io/wearefrank/federated-gateway-console:latest
-    ports:
-      - "8080:8080"
-    environment:
-      - APISIX_HOST=http://apisix          # point at the apisix service above
-      - PROMETHEUS_URL=http://prometheus:9090
-    volumes:
-      - console_data:/data                 # persists the console's own connection settings
+Some things that are easy to miss:
 
-volumes:
-  console_data:
-```
+- In `.env`, write a `$` as `$$`, because Docker Compose treats `$` as the start of a variable. This matters for bcrypt hashes.
+- Some variables are commented out in `docker-compose.yaml`. Setting them in `.env` does nothing until you uncomment them there.
+- `APISIX_HOST` and the APISIX ports are only used on the very first start. After that the console saves them in its `/data` volume, and you change them on the Connection Settings page.
 
-### In your own Helm chart
+The images are also available on their own if you want to use them in your own setup:
 
-Reference the images as values (this is exactly what `helm/values.yaml` in this repo does):
+- Gateway: `ghcr.io/wearefrank/frank-gateway:master`
+- Console: `ghcr.io/wearefrank/federated-gateway-console:latest`
 
-```yaml
-# values.yaml
-frankgateway:
-  image: ghcr.io/wearefrank/frank-gateway:master
-console:
-  image: ghcr.io/wearefrank/federated-gateway-console:latest
-```
+## Signing in
 
-```yaml
-# templates/console.yaml (excerpt)
-containers:
-  - name: console
-    image: {{ .Values.console.image }}
-    env:
-      - name: APISIX_HOST
-        value: "http://{{ .Release.Name }}-frankgateway"
-      - name: PROMETHEUS_URL
-        value: "http://{{ .Release.Name }}-prometheus:9090"
-    ports:
-      - containerPort: 8080
-```
+The console always needs a login. You choose how with `CONSOLE_AUTH_TYPE`:
 
-See `helm/templates/console.yaml` for the full working version, including the PVC used to persist `/data`.
+- `OAUTH2` (default): log in through Keycloak or another OpenID Connect provider. Set `KEYCLOAK_ISSUER_URI`, `KEYCLOAK_CLIENT_ID` and `KEYCLOAK_CLIENT_SECRET`, and add `https://<console>/login/oauth2/code/keycloak` as a redirect URI on the client.
+- `IN_MEMORY`: a simple login form with accounts you define yourself in config. No sign-up, password reset or MFA. Good for when you can't run an identity provider.
 
----
+If the value is missing or wrong, the console won't start. That's on purpose, so it never ends up running without a login.
+
+Roles are read from the token claim set in `KEYCLOAK_AUTHORITIES_CLAIM`. For Keycloak client roles that's `resource_access.<client-id>.roles`, for realm roles `realm_access.roles`. The default, `resource_access.frank-confidential.roles`, only matches the bundled test realm, so set it to your own client id. If users log in but have no roles, make sure your Keycloak client has a roles mapper with "Add to access token" turned on.
+
+For local accounts, see option c in `.env.example`.
+
+## Connecting GitHub or GitLab
+
+The version history page saves your gateway config in a Git repo. By default each user pastes a personal access token. With Keycloak you can do better: users link their GitHub or GitLab account once, and the token never reaches the browser.
+
+### Personal access token permissions
+
+The console only lists commits and reads and writes the config file, so a token needs read and write access to that one repo:
+
+| Provider | Token permissions |
+|---|---|
+| GitHub (fine-grained, recommended) | Only the config repo, **Contents: Read and write** |
+| GitHub (classic) | `repo` (covers all of the user's repos) |
+| GitLab | `api`, plus at least the Developer role and push rights on the branch. `write_repository` isn't enough, because the console commits through the API. |
+| Gitea | `write:repository` |
+
+The same goes for `GIT_TOKEN`. Everyone who can sign in writes with it, so limit it to the config repo.
+
+### Linking accounts through Keycloak
+
+The local `keycloak` profile already has this set up in its test realm, `frank`. Just fill in the `GITHUB_IDP_*` / `GITLAB_IDP_*` values in `.env`, and set the callback URL of your GitHub OAuth app to `http://localhost:8081/realms/frank/broker/github/endpoint` (for GitLab, use `gitlab` in the path). On your own Keycloak the callback is `https://<keycloak-host>/realms/<realm>/broker/<alias>/endpoint`. Linked accounts are only kept in memory, so you'll have to link again after recreating the Keycloak container.
+
+On your own Keycloak, a realm admin needs to:
+
+1. Add an identity provider called `github` and/or `gitlab`.
+2. Turn on **Store tokens** and **Stored tokens readable**. Use scopes `read:user user:email repo` (GitHub) or `openid read_user api` (GitLab). For GitHub, also turn on **JSON Format**.
+3. Give users the client roles `broker` → `read-token` and `account` → `manage-account`.
+4. Add `https://<console>/api/git/link/callback` as a redirect URI on the console client.
+5. Set `GIT_BROKER_PROVIDERS=github,gitlab` on the console.
+
+Keep in mind that GitHub's `repo` scope gives the console access to all of a user's repos, not just the config one. Gitea isn't supported here and keeps using tokens.
 
 ## Local development
 
-**Prerequisites:** Java 25, Maven, Node.js 22+
+You need Java 25, Maven and Node.js 22+.
 
-**1. Start the gateway:**
 ```bash
+# 1. Start the gateway (add --profile keycloak to test with Keycloak)
 docker compose up
-```
 
-**2. Start the backend:**
-```bash
+# 2. Start the backend on http://localhost:8080
 cd Back-End
-./mvnw spring-boot:run
-# Runs on http://localhost:8080
-```
+./mvnw spring-boot:run -Dspring-boot.run.profiles=localdev   # drop the profile to use Keycloak
 
-**3. Start the frontend:**
-```bash
+# 3. Start the frontend on http://localhost:5500
 cd front-end
 npm install
 npm run dev
-# Runs on http://localhost:5173
 ```
 
-**4.** Open http://localhost:5173/config and set the host to `http://127.0.0.1`, control port `9882`, metrics port `9881`.
+Open http://localhost:5500 and log in with `admin`/`admin`. Then go to `/config` and set the host to `http://127.0.0.1`, control port `9882` and metrics port `9881`.
 
----
+## Deploying to Kubernetes
 
-## Kubernetes / Helm
+See [`deploy/README.md`](deploy/README.md).
 
-A sample Helm chart is available in the `helm/` directory. It is provided as a starting point.
+## Monitoring
 
-```bash
-helm install federated-gateway ./helm
+The dashboard uses Prometheus for the charts and Loki for the access log. If one of them is down, only its panels show an error, the rest keeps working. Prometheus collects metrics from the gateway's metrics port, as set up in `config/prometheus.yml`.
+
+For your own queries, open Grafana at http://localhost:3000. Prometheus and Loki are already added there as data sources. Grafana has no login and gives everyone admin rights, so don't expose it beyond your own machine.
+
+## Loki and the access log
+
+APISIX sends each request to Loki through the `loki-logger` plugin in `config/apisix.yaml`, which also sets the log format and labels.
+
+Settings that matter:
+
+- `LOKI_URL`: where the console finds Loki. Point the `endpoint_addrs` of `loki-logger` at the same Loki.
+- `LOKI_ENABLED=false`: use this if you don't run Loki. The dashboard then hides the log table, the message counter and the traffic-per-route table.
+- `LOKI_NAMESPACE`: when several environments share one Loki, this shows only logs from yours. Give a comma-separated list for more than one. The console applies this filter itself, so it only limits what the dashboard shows. Logs that really must stay hidden belong in a separate Loki tenant.
+
+### Matching your log format
+
+The columns in the log table come from `config/log-fields.yaml`, not from code. Each entry is one column, plus where to find its value in the log line:
+
+```yaml
+logs:
+  fields:
+    - id: userAgent
+      label: User agent
+      type: MUTED
+      paths: [request.headers.user_agent]
+      visible-for: [MESSAGES]
 ```
 
----
+If you change the `log_format` in APISIX, update this file to match and restart the console. The file is only read at startup. Your file replaces the built-in list completely, so start from a copy of the existing one. If there's a mistake in it, like a duplicate id, the console won't start and tells you what's wrong.
 
-## TLS and FSC/NLX support
+Outside of Docker Compose, mount the file anywhere and set `LOG_FIELDS_FILE` to its path. [`config/log-fields-k8s-example.yaml`](config/log-fields-k8s-example.yaml) shows how to do this on Kubernetes with a flat log format.
 
-By default the gateway runs over plain HTTP. To enable HTTPS or the FSC/NLX plugin (for connecting to the Dutch government NLX network), create a `.env` file next to the compose file. See `.env.example` in the [Frank!Gateway repository](https://github.com/wearefrank/frank-gateway) for the variables and format.
+## TLS and FSC/NLX
 
-- **Server certificate and key** - required for the gateway to accept HTTPS connections from clients
-- **Client certificate chain** - required for mutual TLS, used by the FSC/NLX plugin to authenticate the gateway to other NLX parties
-- **Self-signed CA** - used to trust certificates from internal or custom upstream services
+The gateway uses plain HTTP by default. To turn on HTTPS or the FSC/NLX plugin, put the certificate settings in your `.env`. The variable names are in `.env.example` in the [Frank!Gateway repo](https://github.com/wearefrank/frank-gateway).

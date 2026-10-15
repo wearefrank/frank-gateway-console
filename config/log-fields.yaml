@@ -1,0 +1,100 @@
+# The console's log table columns, and where each is read from in the loki-logger
+# log_format (config/apisix.yaml). Change your log_format? Change this file to match and
+# recreate the console - no code change needed. This list replaces the built-in one whole.
+#
+# Per field:
+#   id            the key the value is sent to the browser under. Not one of type, namespace,
+#                 timestamp, tsNanos or raw - those come off the Loki stream.
+#   label         the column header. Leave out to read the field without drawing a column.
+#   type          TEXT (default), MUTED, CODE, PATH, MESSAGE, LEVEL, STATUS or DURATION.
+#                 STATUS is parsed as an integer and drives the errors-only filter; DURATION
+#                 is read as seconds and shown in milliseconds.
+#   paths         dot paths into the access record's JSON, first one present wins.
+#   error-source  which part of an nginx error line fills it: level, module, message, client,
+#                 method, path, protocol, host, upstream or requestId.
+#   visible-for   which tables start with the column open: AUDIT, MESSAGES, ERROR.
+#
+# The order here is the column order.
+logs:
+  fields:
+    - id: level
+      label: Level
+      type: LEVEL
+      paths: [level]
+      error-source: level
+      visible-for: [ERROR]
+
+    # Falls back to the route id, so an unnamed route is identified rather than blank.
+    - id: routeName
+      label: Route
+      paths: [route_name, audit.route_id, route_id]
+      visible-for: [AUDIT, MESSAGES]
+
+    - id: method
+      label: Method
+      paths: [request.request_method]
+      error-source: method
+      visible-for: [AUDIT, MESSAGES]
+
+    - id: path
+      label: Path
+      type: PATH
+      paths: [request.request_path]
+      error-source: path
+      visible-for: [AUDIT, MESSAGES, ERROR]
+
+    - id: module
+      label: Module
+      type: MUTED
+      error-source: module
+      visible-for: [ERROR]
+
+    - id: message
+      label: Message
+      type: MESSAGE
+      error-source: message
+      visible-for: [ERROR]
+
+    - id: status
+      label: Status
+      type: STATUS
+      paths: [response.status]
+      visible-for: [AUDIT, MESSAGES]
+
+    # The log format calls this upstream_latency_ms, but it holds $upstream_response_time,
+    # which nginx reports in seconds - hence DURATION.
+    - id: latencyMs
+      label: Latency
+      type: DURATION
+      paths: [response.upstream_latency_ms]
+      visible-for: [AUDIT, MESSAGES]
+
+    - id: host
+      label: Host
+      type: MUTED
+      paths: [request.request_host]
+      error-source: host
+
+    # $http_x_forwarded_for, which the APISIX image leaves empty - source_addr stands in locally.
+    - id: source
+      label: Client
+      type: MUTED
+      paths: [source, source_addr]
+      error-source: client
+
+    - id: upstream
+      label: Upstream
+      type: MUTED
+      paths: [response.upstream_endpoint.address]
+      error-source: upstream
+
+    - id: requestId
+      label: Request ID
+      type: CODE
+      error-source: requestId
+      visible-for: [ERROR]
+
+    - id: gemeenteCode
+      label: Gemeente
+      type: MUTED
+      paths: [gemeente_code]

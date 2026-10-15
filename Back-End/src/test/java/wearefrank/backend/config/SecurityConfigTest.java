@@ -1,0 +1,33 @@
+package wearefrank.backend.config;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
+import wearefrank.backend.config.security.ConsoleAuthenticator;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+
+/**
+ * The startup contract. What the filter chain actually lets through is asserted against a
+ * running application in {@link LoginPageAccessTest}, which is where the matchers and the
+ * static resource handler meet.
+ */
+class SecurityConfigTest {
+
+    /**
+     * An unset or misspelled authentication type leaves no authenticator. Starting anyway
+     * would mean serving the whole console unauthenticated, so this must fail loudly.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void refusesToStartWithoutAnAuthenticator() {
+        ObjectProvider<ConsoleAuthenticator> none = mock(ObjectProvider.class);
+
+        // Throws before touching HttpSecurity, so there is nothing to pass for it.
+        assertThatThrownBy(() -> new SecurityConfig().filterChain(null, none))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("application.security.console.authentication.type")
+                .hasMessageContaining("OAUTH2")
+                .hasMessageContaining("IN_MEMORY");
+    }
+}

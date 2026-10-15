@@ -1,9 +1,11 @@
 package wearefrank.backend.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import wearefrank.backend.dto.MetricsDto;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,29 +29,31 @@ public class MetricsService {
         return apisixClient.controlGet("/v1/healthcheck");
     }
 
-    @SuppressWarnings("unchecked")
     public List<Object> getLiveRoutes() {
-        try {
-            Object parsed = objectMapper.readValue(apisixClient.controlGet("/v1/routes"), Object.class);
-            if (parsed instanceof List<?> list) {
-                return (List<Object>) list;
-            }
-            return List.of();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse live routes", e);
-        }
+        return getLiveEntities("/v1/routes", "routes");
     }
 
-    @SuppressWarnings("unchecked")
     public List<Object> getLiveUpstreams() {
+        return getLiveEntities("/v1/upstreams", "upstreams");
+    }
+
+    public List<Object> getLiveServices() {
+        return getLiveEntities("/v1/services", "services");
+    }
+
+    // the control API answers with a [{key, value}, ...] array for each entity type,
+    // secrets included - LiveEntityFilter keeps only what the dashboard reads
+    private List<Object> getLiveEntities(String path, String label) {
         try {
-            Object parsed = objectMapper.readValue(apisixClient.controlGet("/v1/upstreams"), Object.class);
-            if (parsed instanceof List<?> list) {
-                return (List<Object>) list;
+            JsonNode parsed = objectMapper.readTree(apisixClient.controlGet(path));
+            if (!parsed.isArray()) return List.of();
+            List<Object> entities = new ArrayList<>();
+            for (JsonNode entry : parsed) {
+                entities.add(objectMapper.convertValue(LiveEntityFilter.filter(entry), Object.class));
             }
-            return List.of();
+            return entities;
         } catch (Exception e) {
-            throw new RuntimeException("Failed to parse live upstreams", e);
+            throw new RuntimeException("Failed to parse live " + label, e);
         }
     }
 
@@ -70,6 +74,12 @@ public class MetricsService {
         }
         String resolvedStep = (step != null) ? step : "60";
         return prometheusClient.rangeQuery(query, resolvedStart, now, resolvedStep);
+    }
+
+    // health of the Prometheus server. The metrics below come from the APISIX exporter, which
+    // stays reachable whether or not Prometheus is running - so it cannot answer this question.
+    public boolean isPrometheusHealthy() {
+        return prometheusClient.isHealthy();
     }
 
     // raw text/plain scrape - passed through unchanged for the frontend to display

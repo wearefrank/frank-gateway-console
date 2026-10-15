@@ -40,6 +40,11 @@ public class MetricsController {
         return metricsService.getPrometheusRaw();
     }
 
+    @GetMapping("/prometheus/health")
+    public boolean getPrometheusHealth() {
+        return metricsService.isPrometheusHealthy();
+    }
+
     @GetMapping("/prometheus")
     public MetricsDto getPrometheusMetrics() {
         return metricsService.getPrometheusMetrics();
@@ -53,5 +58,10 @@ public class MetricsController {
     @GetMapping("/upstreams")
     public List<Object> getLiveUpstreams() {
         return metricsService.getLiveUpstreams();
+    }
+
+    @GetMapping("/services")
+    public List<Object> getLiveServices() {
+        return metricsService.getLiveServices();
     }
 }

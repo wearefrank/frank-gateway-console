@@ -18,6 +18,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -81,6 +82,17 @@ class MetricsServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void getLiveUpstreams_dropsSecrets() {
+        when(apisixClient.controlGet("/v1/upstreams")).thenReturn(
+                "[{\"key\":\"/upstreams/u1\",\"value\":{\"id\":\"u1\",\"tls\":{\"client_key\":\"secret\"}}}]");
+
+        Object result = metricsService.getLiveUpstreams();
+
+        assertThat((List<Object>) result).containsExactly(Map.of("key", "/upstreams/u1", "value", Map.of("id", "u1")));
+    }
+
+    @Test
     void getLiveRoutes_throwsOnInvalidJson() {
         when(apisixClient.controlGet("/v1/routes")).thenReturn("not-json");
 
@@ -106,6 +118,32 @@ class MetricsServiceTest {
         assertThatThrownBy(() -> metricsService.getLiveUpstreams())
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Failed to parse live upstreams");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getLiveServices_parsesJsonArray() {
+        when(apisixClient.controlGet("/v1/services")).thenReturn("[{\"id\":\"s1\"}]");
+
+        Object result = metricsService.getLiveServices();
+
+        assertThat((List<Object>) result).containsExactly(Map.of("id", "s1"));
+    }
+
+    @Test
+    void getLiveServices_throwsOnInvalidJson() {
+        when(apisixClient.controlGet("/v1/services")).thenReturn("not-json");
+
+        assertThatThrownBy(() -> metricsService.getLiveServices())
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Failed to parse live services");
+    }
+
+    @Test
+    void getLiveServices_returnsEmptyList_whenControlApiAnswersWithNonArray() {
+        when(apisixClient.controlGet("/v1/services")).thenReturn("{}");
+
+        assertThat(metricsService.getLiveServices()).isEmpty();
     }
 
     @Test
@@ -237,5 +275,23 @@ class MetricsServiceTest {
 
         assertThat(result.version()).isNull();
         assertThat(result.hostname()).isNull();
+    }
+
+    @Test
+    void isPrometheusHealthy_delegatesToPrometheusClient() {
+        when(prometheusClient.isHealthy()).thenReturn(false);
+
+        assertThat(metricsService.isPrometheusHealthy()).isFalse();
+
+        verify(prometheusClient).isHealthy();
+    }
+
+    @Test
+    void isPrometheusHealthy_doesNotConsultTheApisixExporter() {
+        when(prometheusClient.isHealthy()).thenReturn(true);
+
+        assertThat(metricsService.isPrometheusHealthy()).isTrue();
+
+        verifyNoInteractions(apisixClient);
     }
 }

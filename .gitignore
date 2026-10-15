@@ -1,6 +1,9 @@
 # ── External repos ────────────────────────────────────────────────────────────
 /frank-gateway/
 
+# ── Local secrets ─────────────────────────────────────────────────────────────
+/.env
+
 # ── Runtime-generated data ────────────────────────────────────────────────────
 /git-repositories/
 /apisix_config.yaml
@@ -55,3 +58,4 @@ Thumbs.db
 /Designs/
 /front-end/src/components/SchemaFormRenderer/SchemaFormRenderer.puml
 /.junie/
+/deploy/
