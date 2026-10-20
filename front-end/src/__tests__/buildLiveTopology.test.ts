@@ -9,26 +9,26 @@ import type { LiveRoute, LiveUpstream } from '../components/Dashboard/dashboardT
 
 const routes: LiveRoute[] = [
     {
-        key: '/routes/djuma-to-centric-route',
+        key: '/routes/system-a-to-system-b-route',
         value: {
-            name: 'djuma-to-centric-route',
-            id: 'djuma-to-centric-route',
-            uri: '/djuma/clo/*',
-            upstream_id: 'centric-sender',
+            name: 'system-a-to-system-b-route',
+            id: 'system-a-to-system-b-route',
+            uri: '/system-a/system-b/*',
+            upstream_id: 'system-b-sender',
             status: 1,
             plugins: {
                 'key-auth': { hide_credentials: false, query: 'apikey', realm: 'key', header: 'apikey' },
-                'consumer-restriction': { whitelist: ['djuma-client-allowed'], type: 'consumer_name', rejected_code: 403 },
+                'consumer-restriction': { whitelist: ['system-a-client-allowed'], type: 'consumer_name', rejected_code: 403 },
             },
         },
     },
     {
-        key: '/routes/ibabs-to-djuma-route',
+        key: '/routes/system-c-to-system-a-route',
         value: {
-            name: 'ibabs-to-djuma-route',
-            id: 'ibabs-to-djuma-route',
-            uri: '/ibabs/djuma/*',
-            upstream_id: 'djuma-sender',
+            name: 'system-c-to-system-a-route',
+            id: 'system-c-to-system-a-route',
+            uri: '/system-c/system-a/*',
+            upstream_id: 'system-a-sender',
             status: 1,
         },
     },
@@ -38,7 +38,7 @@ const routes: LiveRoute[] = [
             name: 'local-status',
             id: 'local-status',
             uri: '/local/status/*',
-            upstream_id: 'djuma-sender',
+            upstream_id: 'system-a-sender',
             status: 1,
         },
     },
@@ -46,24 +46,24 @@ const routes: LiveRoute[] = [
 
 const upstreams: LiveUpstream[] = [
     {
-        key: '/upstreams/centric-sender',
+        key: '/upstreams/system-b-sender',
         value: {
-            id: 'centric-sender',
-            name: 'centric-sender',
-            desc: 'Centric API (local mock)',
+            id: 'system-b-sender',
+            name: 'system-b-sender',
+            desc: 'System B API (local mock)',
             type: 'roundrobin',
             scheme: 'http',
             pass_host: 'node',
             nodes: [{ host: '172.18.0.4', port: 8080, weight: 1 }],
-            dns_nodes: [{ host: 'centric-mock', port: 8080, weight: 1 }],
+            dns_nodes: [{ host: 'system-b-mock', port: 8080, weight: 1 }],
         },
     },
     {
-        key: '/upstreams/djuma-sender',
+        key: '/upstreams/system-a-sender',
         value: {
-            id: 'djuma-sender',
-            name: 'djuma-sender',
-            desc: 'Djuma API (local mock)',
+            id: 'system-a-sender',
+            name: 'system-a-sender',
+            desc: 'System A API (local mock)',
             type: 'roundrobin',
             scheme: 'http',
             nodes: [{ host: '172.18.0.2', port: 8080, weight: 1 }],
@@ -77,12 +77,12 @@ describe('buildLiveTopology', () => {
 
         expect(nodes.map(n => n.id).sort()).toEqual([
             // Not a control-API resource — read out of the route's consumer-restriction list.
-            'consumer-djuma-client-allowed',
-            'route-djuma-to-centric-route',
-            'route-ibabs-to-djuma-route',
+            'consumer-system-a-client-allowed',
+            'route-system-a-to-system-b-route',
+            'route-system-c-to-system-a-route',
             'route-local-status',
-            'upstream-centric-sender',
-            'upstream-djuma-sender',
+            'upstream-system-b-sender',
+            'upstream-system-a-sender',
         ]);
     });
 
@@ -90,18 +90,18 @@ describe('buildLiveTopology', () => {
         const { edges } = buildLiveTopology({ routes, services: [], upstreams });
 
         expect(edges.map(e => `${e.source}->${e.target}`).sort()).toEqual([
-            'consumer-djuma-client-allowed->route-djuma-to-centric-route',
-            'route-djuma-to-centric-route->upstream-centric-sender',
-            'route-ibabs-to-djuma-route->upstream-djuma-sender',
-            'route-local-status->upstream-djuma-sender',
+            'consumer-system-a-client-allowed->route-system-a-to-system-b-route',
+            'route-system-a-to-system-b-route->upstream-system-b-sender',
+            'route-system-c-to-system-a-route->upstream-system-a-sender',
+            'route-local-status->upstream-system-a-sender',
         ]);
     });
 
     it('lets two routes share one upstream node', () => {
         const { edges } = buildLiveTopology({ routes, services: [], upstreams });
-        const intoDjuma = edges.filter(e => e.target === 'upstream-djuma-sender');
+        const intoSystemA = edges.filter(e => e.target === 'upstream-system-a-sender');
 
-        expect(intoDjuma).toHaveLength(2);
+        expect(intoSystemA).toHaveLength(2);
     });
 
     it('uses handle ids ConfigNode renders', () => {
@@ -134,13 +134,13 @@ describe('buildLiveTopology', () => {
         }];
         const { edges } = buildLiveTopology({
             routes: viaService,
-            services: [{ key: '/services/svc-1', value: { id: 'svc-1', name: 'svc-1', upstream_id: 'djuma-sender' } }],
+            services: [{ key: '/services/svc-1', value: { id: 'svc-1', name: 'svc-1', upstream_id: 'system-a-sender' } }],
             upstreams,
         });
 
         expect(edges.map(e => `${e.source}->${e.target}`).sort()).toEqual([
             'route-via-service->service-svc-1',
-            'service-svc-1->upstream-djuma-sender',
+            'service-svc-1->upstream-system-a-sender',
         ]);
     });
 });
@@ -149,9 +149,9 @@ describe('consumers derived from consumer-restriction', () => {
     it('mints a node for a whitelisted username and connects it to the route', () => {
         const { nodes, edges } = buildLiveTopology({ routes, services: [], upstreams });
 
-        expect(nodes.some(n => n.id === 'consumer-djuma-client-allowed')).toBe(true);
+        expect(nodes.some(n => n.id === 'consumer-system-a-client-allowed')).toBe(true);
         expect(edges.map(e => `${e.source}->${e.target}`))
-            .toContain('consumer-djuma-client-allowed->route-djuma-to-centric-route');
+            .toContain('consumer-system-a-client-allowed->route-system-a-to-system-b-route');
     });
 
     // APISIX fills the default in, so a live route says "consumer_name" where the config
@@ -178,7 +178,7 @@ describe('consumers derived from consumer-restriction', () => {
 
     it('labels the edge with the credential the route asks for', () => {
         const { edges } = buildLiveTopology({ routes, services: [], upstreams });
-        const authEdge = edges.find(e => e.source === 'consumer-djuma-client-allowed');
+        const authEdge = edges.find(e => e.source === 'consumer-system-a-client-allowed');
 
         expect(authEdge?.label).toBe('key-auth');
         expect(authEdge?.sourceHandle).toBe('source-auth-route');
@@ -312,6 +312,6 @@ describe('nodeSignature', () => {
     });
 
     it('reads the {"host:port": weight} map form too', () => {
-        expect(nodeSignature({ 'djuma-mock:8080': 1 })).toBe('djuma-mock:8080');
+        expect(nodeSignature({ 'system-a-mock:8080': 1 })).toBe('system-a-mock:8080');
     });
 });

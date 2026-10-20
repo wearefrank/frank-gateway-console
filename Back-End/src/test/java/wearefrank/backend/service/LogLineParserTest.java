@@ -17,7 +17,7 @@ class LogLineParserTest {
      * config/apisix.yaml describes it - including the nginx variables arriving as strings.
      */
     private static final String ACCESS_LINE = """
-            {"level":"INFO","timestamp":"2026-08-25T12:00:00+02:00","route_name":"centric",\
+            {"level":"INFO","timestamp":"2026-08-25T12:00:00+02:00","route_name":"system-b",\
             "source_addr":"172.18.0.4",\
             "request":{"request_method":"GET","request_path":"/anything/x","request_host":"apisix"},\
             "response":{"status":"200","upstream_latency_ms":"0.012",\
@@ -47,10 +47,10 @@ class LogLineParserTest {
             "log_type":"audit","namespace":"wearefrank-gemeente-team-playground","pod":"frank-gateway",\
             "service_name":"apisix"},"max_req_body_bytes":524288,"max_resp_body_bytes":524288,\
             "max_retry_count":0,"name":"loki logger","retry_delay":1,"ssl_verify":false,\
-            "tenant_id":"local","timeout":3000} while logging request, client: 109.94.148.130, \
+            "tenant_id":"local","timeout":3000} while logging request, client: 203.0.113.10, \
             server: _, request: "GET /test/anything HTTP/1.1", \
-            upstream: "http://100.65.84.218:80/anything", \
-            host: "playground.tst.eu1.wearefrank.cloud", \
+            upstream: "http://10.0.0.5:80/anything", \
+            host: "gateway.example.org", \
             request_id: "d5ea29ea7e7f00b910d5e1e79e535cf9\"""";
 
     // 2023-11-14T22:13:20Z
@@ -74,7 +74,7 @@ class LogLineParserTest {
         assertThat(entry.timestamp()).isEqualTo("2023-11-14T22:13:20Z");
         assertThat(entry.tsNanos()).isEqualTo("1700000000000000000");
         assertThat(field(entry, "level")).isEqualTo("INFO");
-        assertThat(field(entry, "routeName")).isEqualTo("centric");
+        assertThat(field(entry, "routeName")).isEqualTo("system-b");
         assertThat(field(entry, "method")).isEqualTo("GET");
         assertThat(field(entry, "path")).isEqualTo("/anything/x");
         assertThat(field(entry, "host")).isEqualTo("apisix");
@@ -150,7 +150,7 @@ class LogLineParserTest {
     @Test
     void fallsBackToATopLevelRouteId() {
         String line = ACCESS_LINE
-                .replace("\"route_name\":\"centric\",", "")
+                .replace("\"route_name\":\"system-b\",", "")
                 .replace(",\"audit\":{\"route_id\":\"12\"}", ",\"route_id\":\"arr_1\"");
 
         assertThat(field(parse(line), "routeName")).isEqualTo("arr_1");
@@ -165,18 +165,18 @@ class LogLineParserTest {
     @Test
     void readsStatusAndLatency_whenEmittedAsJsonNumbers() {
         String line = """
-                {"level":"INFO","response":{"upstream_latency_ms":0.001,"status":200,                "upstream_endpoint":{"scheme":"http","address":"172.18.0.7:8080",                "host":"djuma-mock:8080","uri":"/anything/messages/974"}},                "audit":{"route_id":"centric-to-djuma-route"},                "request":{"request_method":"GET","request_path":"/clo/djuma/messages/974",                "request_host":"apisix"},"route_id":"centric-to-djuma-route",                "timestamp":"2026-08-25T09:54:32+00:00","gemeente_code":"0484",                "source_addr":"172.18.0.9","route_name":"centric-to-djuma-route"}""";
+                {"level":"INFO","response":{"upstream_latency_ms":0.001,"status":200,                "upstream_endpoint":{"scheme":"http","address":"172.18.0.7:8080",                "host":"system-a-mock:8080","uri":"/anything/messages/974"}},                "audit":{"route_id":"system-b-to-system-a-route"},                "request":{"request_method":"GET","request_path":"/system-b/system-a/messages/974",                "request_host":"apisix"},"route_id":"system-b-to-system-a-route",                "timestamp":"2026-08-25T09:54:32+00:00","gemeente_code":"0000",                "source_addr":"172.18.0.9","route_name":"system-b-to-system-a-route"}""";
 
         LogEntryDto entry = parse(line);
         assertThat(field(entry, "status")).isEqualTo(200);
         // 0.001 seconds, so 1ms - not 0.001ms, whatever the field is called.
         assertThat(field(entry, "latencyMs")).isEqualTo(1.0);
-        assertThat(field(entry, "routeName")).isEqualTo("centric-to-djuma-route");
+        assertThat(field(entry, "routeName")).isEqualTo("system-b-to-system-a-route");
         assertThat(field(entry, "method")).isEqualTo("GET");
-        assertThat(field(entry, "path")).isEqualTo("/clo/djuma/messages/974");
+        assertThat(field(entry, "path")).isEqualTo("/system-b/system-a/messages/974");
         assertThat(field(entry, "upstream")).isEqualTo("172.18.0.7:8080");
         assertThat(field(entry, "source")).isEqualTo("172.18.0.9");
-        assertThat(field(entry, "gemeenteCode")).isEqualTo("0484");
+        assertThat(field(entry, "gemeenteCode")).isEqualTo("0000");
     }
 
     // --- error lines ---------------------------------------------------------------
@@ -192,11 +192,11 @@ class LogLineParserTest {
         assertThat((String) field(entry, "message"))
                 .startsWith("conf_version(): init plugin-level conf version: 2903643133")
                 .endsWith("while logging request");
-        assertThat(field(entry, "source")).isEqualTo("109.94.148.130");
+        assertThat(field(entry, "source")).isEqualTo("203.0.113.10");
         assertThat(field(entry, "method")).isEqualTo("GET");
         assertThat(field(entry, "path")).isEqualTo("/test/anything");
-        assertThat(field(entry, "host")).isEqualTo("playground.tst.eu1.wearefrank.cloud");
-        assertThat(field(entry, "upstream")).isEqualTo("http://100.65.84.218:80/anything");
+        assertThat(field(entry, "host")).isEqualTo("gateway.example.org");
+        assertThat(field(entry, "upstream")).isEqualTo("http://10.0.0.5:80/anything");
         assertThat(field(entry, "requestId")).isEqualTo("d5ea29ea7e7f00b910d5e1e79e535cf9");
         assertThat(entry.raw()).isEqualTo(ERROR_LINE);
     }

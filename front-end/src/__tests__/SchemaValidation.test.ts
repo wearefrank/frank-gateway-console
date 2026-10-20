@@ -590,7 +590,7 @@ describe('SchemaValidator — template placeholders bypass keyword validation', 
     }
 
     it('accepts several placeholders in one value, as a "|" block scalar produces', () => {
-        expect(validateCa('${{IBABS_CERT}}\n${{DJUMA_CERT}}\n${{CENTRIC_CERT}}\n${{CLIENT_CA_CERT}}\n')).toBe(true);
+        expect(validateCa('${{SYSTEM_C_CERT}}\n${{SYSTEM_A_CERT}}\n${{SYSTEM_B_CERT}}\n${{CLIENT_CA_CERT}}\n')).toBe(true);
     });
 
     // "ca: |" is clip chomping, so even a single placeholder arrives with a trailing newline.

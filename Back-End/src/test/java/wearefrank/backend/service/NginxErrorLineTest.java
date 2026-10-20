@@ -56,15 +56,15 @@ class NginxErrorLineTest {
     void parse_readsTheRequestContext() {
         NginxErrorLine line = NginxErrorLine.parse(
                 "2026/08/26 08:21:43 [info] 51#51: *1 boom while logging request, "
-                        + "client: 109.94.148.130, server: _, request: \"POST /clo/djuma HTTP/1.1\", "
-                        + "upstream: \"http://100.65.84.218:80/anything\", host: \"gw.example.nl\", "
+                        + "client: 203.0.113.10, server: _, request: \"POST /system-b/system-a HTTP/1.1\", "
+                        + "upstream: \"http://10.0.0.5:80/anything\", host: \"gw.example.nl\", "
                         + "request_id: \"d5ea29ea7e7f00b9\"");
 
-        assertThat(line.client()).isEqualTo("109.94.148.130");
+        assertThat(line.client()).isEqualTo("203.0.113.10");
         assertThat(line.method()).isEqualTo("POST");
-        assertThat(line.path()).isEqualTo("/clo/djuma");
+        assertThat(line.path()).isEqualTo("/system-b/system-a");
         assertThat(line.protocol()).isEqualTo("HTTP/1.1");
-        assertThat(line.upstream()).isEqualTo("http://100.65.84.218:80/anything");
+        assertThat(line.upstream()).isEqualTo("http://10.0.0.5:80/anything");
         assertThat(line.host()).isEqualTo("gw.example.nl");
         assertThat(line.requestId()).isEqualTo("d5ea29ea7e7f00b9");
         // what nginx was doing stays on the message; it reads as part of the sentence

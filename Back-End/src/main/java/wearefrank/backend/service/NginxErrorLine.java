@@ -15,8 +15,8 @@ import java.util.regex.Pattern;
  * <pre>
  * 2026/08/26 08:21:43 [info] 51#51: *5407 [lua] plugin.lua:898: conf_version(): init
  * plugin-level conf version: 2903643133, from {...} while logging request, client:
- * 109.94.148.130, server: _, request: "GET /test/anything HTTP/1.1", upstream:
- * "http://100.65.84.218:80/anything", host: "playground.tst.eu1.wearefrank.cloud",
+ * 203.0.113.10, server: _, request: "GET /test/anything HTTP/1.1", upstream:
+ * "http://10.0.0.5:80/anything", host: "gateway.example.org",
  * request_id: "d5ea29ea7e7f00b910d5e1e79e535cf9"
  * </pre>
  *

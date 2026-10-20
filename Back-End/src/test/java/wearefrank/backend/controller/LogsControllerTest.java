@@ -36,8 +36,8 @@ class LogsControllerTest {
 
     private static final LogEntryDto AUDIT_ENTRY = new LogEntryDto(
             "audit", "gem-a", "2023-11-14T22:13:20Z", "1700000000000000000",
-            Map.of("level", "INFO", "routeName", "centric", "method", "GET", "path", "/anything/x",
-                    "status", 200, "latencyMs", 12.0, "gemeenteCode", "0484"),
+            Map.of("level", "INFO", "routeName", "system-b", "method", "GET", "path", "/anything/x",
+                    "status", 200, "latencyMs", 12.0, "gemeenteCode", "0000"),
             "{}");
 
     private static final LogEntryDto ERROR_ENTRY = new LogEntryDto(
@@ -54,7 +54,7 @@ class LogsControllerTest {
         mockMvc.perform(get("/api/logs/recent"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].type").value("audit"))
-                .andExpect(jsonPath("$[0].fields.routeName").value("centric"))
+                .andExpect(jsonPath("$[0].fields.routeName").value("system-b"))
                 .andExpect(jsonPath("$[0].fields.method").value("GET"))
                 .andExpect(jsonPath("$[0].fields.status").value(200))
                 .andExpect(jsonPath("$[0].fields.latencyMs").value(12.0))

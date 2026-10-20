@@ -14,7 +14,7 @@ interface SearchScopeProps {
 
 /**
  * Which column the search box looks in. Sits in front of the box because it reads as part
- * of it - "in Path, matching centric" - rather than as another filter on the row.
+ * of it - "in Path, matching system-b" - rather than as another filter on the row.
  *
  * The narrowing is the server's: it goes out as `searchField`, which is why the ids here
  * are the column ids - see LogSearchField on the back end.

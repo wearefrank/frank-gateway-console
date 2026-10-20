@@ -56,7 +56,7 @@ class LogsServiceTest {
      * config/apisix.yaml describes it - including the nginx variables arriving as strings.
      */
     private static final String ACCESS_LINE = """
-            {"level":"INFO","timestamp":"2026-08-25T12:00:00+02:00","route_name":"centric",\
+            {"level":"INFO","timestamp":"2026-08-25T12:00:00+02:00","route_name":"system-b",\
             "source_addr":"172.18.0.4",\
             "request":{"request_method":"GET","request_path":"/anything/x","request_host":"apisix"},\
             "response":{"status":"200","upstream_latency_ms":"0.012",\
@@ -428,13 +428,13 @@ class LogsServiceTest {
     }
 
     /**
-     * A path like /clo/djuma/* is an ordinary thing to paste into a search box, and every
+     * A path like /system-b/system-a/* is an ordinary thing to paste into a search box, and every
      * character in it means something to a regex engine. Escaped, it matches literally.
      */
     @Test
     void buildPipeline_escapesRegexMetacharacters() {
-        assertThat(logsService.buildPipeline(EnumSet.of(LogKind.AUDIT),null, "/clo/djuma/*"))
-                .isEqualTo(AUDIT + " |~ \"(?i)/clo/djuma/\\\\*\"");
+        assertThat(logsService.buildPipeline(EnumSet.of(LogKind.AUDIT),null, "/system-b/system-a/*"))
+                .isEqualTo(AUDIT + " |~ \"(?i)/system-b/system-a/\\\\*\"");
         assertThat(logsService.buildPipeline(EnumSet.of(LogKind.AUDIT),null, "a.b+c"))
                 .isEqualTo(AUDIT + " |~ \"(?i)a\\\\.b\\\\+c\"");
     }
@@ -1380,19 +1380,19 @@ class LogsServiceTest {
      * its path. A search confined to a column has to tell them apart, and a line filter
      * cannot.
      */
-    private void routeAndPathBothSayingCentric() {
+    private void routeAndPathBothSayingSystemB() {
         lokiReturns(streams(stream(
-                "1700000002000000000", "{\"route_name\":\"centric\",\"request\":{\"request_path\":\"/anything\"}}",
-                "1700000001000000000", "{\"route_name\":\"other\",\"request\":{\"request_path\":\"/centric/x\"}}")));
+                "1700000002000000000", "{\"route_name\":\"system-b\",\"request\":{\"request_path\":\"/anything\"}}",
+                "1700000001000000000", "{\"route_name\":\"other\",\"request\":{\"request_path\":\"/system-b/x\"}}")));
     }
 
     @Test
     void getPage_confinesTheSearchToTheColumnAsked() {
-        routeAndPathBothSayingCentric();
+        routeAndPathBothSayingSystemB();
 
-        LogPageDto page = logsService.getPage(null, null, "centric", "path", false, null, null, 1,25, null, null);
+        LogPageDto page = logsService.getPage(null, null, "system-b", "path", false, null, null, 1,25, null, null);
 
-        assertThat(page.entries()).extracting(e -> field(e, "path")).containsExactly("/centric/x");
+        assertThat(page.entries()).extracting(e -> field(e, "path")).containsExactly("/system-b/x");
     }
 
     /**
@@ -1402,9 +1402,9 @@ class LogsServiceTest {
      */
     @Test
     void getPage_countsTheColumnMatchesItself_ratherThanAskingLokiToCountTheLines() {
-        routeAndPathBothSayingCentric();
+        routeAndPathBothSayingSystemB();
 
-        LogPageDto page = logsService.getPage(null, null, "centric", "path", false, null, null, 1,25, null, null);
+        LogPageDto page = logsService.getPage(null, null, "system-b", "path", false, null, null, 1,25, null, null);
 
         assertThat(page.totalCount()).isEqualTo(1);
         assertThat(page.totalPages()).isEqualTo(1);
@@ -1414,11 +1414,11 @@ class LogsServiceTest {
     /** Every column match is also a line match, so the filter only ever prunes work. */
     @Test
     void getPage_stillHandsLokiTheLineFilter_whenTheColumnIsPartOfTheLine() {
-        routeAndPathBothSayingCentric();
+        routeAndPathBothSayingSystemB();
 
-        logsService.getPage(null, null, "centric", "path", false, null, null, 1,25, null, null);
+        logsService.getPage(null, null, "system-b", "path", false, null, null, 1,25, null, null);
 
-        verify(lokiClient).queryRange(eq(MESSAGES + " |~ \"(?i)centric\""),
+        verify(lokiClient).queryRange(eq(MESSAGES + " |~ \"(?i)system-b\""),
                 anyLong(), anyLong(), anyInt(), anyString());
     }
 
@@ -1468,9 +1468,9 @@ class LogsServiceTest {
     @Test
     void getPage_searchesTheWholeLine_whenTheColumnIsUnknown() {
         countReturns(2);
-        routeAndPathBothSayingCentric();
+        routeAndPathBothSayingSystemB();
 
-        LogPageDto page = logsService.getPage(null, null, "centric", "not-a-column", false, null, null, 1,25, null, null);
+        LogPageDto page = logsService.getPage(null, null, "system-b", "not-a-column", false, null, null, 1,25, null, null);
 
         assertThat(page.searchField()).isNull();
         assertThat(page.totalCount()).isEqualTo(2);
@@ -1480,7 +1480,7 @@ class LogsServiceTest {
     @Test
     void getPage_ignoresTheColumn_whenTheSearchBoxIsEmpty() {
         countReturns(2);
-        routeAndPathBothSayingCentric();
+        routeAndPathBothSayingSystemB();
 
         LogPageDto page = logsService.getPage(null, null, "  ", "path", false, null, null, 1,25, null, null);
 
@@ -1490,18 +1490,18 @@ class LogsServiceTest {
 
     @Test
     void getPage_echoesTheColumnItSearched() {
-        routeAndPathBothSayingCentric();
+        routeAndPathBothSayingSystemB();
 
-        assertThat(logsService.getPage(null, null, "centric", "path", false, null, null, 1,25, null, null).searchField())
+        assertThat(logsService.getPage(null, null, "system-b", "path", false, null, null, 1,25, null, null).searchField())
                 .isEqualTo("path");
     }
 
     /** The badge counting new lines has to count the same matches the table is showing. */
     @Test
     void countLogs_countsOnlyTheColumnMatches() {
-        routeAndPathBothSayingCentric();
+        routeAndPathBothSayingSystemB();
 
-        assertThat(logsService.countLogs(null, null, "centric", "path", false, null).count()).isEqualTo(1L);
+        assertThat(logsService.countLogs(null, null, "system-b", "path", false, null).count()).isEqualTo(1L);
     }
 
     /**
@@ -1582,6 +1582,6 @@ class LogsServiceTest {
 
         LogEntryDto entry = logsService.getRecentLogs("audit", null, null, null, null, null).getFirst();
         assertThat(entry.type()).isEqualTo("audit");
-        assertThat(field(entry, "routeName")).isEqualTo("centric");
+        assertThat(field(entry, "routeName")).isEqualTo("system-b");
     }
 }

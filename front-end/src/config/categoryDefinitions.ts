@@ -91,7 +91,7 @@ export const CATEGORY_DEFINITIONS: Record<string, CategoryDefinition> = {
     ssl: {
         label: 'SSL', color: '#94a3b8', idField: 'id',
         fallbackFields: ['snis', 'cert'],
-        referenceableFields: [],
+        referenceableFields: ['id'],
         referenceFields: [],
         authTargetCategories: [],
     },

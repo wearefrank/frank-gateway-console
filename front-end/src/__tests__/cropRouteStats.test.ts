@@ -38,10 +38,10 @@ function route(routeId: string, over: Partial<RouteStats> = {}): RouteStats {
 
 function result(over: Partial<RouteStatsResult> = {}): RouteStatsResult {
     return {
-        routes: [route('centric', { total: 40, success: 40, byStatus: { '200': 40 } })],
+        routes: [route('system-b', { total: 40, success: 40, byStatus: { '200': 40 } })],
         bucketTimes: BUCKETS,
         stepSeconds: STEP,
-        series: [series('centric', '200', [10, 10, 10, 10])],
+        series: [series('system-b', '200', [10, 10, 10, 10])],
         windowSeconds: 60,
         countQuery: 'sum by (route_id, route_name, status) (...)',
         latencyQuery: 'avg_over_time(...)',
@@ -98,10 +98,10 @@ describe('cropRouteStats', () => {
      */
     it('recounts the table from the buckets it kept', () => {
         const cropped = cropRouteStats(result({
-            routes: [route('centric', { total: 40 })],
+            routes: [route('system-b', { total: 40 })],
             series: [
-                series('centric', '200', [10, 10, 7, 3]),
-                series('centric', '500', [0, 0, 1, 9]),
+                series('system-b', '200', [10, 10, 7, 3]),
+                series('system-b', '500', [0, 0, 1, 9]),
             ],
         }), LAST_TWO);
 
@@ -142,12 +142,12 @@ describe('cropRouteStats', () => {
 
     it('keeps what the config said about a route', () => {
         const cropped = cropRouteStats(result({
-            routes: [route('centric', { routeName: 'named', uri: '/clo', live: false })],
+            routes: [route('system-b', { routeName: 'named', uri: '/system-b', live: false })],
         }), LAST_TWO);
 
         const row = cropped.result.routes[0];
         expect(row.routeName).toBe('named');
-        expect(row.uri).toBe('/clo');
+        expect(row.uri).toBe('/system-b');
         expect(row.live).toBe(false);
         expect(row.configured).toBe(true);
     });
@@ -155,8 +155,8 @@ describe('cropRouteStats', () => {
     /** A configured route keeps its row at zero, the same as it does in a full response. */
     it('keeps a route that has nothing left in the window', () => {
         const cropped = cropRouteStats(result({
-            routes: [route('centric'), route('quiet')],
-            series: [series('centric', '200', [10, 10, 10, 10])],
+            routes: [route('system-b'), route('quiet')],
+            series: [series('system-b', '200', [10, 10, 10, 10])],
         }), LAST_TWO);
 
         const quiet = cropped.result.routes.find(r => r.routeId === 'quiet');
@@ -169,8 +169,8 @@ describe('cropRouteStats', () => {
     it('drops a series that is empty across the kept buckets', () => {
         const cropped = cropRouteStats(result({
             series: [
-                series('centric', '200', [10, 10, 10, 10]),
-                series('centric', '503', [5, 5, 0, 0]),
+                series('system-b', '200', [10, 10, 10, 10]),
+                series('system-b', '503', [5, 5, 0, 0]),
             ],
         }), LAST_TWO);
 
@@ -196,8 +196,8 @@ describe('cropRouteStats', () => {
     it('counts a status outside the classes towards the total', () => {
         const cropped = cropRouteStats(result({
             series: [
-                series('centric', '200', [0, 0, 3, 0]),
-                series('centric', '', [0, 0, 2, 0]),
+                series('system-b', '200', [0, 0, 3, 0]),
+                series('system-b', '', [0, 0, 2, 0]),
             ],
         }), LAST_TWO);
 

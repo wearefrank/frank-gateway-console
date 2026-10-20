@@ -325,50 +325,50 @@ class RouteStatsServiceTest {
      */
     @Test
     void series_areZeroFilledOntoTheWholeGrid() {
-        lokiReturns(matrix(seriesAt(labels("centric", "centric", "200"),
+        lokiReturns(matrix(seriesAt(labels("system-b", "system-b", "200"),
                 ANCHOR_SEC - 15, 7, ANCHOR_SEC, 3)), EMPTY_VECTOR);
         controlApiReturns("[]");
 
         RouteStatsResultDto result = service.routeStats(TINY_WINDOW, ANCHOR, null);
 
-        assertThat(series(result, "centric", "200").counts()).containsExactly(7L, 0L, 0L, 3L);
+        assertThat(series(result, "system-b", "200").counts()).containsExactly(7L, 0L, 0L, 3L);
     }
 
     /** The whole point of one query for both: the table's total is the chart's points added up. */
     @Test
     void theTotalIsTheSumOfTheBuckets() {
-        lokiReturns(matrix(seriesAt(labels("centric", "centric", "200"),
+        lokiReturns(matrix(seriesAt(labels("system-b", "system-b", "200"),
                 ANCHOR_SEC - 15, 7, ANCHOR_SEC - 5, 5, ANCHOR_SEC, 3)), EMPTY_VECTOR);
         controlApiReturns("[]");
 
         RouteStatsResultDto result = service.routeStats(TINY_WINDOW, ANCHOR, null);
 
-        assertThat(route(result, "centric").total()).isEqualTo(15);
-        assertThat(series(result, "centric", "200").counts()).containsExactly(7L, 0L, 5L, 3L);
+        assertThat(route(result, "system-b").total()).isEqualTo(15);
+        assertThat(series(result, "system-b", "200").counts()).containsExactly(7L, 0L, 5L, 3L);
     }
 
     /** A timestamp a fraction off a boundary still belongs to the bucket it is nearest. */
     @Test
     void series_snapAPointToItsNearestBucket() {
-        lokiReturns(matrix("{\"metric\":" + labels("centric", "centric", "200")
+        lokiReturns(matrix("{\"metric\":" + labels("system-b", "system-b", "200")
                 + ",\"values\":[[" + (ANCHOR_SEC - 10.4) + ",\"9\"]]}"), EMPTY_VECTOR);
         controlApiReturns("[]");
 
         RouteStatsResultDto result = service.routeStats(TINY_WINDOW, ANCHOR, null);
 
-        assertThat(series(result, "centric", "200").counts()).containsExactly(0L, 9L, 0L, 0L);
+        assertThat(series(result, "system-b", "200").counts()).containsExactly(0L, 9L, 0L, 0L);
     }
 
     @Test
     void series_ignoreAPointOutsideTheGrid() {
-        lokiReturns(matrix(seriesAt(labels("centric", "centric", "200"),
+        lokiReturns(matrix(seriesAt(labels("system-b", "system-b", "200"),
                 ANCHOR_SEC - 6000, 99, ANCHOR_SEC, 4)), EMPTY_VECTOR);
         controlApiReturns("[]");
 
         RouteStatsResultDto result = service.routeStats(TINY_WINDOW, ANCHOR, null);
 
-        assertThat(series(result, "centric", "200").counts()).containsExactly(0L, 0L, 0L, 4L);
-        assertThat(route(result, "centric").total()).isEqualTo(4);
+        assertThat(series(result, "system-b", "200").counts()).containsExactly(0L, 0L, 0L, 4L);
+        assertThat(route(result, "system-b").total()).isEqualTo(4);
     }
 
     // --- folding the counts --------------------------------------------------------
@@ -376,14 +376,14 @@ class RouteStatsServiceTest {
     @Test
     void foldsStatusCodesIntoClassesAndKeepsTheBreakdown() {
         lokiReturns(matrix(
-                counted("centric", "centric", "200", 90),
-                counted("centric", "centric", "204", 10),
-                counted("centric", "centric", "401", 5),
-                counted("centric", "centric", "500", 5)
+                counted("system-b", "system-b", "200", 90),
+                counted("system-b", "system-b", "204", 10),
+                counted("system-b", "system-b", "401", 5),
+                counted("system-b", "system-b", "500", 5)
         ), EMPTY_VECTOR);
         controlApiReturns("[]");
 
-        RouteStatsDto row = route(stats(), "centric");
+        RouteStatsDto row = route(stats(), "system-b");
 
         assertThat(row.total()).isEqualTo(110);
         assertThat(row.success()).isEqualTo(100);
@@ -396,13 +396,13 @@ class RouteStatsServiceTest {
     @Test
     void ratesSplitServerErrorsFromClientErrors() {
         lokiReturns(matrix(
-                counted("centric", "centric", "200", 50),
-                counted("centric", "centric", "403", 30),
-                counted("centric", "centric", "502", 20)
+                counted("system-b", "system-b", "200", 50),
+                counted("system-b", "system-b", "403", 30),
+                counted("system-b", "system-b", "502", 20)
         ), EMPTY_VECTOR);
         controlApiReturns("[]");
 
-        RouteStatsDto row = route(stats(), "centric");
+        RouteStatsDto row = route(stats(), "system-b");
 
         assertThat(row.errorRatePercent()).isEqualTo(20.0);
         assertThat(row.clientErrorRatePercent()).isEqualTo(30.0);
@@ -426,12 +426,12 @@ class RouteStatsServiceTest {
     @Test
     void anUnclassifiedStatusStillCountsTowardsTheTotal() {
         lokiReturns(matrix(
-                counted("centric", "centric", "200", 3),
-                seriesAt("{\"route_id\":\"centric\"}", ANCHOR_SEC, 2)
+                counted("system-b", "system-b", "200", 3),
+                seriesAt("{\"route_id\":\"system-b\"}", ANCHOR_SEC, 2)
         ), EMPTY_VECTOR);
         controlApiReturns("[]");
 
-        RouteStatsDto row = route(stats(), "centric");
+        RouteStatsDto row = route(stats(), "system-b");
 
         assertThat(row.total()).isEqualTo(5);
         assertThat(row.success()).isEqualTo(3);
@@ -441,21 +441,21 @@ class RouteStatsServiceTest {
 
     @Test
     void latencyIsScaledFromSecondsToMilliseconds() {
-        lokiReturns(matrix(counted("centric", "centric", "200", 1)),
-                vector(sample("{\"route_id\":\"centric\"}", "0.0125")));
+        lokiReturns(matrix(counted("system-b", "system-b", "200", 1)),
+                vector(sample("{\"route_id\":\"system-b\"}", "0.0125")));
         controlApiReturns("[]");
 
-        assertThat(route(stats(), "centric").avgLatencyMs()).isEqualTo(12.5);
+        assertThat(route(stats(), "system-b").avgLatencyMs()).isEqualTo(12.5);
     }
 
     /** Loki answers NaN for an average with nothing under it; that is not a measurement. */
     @Test
     void latencyIgnoresNaN() {
-        lokiReturns(matrix(counted("centric", "centric", "401", 4)),
-                vector(sample("{\"route_id\":\"centric\"}", "NaN")));
+        lokiReturns(matrix(counted("system-b", "system-b", "401", 4)),
+                vector(sample("{\"route_id\":\"system-b\"}", "NaN")));
         controlApiReturns("[]");
 
-        assertThat(route(stats(), "centric").avgLatencyMs()).isNull();
+        assertThat(route(stats(), "system-b").avgLatencyMs()).isNull();
     }
 
     /**
@@ -561,19 +561,19 @@ class RouteStatsServiceTest {
     /** The config's name is the current one; the log's is whatever it was called back then. */
     @Test
     void theConfiguredNameWinsOverTheLoggedOne() {
-        lokiReturns(matrix(counted("centric", "old-name", "200", 1)), EMPTY_VECTOR);
-        controlApiReturns(routes("{\"id\":\"centric\",\"name\":\"new-name\",\"uri\":\"/clo\"}"));
+        lokiReturns(matrix(counted("system-b", "old-name", "200", 1)), EMPTY_VECTOR);
+        controlApiReturns(routes("{\"id\":\"system-b\",\"name\":\"new-name\",\"uri\":\"/system-b\"}"));
 
-        assertThat(route(stats(), "centric").routeName()).isEqualTo("new-name");
+        assertThat(route(stats(), "system-b").routeName()).isEqualTo("new-name");
     }
 
     /** An unnamed route logs "-", which is nginx for "never set" rather than a name. */
     @Test
     void aDashIsNotARouteName() {
-        lokiReturns(matrix(counted("centric", "-", "200", 1)), EMPTY_VECTOR);
+        lokiReturns(matrix(counted("system-b", "-", "200", 1)), EMPTY_VECTOR);
         controlApiReturns("[]");
 
-        assertThat(route(stats(), "centric").routeName()).isNull();
+        assertThat(route(stats(), "system-b").routeName()).isNull();
     }
 
     @Test
@@ -592,14 +592,14 @@ class RouteStatsServiceTest {
     /** Half an answer beats none: the counts are Loki's and stay correct without APISIX. */
     @Test
     void theCountsSurviveTheControlApiBeingDown() {
-        lokiReturns(matrix(counted("centric", "centric", "200", 4)), EMPTY_VECTOR);
+        lokiReturns(matrix(counted("system-b", "system-b", "200", 4)), EMPTY_VECTOR);
         controlApiIsDown();
 
         RouteStatsResultDto result = stats();
 
         assertThat(result.routesUnavailable()).isTrue();
-        assertThat(route(result, "centric").total()).isEqualTo(4);
-        assertThat(route(result, "centric").live()).isNull();
+        assertThat(route(result, "system-b").total()).isEqualTo(4);
+        assertThat(route(result, "system-b").live()).isNull();
     }
 
     // --- caching -------------------------------------------------------------------
@@ -610,13 +610,13 @@ class RouteStatsServiceTest {
      */
     @Test
     void repeatedAsksForTheSameWindowShareOneQuery() {
-        lokiReturns(matrix(counted("centric", "centric", "200", 4)), EMPTY_VECTOR);
+        lokiReturns(matrix(counted("system-b", "system-b", "200", 4)), EMPTY_VECTOR);
         controlApiReturns("[]");
 
         service.routeStats(604800L, ANCHOR, null);
         RouteStatsResultDto second = service.routeStats(604800L, ANCHOR, null);
 
-        assertThat(route(second, "centric").total()).isEqualTo(4);
+        assertThat(route(second, "system-b").total()).isEqualTo(4);
         verify(lokiClient, times(1)).metricRangeQuery(anyString(), anyLong(), anyLong(), anyLong());
     }
 
@@ -671,14 +671,14 @@ class RouteStatsServiceTest {
     /** The series ride along in the cached answer rather than being rebuilt from nothing. */
     @Test
     void aCachedAnswerStillCarriesItsSeries() {
-        lokiReturns(matrix(counted("centric", "centric", "200", 4)), EMPTY_VECTOR);
+        lokiReturns(matrix(counted("system-b", "system-b", "200", 4)), EMPTY_VECTOR);
         controlApiReturns("[]");
 
         service.routeStats(TINY_WINDOW, ANCHOR, null);
         RouteStatsResultDto second = service.routeStats(TINY_WINDOW, ANCHOR, null);
 
         assertThat(second.bucketTimes()).hasSize(4);
-        assertThat(series(second, "centric", "200").counts()).containsExactly(0L, 0L, 0L, 4L);
+        assertThat(series(second, "system-b", "200").counts()).containsExactly(0L, 0L, 0L, 4L);
     }
 
     /** A series list that never grew a point is still a list, not a null the browser trips on. */

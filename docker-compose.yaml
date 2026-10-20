@@ -79,14 +79,14 @@ services:
   # ---- Test rig - start with: docker compose --profile test up -d --------------
   # Two mock backends rather than one shared instance, so $upstream_addr and
   # $upstream_host differ per route in the Loki log lines the way they do against
-  # the real Centric and Djuma endpoints. go-httpbin serves /anything/*, /status/*
+  # the real partner endpoints. go-httpbin serves /anything/*, /status/*
   # and /delay/*, which is everything config/apisix.yaml asks of them.
-  centric-mock:
+  system-b-mock:
     image: mccutchen/go-httpbin:v2.15.0
     restart: always
     profiles: [test]
 
-  djuma-mock:
+  system-a-mock:
     image: mccutchen/go-httpbin:v2.15.0
     restart: always
     profiles: [test]
@@ -128,8 +128,8 @@ services:
       - SUMMARY_EVERY=60
     depends_on:
       - apisix
-      - centric-mock
-      - djuma-mock
+      - system-b-mock
+      - system-a-mock
 
   # Test identity provider - start with: docker compose --profile keycloak up
   # Admin console: http://localhost:8081  (admin / admin)
