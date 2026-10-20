@@ -64,7 +64,7 @@ jobs:
       - name: Set image tags
         run: |
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE="ghcr.io/${OWNER}/temp-fg-portal-dashboard"
+          IMAGE="ghcr.io/${OWNER}/federated-gateway-console"
 
           # Every build gets an immutable tag as well as a moving one. Deploying by the
           # moving tag is what leaves a pod on a stale build: helm renders the same PodSpec
