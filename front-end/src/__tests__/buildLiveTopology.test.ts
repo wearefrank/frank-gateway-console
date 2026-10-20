@@ -78,11 +78,11 @@ describe('buildLiveTopology', () => {
         expect(nodes.map(n => n.id).sort()).toEqual([
             // Not a control-API resource — read out of the route's consumer-restriction list.
             'consumer-system-a-client-allowed',
+            'route-local-status',
             'route-system-a-to-system-b-route',
             'route-system-c-to-system-a-route',
-            'route-local-status',
-            'upstream-system-b-sender',
             'upstream-system-a-sender',
+            'upstream-system-b-sender',
         ]);
     });
 
@@ -91,9 +91,9 @@ describe('buildLiveTopology', () => {
 
         expect(edges.map(e => `${e.source}->${e.target}`).sort()).toEqual([
             'consumer-system-a-client-allowed->route-system-a-to-system-b-route',
+            'route-local-status->upstream-system-a-sender',
             'route-system-a-to-system-b-route->upstream-system-b-sender',
             'route-system-c-to-system-a-route->upstream-system-a-sender',
-            'route-local-status->upstream-system-a-sender',
         ]);
     });
 
