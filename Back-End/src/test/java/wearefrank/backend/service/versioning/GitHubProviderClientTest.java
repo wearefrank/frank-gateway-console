@@ -90,6 +90,19 @@ class GitHubProviderClientTest {
     }
 
     @Test
+    void fileExists_encodesBranchAndPath() throws Exception {
+        GitHubConfig awkward = new GitHubConfig("tok", "owner/repo", "release/1.0#hot&fix", "conf/my routes.yaml");
+        send(responseFor(200, "{}"));
+
+        client.fileExists(awkward);
+
+        ArgumentCaptor<HttpRequest> captor = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(httpClient).send(captor.capture(), any());
+        assertThat(captor.getValue().uri().toString()).isEqualTo(
+                "https://api.github.com/repos/owner/repo/contents/conf/my%20routes.yaml?ref=release%2F1.0%23hot%26fix");
+    }
+
+    @Test
     void getVersion_returnsDecodedContentAndCommitMetadata() throws Exception {
         String encoded = Base64.getEncoder().encodeToString("routes: []".getBytes());
         send(responseFor(200, "{\"content\":\"" + encoded + "\"}"),

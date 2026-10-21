@@ -20,6 +20,8 @@ import {
     loadGiteaSettings,
     loadProvider,
     isGitLocked,
+    areLinksKnown,
+    isLinked,
     type GitProvider,
 } from './gitSettingsStorage';
 import { fetchGitIdentities, startGitLink, type GitIdentityMap } from '../../api/gitIdentity';
@@ -42,8 +44,13 @@ function linkErrorMessage(code: string): string {
     return LINK_ERRORS[code] ?? `Linking failed: ${code}`;
 }
 
+// Snapshot of which brokered providers are linked, to tell whether a refresh changed it.
+function linkedNow(): string {
+    return (['github', 'gitlab'] as const).filter(provider => isLinked(provider)).join();
+}
+
 function getActiveProfiles(
-    provider: 'github' | 'gitlab' | 'gitea',
+    provider: GitProvider,
     github: GithubSettings,
     gitlab: GitlabSettings,
     gitea: GiteaSettings
@@ -60,32 +67,18 @@ function patchProfiles<T extends { profiles: FileProfile[] }>(
     setter(prev => ({ ...prev, profiles: updater(prev.profiles) }));
 }
 
-function hasGithubRepoChanged(draft: GithubSettings, saved: GithubSettings): boolean {
-    return draft.githubRepo !== saved.githubRepo
-        || draft.githubBranch !== saved.githubBranch
-        || JSON.stringify(draft.profiles) !== JSON.stringify(saved.profiles);
-}
-
-function hasGitlabRepoChanged(draft: GitlabSettings, saved: GitlabSettings): boolean {
-    return draft.gitlabProject !== saved.gitlabProject
-        || draft.gitlabBranch !== saved.gitlabBranch
-        || draft.gitlabHost !== saved.gitlabHost
-        || JSON.stringify(draft.profiles) !== JSON.stringify(saved.profiles);
-}
-
-function hasGiteaRepoChanged(draft: GiteaSettings, saved: GiteaSettings): boolean {
-    return draft.giteaRepo !== saved.giteaRepo
-        || draft.giteaBranch !== saved.giteaBranch
-        || draft.giteaHost !== saved.giteaHost
-        || JSON.stringify(draft.profiles) !== JSON.stringify(saved.profiles);
+// Anything but the token: a new token alone does not change which versions to show.
+function hasRepoChanged<T extends object>(draft: T, saved: T, tokenKey: keyof T): boolean {
+    const withoutToken = (settings: T) => JSON.stringify({ ...settings, [tokenKey]: undefined });
+    return withoutToken(draft) !== withoutToken(saved);
 }
 
 export const HistoryPage: React.FC = () => {
     const { configManager, setConfig } = useConfigManager();
 
     // Provider settings
-    const [provider, setProvider] = useState<'github' | 'gitlab' | 'gitea'>(loadProvider);
-    const [providerDraft, setProviderDraft] = useState<'github' | 'gitlab' | 'gitea'>(loadProvider);
+    const [provider, setProvider] = useState<GitProvider>(loadProvider);
+    const [providerDraft, setProviderDraft] = useState<GitProvider>(loadProvider);
     const [githubSettings, setGithubSettings] = useState<GithubSettings>(loadGithubSettings);
     const [githubDraft, setGithubDraft] = useState<GithubSettings>(loadGithubSettings);
     const [gitlabSettings, setGitlabSettings] = useState<GitlabSettings>(loadGitlabSettings);
@@ -100,8 +93,9 @@ export const HistoryPage: React.FC = () => {
     const [activeProfileIndex, setActiveProfileIndex] = useState(0);
 
     // Gates the first version fetch: getProviderHeaders() can only drop a stale browser
-    // token once fetchGitIdentities() has said which providers are linked.
-    const [identitiesLoaded, setIdentitiesLoaded] = useState(false);
+    // token once fetchGitIdentities() has said which providers are linked. Open straight
+    // away on a revisit, so returning to this page does not wait on Keycloak again.
+    const [identitiesLoaded, setIdentitiesLoaded] = useState(areLinksKnown);
 
     const activeProfiles = getActiveProfiles(provider, githubSettings, gitlabSettings, giteaSettings);
     const activeProfile = activeProfiles[activeProfileIndex];
@@ -149,7 +143,7 @@ export const HistoryPage: React.FC = () => {
     // --- File existence checks ---
 
     const checkAllProfiles = async (
-        forProvider: 'github' | 'gitlab' | 'gitea',
+        forProvider: GitProvider,
         forGithub: GithubSettings,
         forGitlab: GitlabSettings,
         forGitea: GiteaSettings
@@ -210,12 +204,15 @@ export const HistoryPage: React.FC = () => {
      * about a repo before fetchGitIdentities() has said which providers are linked.
      */
     const bootstrap = async () => {
+        const linkedBefore = linkedNow();
         try {
             await refreshIdentities();
             await applyGitLock();
         } finally {
             setIdentitiesLoaded(true);
         }
+        // On a revisit the gate opened on the previous visit's links; refetch if they changed.
+        if (identitiesLoaded && linkedNow() !== linkedBefore) refetch();
     };
 
     useEffect(() => {
@@ -274,14 +271,15 @@ export const HistoryPage: React.FC = () => {
     const saveSettings = () => {
         const providerChanged = providerDraft !== provider;
         const repoChanged = providerChanged
-            || (providerDraft === 'github' && hasGithubRepoChanged(githubDraft, githubSettings))
-            || (providerDraft === 'gitlab' && hasGitlabRepoChanged(gitlabDraft, gitlabSettings))
-            || (providerDraft === 'gitea' && hasGiteaRepoChanged(giteaDraft, giteaSettings));
+            || (providerDraft === 'github' && hasRepoChanged(githubDraft, githubSettings, 'githubToken'))
+            || (providerDraft === 'gitlab' && hasRepoChanged(gitlabDraft, gitlabSettings, 'gitlabToken'))
+            || (providerDraft === 'gitea' && hasRepoChanged(giteaDraft, giteaSettings, 'giteaToken'));
 
         // A linked provider gets its token from Keycloak, so drop any token still sitting
-        // in the browser rather than writing it back.
-        const github = identities.github?.linked ? { ...githubDraft, githubToken: '' } : githubDraft;
-        const gitlab = identities.gitlab?.linked ? { ...gitlabDraft, gitlabToken: '' } : gitlabDraft;
+        // in the browser rather than writing it back. isLinked rather than the identities
+        // state, which is still empty on a revisit until the refresh returns.
+        const github = isLinked('github') ? { ...githubDraft, githubToken: '' } : githubDraft;
+        const gitlab = isLinked('gitlab') ? { ...gitlabDraft, gitlabToken: '' } : gitlabDraft;
 
         setProvider(providerDraft);
         setGithubSettings(github);
@@ -308,33 +306,23 @@ export const HistoryPage: React.FC = () => {
 
     // --- Named file management in settings draft ---
 
-    const addFileToDraft = (providerKey: 'github' | 'gitlab' | 'gitea') => {
-        const newFile: FileProfile = { title: 'New file', filePath: '' };
-        if (providerKey === 'github') patchProfiles(setGithubDraft, ps => [...ps, newFile]);
-        else if (providerKey === 'gitlab') patchProfiles(setGitlabDraft, ps => [...ps, newFile]);
-        else patchProfiles(setGiteaDraft, ps => [...ps, newFile]);
-    };
-
-    const removeFileFromDraft = (providerKey: 'github' | 'gitlab' | 'gitea', idx: number) => {
-        const updater = (ps: FileProfile[]) => ps.filter((_, i) => i !== idx);
+    const patchDraftProfiles = (providerKey: GitProvider, updater: (profiles: FileProfile[]) => FileProfile[]) => {
         if (providerKey === 'github') patchProfiles(setGithubDraft, updater);
         else if (providerKey === 'gitlab') patchProfiles(setGitlabDraft, updater);
         else patchProfiles(setGiteaDraft, updater);
     };
 
-    const updateFileTitle = (providerKey: 'github' | 'gitlab' | 'gitea', idx: number, title: string) => {
-        const updater = (ps: FileProfile[]) => ps.map((p, i) => (i === idx ? { ...p, title } : p));
-        if (providerKey === 'github') patchProfiles(setGithubDraft, updater);
-        else if (providerKey === 'gitlab') patchProfiles(setGitlabDraft, updater);
-        else patchProfiles(setGiteaDraft, updater);
-    };
+    const addFileToDraft = (providerKey: GitProvider) =>
+        patchDraftProfiles(providerKey, ps => [...ps, { title: 'New file', filePath: '' }]);
 
-    const updateFilePath = (providerKey: 'github' | 'gitlab' | 'gitea', idx: number, filePath: string) => {
-        const updater = (ps: FileProfile[]) => ps.map((p, i) => (i === idx ? { ...p, filePath } : p));
-        if (providerKey === 'github') patchProfiles(setGithubDraft, updater);
-        else if (providerKey === 'gitlab') patchProfiles(setGitlabDraft, updater);
-        else patchProfiles(setGiteaDraft, updater);
-    };
+    const removeFileFromDraft = (providerKey: GitProvider, idx: number) =>
+        patchDraftProfiles(providerKey, ps => ps.filter((_, i) => i !== idx));
+
+    const updateFileTitle = (providerKey: GitProvider, idx: number, title: string) =>
+        patchDraftProfiles(providerKey, ps => ps.map((p, i) => (i === idx ? { ...p, title } : p)));
+
+    const updateFilePath = (providerKey: GitProvider, idx: number, filePath: string) =>
+        patchDraftProfiles(providerKey, ps => ps.map((p, i) => (i === idx ? { ...p, filePath } : p)));
 
     // --- History panel handlers ---
 
@@ -591,7 +579,7 @@ export const HistoryPage: React.FC = () => {
     };
 
     const renderFilesManager = (
-        providerKey: 'github' | 'gitlab' | 'gitea',
+        providerKey: GitProvider,
         profiles: FileProfile[]
     ) => (
         <div className={styles.profilesSection}>
@@ -966,7 +954,7 @@ export const HistoryPage: React.FC = () => {
                             <VersionList
                                 versions={[{ id: CURRENT_VERSION, message: 'Current (unsaved)', createdAt: '' }, ...versionList]}
                                 currentSentinel={CURRENT_VERSION}
-                                loading={versions === null && !!activeFilePath}
+                                loading={!!activeFilePath && (versions === null || !identitiesLoaded)}
                                 busy={diffLoading}
                                 pendingRestoreId={pendingRestoreVersion?.id}
                                 onView={handleView}

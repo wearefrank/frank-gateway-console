@@ -36,54 +36,46 @@ export interface CompareSide {
 }
 
 // Migration helpers: convert legacy single-filePath settings to the new profiles shape.
-// Called on every load; idempotent once profiles is present.
+// Called on every load; idempotent once profiles is present. migrate({}) gives the empty defaults.
+// Spelled out per provider so the compiler checks every field of each settings type.
+
+function legacyProfiles(legacyFilePath: unknown): FileProfile[] {
+    const legacyPath = typeof legacyFilePath === 'string' ? legacyFilePath.trim() : '';
+    return legacyPath.length > 0 ? [{ title: 'Default', filePath: legacyPath }] : [];
+}
+
+function hasProfiles(raw: Record<string, unknown>): boolean {
+    return Array.isArray(raw.profiles) && raw.profiles.length > 0;
+}
 
 export function migrateGithubSettings(raw: Record<string, unknown>): GithubSettings {
-    if (Array.isArray(raw.profiles) && raw.profiles.length > 0) {
-        return raw as unknown as GithubSettings;
-    }
-    const legacyPath = typeof raw.githubFilePath === 'string' ? raw.githubFilePath.trim() : '';
-    const profiles: FileProfile[] = legacyPath.length > 0
-        ? [{ title: 'Default', filePath: legacyPath }]
-        : [];
+    if (hasProfiles(raw)) return raw as unknown as GithubSettings;
     return {
         githubToken: String(raw.githubToken ?? ''),
         githubRepo: String(raw.githubRepo ?? ''),
         githubBranch: String(raw.githubBranch ?? ''),
-        profiles,
+        profiles: legacyProfiles(raw.githubFilePath),
     };
 }
 
 export function migrateGitlabSettings(raw: Record<string, unknown>): GitlabSettings {
-    if (Array.isArray(raw.profiles) && raw.profiles.length > 0) {
-        return raw as unknown as GitlabSettings;
-    }
-    const legacyPath = typeof raw.gitlabFilePath === 'string' ? raw.gitlabFilePath.trim() : '';
-    const profiles: FileProfile[] = legacyPath.length > 0
-        ? [{ title: 'Default', filePath: legacyPath }]
-        : [];
+    if (hasProfiles(raw)) return raw as unknown as GitlabSettings;
     return {
         gitlabToken: String(raw.gitlabToken ?? ''),
         gitlabHost: String(raw.gitlabHost ?? ''),
         gitlabProject: String(raw.gitlabProject ?? ''),
         gitlabBranch: String(raw.gitlabBranch ?? ''),
-        profiles,
+        profiles: legacyProfiles(raw.gitlabFilePath),
     };
 }
 
 export function migrateGiteaSettings(raw: Record<string, unknown>): GiteaSettings {
-    if (Array.isArray(raw.profiles) && raw.profiles.length > 0) {
-        return raw as unknown as GiteaSettings;
-    }
-    const legacyPath = typeof raw.giteaFilePath === 'string' ? raw.giteaFilePath.trim() : '';
-    const profiles: FileProfile[] = legacyPath.length > 0
-        ? [{ title: 'Default', filePath: legacyPath }]
-        : [];
+    if (hasProfiles(raw)) return raw as unknown as GiteaSettings;
     return {
         giteaToken: String(raw.giteaToken ?? ''),
         giteaHost: String(raw.giteaHost ?? ''),
         giteaRepo: String(raw.giteaRepo ?? ''),
         giteaBranch: String(raw.giteaBranch ?? ''),
-        profiles,
+        profiles: legacyProfiles(raw.giteaFilePath),
     };
 }

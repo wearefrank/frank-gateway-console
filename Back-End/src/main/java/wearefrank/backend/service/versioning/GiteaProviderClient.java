@@ -2,7 +2,6 @@ package wearefrank.backend.service.versioning;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 import wearefrank.backend.dto.ConfigVersionDto;
@@ -12,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 
@@ -30,8 +30,8 @@ public class GiteaProviderClient extends AbstractGitProviderClient {
         GiteaConfig c = cast(config);
         if (!isConfigured(c)) return new ArrayList<>();
         String host = normalizeHost(c.host());
-        String url = host + "/api/v1/repos/" + c.repo() + "/commits?sha=" + c.branch()
-                + "&path=" + c.filePath() + "&limit=50";
+        String url = host + "/api/v1/repos/" + encodeSegments(c.repo()) + "/commits?sha=" + encode(c.branch())
+                + "&path=" + encode(c.filePath()) + "&limit=50";
         JsonNode commits = get(url, c.token());
 
         // Gitea's commit structure mirrors GitHub's
@@ -54,13 +54,12 @@ public class GiteaProviderClient extends AbstractGitProviderClient {
         assertConfigured(c);
         String host = normalizeHost(c.host());
 
-        String contentsUrl = host + "/api/v1/repos/" + c.repo() + "/contents/" + c.filePath() + "?ref=" + id;
-        String content = decodeBase64Content(get(contentsUrl, c.token()).get("content").asText());
+        String content = decodeBase64Content(get(fileUrl(c, id), c.token()).get("content").asText());
 
         String message = "";
         String createdAt = "";
         try {
-            JsonNode commitNode = get(host + "/api/v1/repos/" + c.repo() + "/git/commits/" + id, c.token());
+            JsonNode commitNode = get(host + "/api/v1/repos/" + encodeSegments(c.repo()) + "/git/commits/" + encode(id), c.token());
             message = commitNode.path("message").asText("").lines().findFirst().orElse("");
             createdAt = commitNode.path("author").path("date").asText("");
         } catch (ResponseStatusException ignored) {}
@@ -73,7 +72,7 @@ public class GiteaProviderClient extends AbstractGitProviderClient {
         GiteaConfig c = cast(config);
         assertConfigured(c);
         String host = normalizeHost(c.host());
-        String contentsUrl = host + "/api/v1/repos/" + c.repo() + "/contents/" + c.filePath();
+        String contentsUrl = host + "/api/v1/repos/" + encodeSegments(c.repo()) + "/contents/" + encodeSegments(c.filePath());
 
         String encoded = Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
         ObjectNode body = objectMapper.createObjectNode();
@@ -82,15 +81,9 @@ public class GiteaProviderClient extends AbstractGitProviderClient {
         body.put("branch", c.branch());
 
         // include the current blob sha if the file already exists
-        JsonNode result;
-        try {
-            JsonNode current = get(contentsUrl + "?ref=" + c.branch(), c.token());
-            body.put("sha", current.get("sha").asText());
-            result = put(contentsUrl, body, c.token());
-        } catch (ResponseStatusException e) {
-            if (e.getStatusCode().value() != 404) throw e;
-            result = post(contentsUrl, body, c.token());
-        }
+        JsonNode current = getOrNull(fileUrl(c, c.branch()), c.token());
+        if (current != null) body.put("sha", current.get("sha").asText());
+        JsonNode result = write(current != null ? "PUT" : "POST", contentsUrl, body, c.token());
 
         // Gitea's response mirrors GitHub's: result.commit contains the new commit info
         String newSha = result.path("commit").path("sha").asText();
@@ -102,28 +95,20 @@ public class GiteaProviderClient extends AbstractGitProviderClient {
     }
 
     @Override
-    public String readCurrentFile(GitProviderConfig config) {
+    protected String fileUrl(GitProviderConfig config, String ref) {
         GiteaConfig c = cast(config);
-        assertConfigured(c);
-        String host = normalizeHost(c.host());
-        String url = host + "/api/v1/repos/" + c.repo() + "/contents/" + c.filePath() + "?ref=" + c.branch();
-        return decodeBase64Content(get(url, c.token()).get("content").asText());
+        return normalizeHost(c.host()) + "/api/v1/repos/" + encodeSegments(c.repo())
+                + "/contents/" + encodeSegments(c.filePath()) + "?ref=" + encode(ref);
     }
 
     @Override
-    public boolean fileExists(GitProviderConfig config) {
+    protected List<String> requiredSettings(GitProviderConfig config) {
         GiteaConfig c = cast(config);
-        if (!isConfigured(c)) return false;
-        String host = normalizeHost(c.host());
-        String url = host + "/api/v1/repos/" + c.repo() + "/contents/" + c.filePath() + "?ref=" + c.branch();
-        try {
-            get(url, c.token());
-            return true;
-        } catch (ResponseStatusException e) {
-            if (e.getStatusCode().value() == 404) return false;
-            throw e;
-        }
+        return Arrays.asList(c.host(), c.repo());
     }
+
+    @Override
+    protected String displayName() { return "Gitea"; }
 
     @Override
     protected HttpRequest.Builder baseRequest(String url, String token) {
@@ -136,19 +121,5 @@ public class GiteaProviderClient extends AbstractGitProviderClient {
     private GiteaConfig cast(GitProviderConfig config) {
         if (config instanceof GiteaConfig c) return c;
         throw new IllegalArgumentException("Expected GiteaConfig, got " + config.getClass().getSimpleName());
-    }
-
-    private boolean isConfigured(GiteaConfig config) {
-        return !isBlank(config.token())
-                && !isBlank(config.host())
-                && !isBlank(config.repo())
-                && !isBlank(config.branch())
-                && !isBlank(config.filePath());
-    }
-
-    private void assertConfigured(GiteaConfig config) {
-        if (!isConfigured(config)) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Gitea integration not configured");
-        }
     }
 }

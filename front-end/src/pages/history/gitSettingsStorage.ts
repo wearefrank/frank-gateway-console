@@ -19,14 +19,19 @@ export const PROVIDER_STORAGE_KEY = 'git-provider';
  * state because getProviderHeaders() runs outside the component tree, and a stale token
  * left over in localStorage must never be sent once the account is linked.
  */
-let linkedProviders: ReadonlySet<GitProvider> = new Set();
+let linkedProviders: ReadonlySet<GitProvider> | null = null;
 
 export function setLinkedProviders(providers: ReadonlySet<GitProvider>): void {
     linkedProviders = providers;
 }
 
 export function isLinked(provider: GitProvider): boolean {
-    return linkedProviders.has(provider);
+    return linkedProviders?.has(provider) ?? false;
+}
+
+/** Whether fetchGitIdentities() has answered once this page load; linking always reloads the page. */
+export function areLinksKnown(): boolean {
+    return linkedProviders !== null;
 }
 
 /** The git connection this deployment pins through its environment. */
@@ -69,41 +74,22 @@ function lockedProfiles(lock: GitLock): FileProfile[] {
     return [{ title, filePath: lock.filePath }];
 }
 
-function readGithubSettings(): GithubSettings {
+/** Stored settings for one provider; migrate({}) supplies the empty defaults. */
+function readSettings<T>(key: string, migrate: (raw: Record<string, unknown>) => T): T {
     try {
-        const stored = localStorage.getItem(GITHUB_STORAGE_KEY);
-        if (stored) return migrateGithubSettings(JSON.parse(stored));
+        const stored = localStorage.getItem(key);
+        if (stored) return migrate(JSON.parse(stored));
     } catch {
         // ignore parse errors
     }
-    return { githubToken: '', githubRepo: '', githubBranch: '', profiles: [] };
-}
-
-function readGitlabSettings(): GitlabSettings {
-    try {
-        const stored = localStorage.getItem(GITLAB_STORAGE_KEY);
-        if (stored) return migrateGitlabSettings(JSON.parse(stored));
-    } catch {
-        // ignore parse errors
-    }
-    return { gitlabToken: '', gitlabHost: '', gitlabProject: '', gitlabBranch: '', profiles: [] };
-}
-
-function readGiteaSettings(): GiteaSettings {
-    try {
-        const stored = localStorage.getItem(GITEA_STORAGE_KEY);
-        if (stored) return migrateGiteaSettings(JSON.parse(stored));
-    } catch {
-        // ignore parse errors
-    }
-    return { giteaToken: '', giteaHost: '', giteaRepo: '', giteaBranch: '', profiles: [] };
+    return migrate({});
 }
 
 // The load* functions below overlay the pinned connection on what the browser stored. The
 // token is never overlaid: it stays the user's own credential.
 
 export function loadGithubSettings(): GithubSettings {
-    const stored = readGithubSettings();
+    const stored = readSettings(GITHUB_STORAGE_KEY, migrateGithubSettings);
     if (!gitLock) return stored;
     return {
         ...stored,
@@ -114,7 +100,7 @@ export function loadGithubSettings(): GithubSettings {
 }
 
 export function loadGitlabSettings(): GitlabSettings {
-    const stored = readGitlabSettings();
+    const stored = readSettings(GITLAB_STORAGE_KEY, migrateGitlabSettings);
     if (!gitLock) return stored;
     return {
         ...stored,
@@ -126,7 +112,7 @@ export function loadGitlabSettings(): GitlabSettings {
 }
 
 export function loadGiteaSettings(): GiteaSettings {
-    const stored = readGiteaSettings();
+    const stored = readSettings(GITEA_STORAGE_KEY, migrateGiteaSettings);
     if (!gitLock) return stored;
     return {
         ...stored,
@@ -150,11 +136,11 @@ export function loadProvider(): GitProvider {
  * the user's Keycloak account link instead, and it never passes through the browser.
  */
 export function getProviderHeaders(filePathOverride?: string): Record<string, string> {
+    const filePath = filePathOverride ?? '';
     try {
         const provider = loadProvider();
         if (provider === 'gitlab') {
             const s = loadGitlabSettings();
-            const filePath = filePathOverride !== undefined ? filePathOverride : '';
             return withToken({
                 'X-Git-Provider': 'gitlab',
                 'X-Gitlab-Host': s.gitlabHost || '',
@@ -165,7 +151,6 @@ export function getProviderHeaders(filePathOverride?: string): Record<string, st
         }
         if (provider === 'gitea') {
             const s = loadGiteaSettings();
-            const filePath = filePathOverride !== undefined ? filePathOverride : '';
             // Gitea is never brokered through Keycloak, so its token always comes from the browser.
             return {
                 'X-Git-Provider': 'gitea',
@@ -177,7 +162,6 @@ export function getProviderHeaders(filePathOverride?: string): Record<string, st
             };
         }
         const s = loadGithubSettings();
-        const filePath = filePathOverride !== undefined ? filePathOverride : '';
         return withToken({
             'X-Git-Provider': 'github',
             'X-Github-Repo': s.githubRepo || '',

@@ -12,6 +12,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 
@@ -33,8 +34,8 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
         if (!isConfigured(c)) return new ArrayList<>();
         String host = resolveHost(c.host());
         String url = host + "/api/v4/projects/" + encodePath(c.project())
-                + "/repository/commits?path=" + c.filePath()
-                + "&ref_name=" + c.branch() + "&per_page=50";
+                + "/repository/commits?path=" + encode(c.filePath())
+                + "&ref_name=" + encode(c.branch()) + "&per_page=50";
         JsonNode commits = get(url, c.token());
 
         List<ConfigVersionDto.Summary> result = new ArrayList<>();
@@ -55,15 +56,13 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
         assertConfigured(c);
         String host = resolveHost(c.host());
 
-        String fileUrl = host + "/api/v4/projects/" + encodePath(c.project())
-                + "/repository/files/" + encodePath(c.filePath()) + "?ref=" + id;
-        String content = decodeBase64Content(get(fileUrl, c.token()).get("content").asText());
+        String content = decodeBase64Content(get(fileUrl(c, id), c.token()).get("content").asText());
 
         String message = "";
         String createdAt = "";
         try {
             JsonNode commitNode = get(host + "/api/v4/projects/" + encodePath(c.project())
-                    + "/repository/commits/" + id, c.token());
+                    + "/repository/commits/" + encode(id), c.token());
             message = commitNode.path("message").asText("").lines().findFirst().orElse("");
             createdAt = commitNode.path("created_at").asText("");
         } catch (ResponseStatusException ignored) {}
@@ -76,7 +75,7 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
         GitLabConfig c = cast(config);
         assertConfigured(c);
         String host = resolveHost(c.host());
-        String fileUrl = host + "/api/v4/projects/" + encodePath(c.project())
+        String writeUrl = host + "/api/v4/projects/" + encodePath(c.project())
                 + "/repository/files/" + encodePath(c.filePath());
 
         String encoded = Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
@@ -87,24 +86,12 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
         body.put("encoding", "base64");
 
         // GitLab uses POST to create and PUT to update
-        boolean fileAlreadyExists;
-        try {
-            get(fileUrl + "?ref=" + c.branch(), c.token());
-            fileAlreadyExists = true;
-        } catch (ResponseStatusException e) {
-            if (e.getStatusCode().value() != 404) throw e;
-            fileAlreadyExists = false;
-        }
-
-        if (fileAlreadyExists) {
-            put(fileUrl, body, c.token());
-        } else {
-            post(fileUrl, body, c.token());
-        }
+        boolean fileAlreadyExists = getOrNull(fileUrl(c, c.branch()), c.token()) != null;
+        write(fileAlreadyExists ? "PUT" : "POST", writeUrl, body, c.token());
 
         // the file update response only contains {file_path, branch} - fetch the latest commit for metadata
         String commitsUrl = host + "/api/v4/projects/" + encodePath(c.project())
-                + "/repository/commits?ref_name=" + c.branch() + "&per_page=1";
+                + "/repository/commits?ref_name=" + encode(c.branch()) + "&per_page=1";
         JsonNode commits = get(commitsUrl, c.token());
         if (!commits.isArray() || commits.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not retrieve commit after save");
@@ -118,30 +105,20 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
     }
 
     @Override
-    public String readCurrentFile(GitProviderConfig config) {
+    protected String fileUrl(GitProviderConfig config, String ref) {
         GitLabConfig c = cast(config);
-        assertConfigured(c);
-        String host = resolveHost(c.host());
-        String url = host + "/api/v4/projects/" + encodePath(c.project())
-                + "/repository/files/" + encodePath(c.filePath()) + "?ref=" + c.branch();
-        return decodeBase64Content(get(url, c.token()).get("content").asText());
+        return resolveHost(c.host()) + "/api/v4/projects/" + encodePath(c.project())
+                + "/repository/files/" + encodePath(c.filePath()) + "?ref=" + encode(ref);
+    }
+
+    // Host is optional: blank means gitlab.com.
+    @Override
+    protected List<String> requiredSettings(GitProviderConfig config) {
+        return Arrays.asList(cast(config).project());
     }
 
     @Override
-    public boolean fileExists(GitProviderConfig config) {
-        GitLabConfig c = cast(config);
-        if (!isConfigured(c)) return false;
-        String host = resolveHost(c.host());
-        String url = host + "/api/v4/projects/" + encodePath(c.project())
-                + "/repository/files/" + encodePath(c.filePath()) + "?ref=" + c.branch();
-        try {
-            get(url, c.token());
-            return true;
-        } catch (ResponseStatusException e) {
-            if (e.getStatusCode().value() == 404) return false;
-            throw e;
-        }
-    }
+    protected String displayName() { return "GitLab"; }
 
     // Bearer rather than PRIVATE-TOKEN: PRIVATE-TOKEN only accepts personal/project access
     // tokens, and a token brokered through Keycloak is an OAuth token. GitLab accepts both
@@ -158,25 +135,12 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
         throw new IllegalArgumentException("Expected GitLabConfig, got " + config.getClass().getSimpleName());
     }
 
-    private boolean isConfigured(GitLabConfig config) {
-        return !isBlank(config.token())
-                && !isBlank(config.project())
-                && !isBlank(config.branch())
-                && !isBlank(config.filePath());
-    }
-
-    private void assertConfigured(GitLabConfig config) {
-        if (!isConfigured(config)) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "GitLab integration not configured");
-        }
-    }
-
     private String resolveHost(String host) {
         return isBlank(host) ? DEFAULT_HOST : normalizeHost(host);
     }
 
-    // GitLab accepts URL-encoded namespace/project paths (e.g. owner%2Frepo)
+    // GitLab takes namespace/project and file paths as one encoded segment (e.g. owner%2Frepo)
     private String encodePath(String path) {
-        return path.replace("/", "%2F");
+        return encode(path);
     }
 }

@@ -20,11 +20,13 @@ export type GitIdentityMap = Partial<Record<GitProvider, GitIdentity>>;
  * the personal-access-token fields are the fallback for it.
  */
 export async function fetchGitIdentities(): Promise<GitIdentityMap> {
-    let identities: GitIdentityMap = {};
+    let identities: GitIdentityMap;
     try {
         identities = await client<GitIdentityMap>('/git/identity');
     } catch {
-        identities = {};
+        // Keep the last known links: an empty set here would count as a real answer
+        // and let a stale browser token go out for a linked provider.
+        return {};
     }
 
     const linked = new Set<GitProvider>();

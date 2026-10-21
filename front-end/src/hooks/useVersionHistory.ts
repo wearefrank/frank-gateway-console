@@ -28,7 +28,6 @@ interface UseVersionHistory {
 
 // module-level caches keyed by file path so multiple files can be cached simultaneously
 const cachedVersions = new Map<string, VersionSummary[]>();
-const cachedLatestId = new Map<string, string>();
 const cachedContent = new Map<string, string>();
 
 // One-shot fetch of versions for a given file path; no polling or caching.
@@ -39,7 +38,7 @@ export async function fetchVersionsForFile(filePath: string): Promise<VersionSum
 
 // Check whether a file path exists in the configured repo at the configured branch.
 export async function checkFileExists(filePath: string): Promise<boolean> {
-    return client<boolean>('/versions/exists', { method: 'GET', headers: getProviderHeaders(filePath) });
+    return client<boolean>('/versions/exists', { headers: getProviderHeaders(filePath) });
 }
 
 export function useVersionHistory(filePath: string): UseVersionHistory {
@@ -70,20 +69,19 @@ export function useVersionHistory(filePath: string): UseVersionHistory {
         controllerRef.current = controller;
         try {
             const data = await client<VersionSummary[]>('/versions', { signal: controller.signal, headers: getProviderHeaders(filePath) });
-            // only update state when the list actually changed (avoids unnecessary re-renders)
+            // keep the cached array when nothing changed, so React can skip the re-render
             const latestId = data[0]?.id ?? null;
-            if (latestId !== (cachedLatestId.get(filePath) ?? null)) {
+            if (latestId !== (cachedVersions.get(filePath)?.[0]?.id ?? null)) {
                 cachedVersions.set(filePath, data);
-                if (latestId) cachedLatestId.set(filePath, latestId);
-                setVersions(data);
             }
+            // always set: state may still be null or hold another file's list
+            setVersions(cachedVersions.get(filePath) ?? data);
             setFetchedForPath(filePath);
             setError(null);
         } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') return;
             setError(err instanceof Error ? err.message : 'An error occurred');
             cachedVersions.delete(filePath);
-            cachedLatestId.delete(filePath);
             setVersions([]);
             setFetchedForPath(filePath);
         }
@@ -104,7 +102,6 @@ export function useVersionHistory(filePath: string): UseVersionHistory {
         // optimistically prepend the new version, then refetch to confirm
         const existing = cachedVersions.get(filePath) ?? [];
         cachedVersions.set(filePath, [newVersion, ...existing]);
-        cachedLatestId.set(filePath, newVersion.id);
         setVersions([newVersion, ...existing]);
         setFetchedForPath(filePath);
         fetchVersions();
@@ -116,7 +113,7 @@ export function useVersionHistory(filePath: string): UseVersionHistory {
         // content never changes for a given commit sha + file path, so it's safe to cache indefinitely
         const hit = cachedContent.get(cacheKey);
         if (hit !== undefined) return hit;
-        const detail = await client<VersionDetail>(`/versions/${id}`, { method: 'GET', headers: getProviderHeaders(resolvedPath) });
+        const detail = await client<VersionDetail>(`/versions/${id}`, { headers: getProviderHeaders(resolvedPath) });
         cachedContent.set(cacheKey, detail.content);
         return detail.content;
     };
@@ -134,7 +131,6 @@ export function useVersionHistory(filePath: string): UseVersionHistory {
 
     const clearCache = () => {
         cachedVersions.delete(filePath);
-        cachedLatestId.delete(filePath);
         setVersions(null);
         setFetchedForPath('');
     };

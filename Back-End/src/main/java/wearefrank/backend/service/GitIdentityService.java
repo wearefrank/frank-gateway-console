@@ -41,8 +41,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -83,45 +85,38 @@ public class GitIdentityService {
             @Value("${git.broker.providers:}") String brokeredProviders) {
 
         this(httpClient, objectMapper, authorizedClientManager.getIfAvailable(),
-                brokerSettings(authenticator, oauth2Properties), brokeredProviders);
+                brokerSetting(authenticator, oauth2Properties, OAuth2Properties::issuerUri),
+                brokerSetting(authenticator, oauth2Properties, OAuth2Properties::clientId),
+                brokeredProviders);
     }
 
+    /** issuerUri and clientId are blank in a deployment that does not broker. */
     GitIdentityService(
             HttpClient httpClient,
             ObjectMapper objectMapper,
             OAuth2AuthorizedClientManager authorizedClientManager,
-            BrokerSettings settings,
+            String issuerUri,
+            String clientId,
             String brokeredProviders) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.authorizedClientManager = authorizedClientManager;
-        this.issuerUri = settings.issuerUri();
-        this.clientId = settings.clientId();
+        this.issuerUri = Objects.requireNonNullElse(issuerUri, "");
+        this.clientId = Objects.requireNonNullElse(clientId, "");
         this.brokeredProviders = parseProviders(brokeredProviders);
     }
 
-    /** What brokering needs from the provider, blank in a deployment that does not broker. */
-    record BrokerSettings(String issuerUri, String clientId) {
-
-        static final BrokerSettings NONE = new BrokerSettings("", "");
-
-        BrokerSettings {
-            issuerUri = issuerUri == null ? "" : issuerUri;
-            clientId = clientId == null ? "" : clientId;
-        }
-    }
-
     /** Asking the active authenticator, rather than re-reading the type property it was chosen by. */
-    private static BrokerSettings brokerSettings(
-            ObjectProvider<ConsoleAuthenticator> authenticator, ObjectProvider<OAuth2Properties> oauth2Properties) {
+    private static String brokerSetting(
+            ObjectProvider<ConsoleAuthenticator> authenticator,
+            ObjectProvider<OAuth2Properties> oauth2Properties,
+            Function<OAuth2Properties, String> setting) {
 
         ConsoleAuthenticator active = authenticator.getIfAvailable();
-        if (active == null || !active.brokersGitTokens()) return BrokerSettings.NONE;
+        if (active == null || !active.brokersGitTokens()) return "";
 
         OAuth2Properties properties = oauth2Properties.getIfAvailable();
-        return properties == null
-                ? BrokerSettings.NONE
-                : new BrokerSettings(properties.issuerUri(), properties.clientId());
+        return properties == null ? "" : setting.apply(properties);
     }
 
     /** Aliases this deployment brokers, in the order the UI should show them. */
