@@ -70,6 +70,12 @@
     margin: 0.75rem 0;
 }
 
+/* faint divider between entries, not above the first */
+.statsList > * + * {
+    border-top: 1px solid var(--border-dim);
+    padding-top: 0.4rem;
+}
+
 /* rows that belong together (one upstream or service) inside a statsList for the dashboard */
 .statGroup {
     display: flex;
@@ -91,6 +97,19 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* status dot beside a column of uris, one per line */
+.uriList {
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+}
+
+.uriLines {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
 }
 
 .tagList {
