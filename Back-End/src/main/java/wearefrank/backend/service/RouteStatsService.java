@@ -2,6 +2,9 @@ package wearefrank.backend.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.Expiry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -12,6 +15,7 @@ import wearefrank.backend.dto.RouteSeriesDto;
 import wearefrank.backend.dto.RouteStatsDto;
 import wearefrank.backend.dto.RouteStatsResultDto;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -19,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
 /**
@@ -68,7 +71,11 @@ public class RouteStatsService {
     private final ApisixClient apisixClient;
     private final LokiScope scope;
     private final ObjectMapper objectMapper;
-    private final Map<String, Cached> cache = new ConcurrentHashMap<>();
+    // Each answer carries its own lifetime; past the size cap Caffeine drops the least useful.
+    private final Cache<String, Cached> cache = Caffeine.newBuilder()
+            .maximumSize(CACHE_MAX_ENTRIES)
+            .expireAfter(Expiry.writing((String key, Cached cached) -> Duration.ofMillis(cached.ttlMillis())))
+            .build();
 
     public RouteStatsService(LokiClient lokiClient, ApisixClient apisixClient, LokiScope scope,
                              ObjectMapper objectMapper) {
@@ -78,7 +85,7 @@ public class RouteStatsService {
         this.objectMapper = objectMapper;
     }
 
-    private record Cached(RouteStatsResultDto result, long expiresAtMillis) {}
+    private record Cached(RouteStatsResultDto result, long ttlMillis) {}
 
     /** The default stream, for tests - the controller always names one. */
     public RouteStatsResultDto routeStats(Long windowSeconds, String anchor, String search) {
@@ -105,15 +112,11 @@ public class RouteStatsService {
         // the key too, or switching stream would be served the previous stream's numbers.
         String key = window + "|" + (anchorNanos == null ? "" : anchorNanos)
                 + "|" + (search == null ? "" : search) + "|" + kinds;
-        long nowMillis = System.currentTimeMillis();
-        Cached hit = cache.get(key);
-        if (hit != null && hit.expiresAtMillis() > nowMillis) {
-            return hit.result();
-        }
+        Cached hit = cache.getIfPresent(key);
+        if (hit != null) return hit.result();
 
         RouteStatsResultDto result = build(window, anchorNanos, search, kinds);
-        evictIfFull(nowMillis);
-        cache.put(key, new Cached(result, nowMillis + cacheTtlMillis(window, anchorNanos, nowMillis)));
+        cache.put(key, new Cached(result, cacheTtlMillis(window, anchorNanos, System.currentTimeMillis())));
         return result;
     }
 
@@ -124,22 +127,6 @@ public class RouteStatsService {
         }
         long halfBucket = resolveStep(window) * 1000 / CACHE_TTL_BUCKET_FRACTION;
         return Math.min(MAX_CACHE_TTL_MILLIS, Math.max(MIN_CACHE_TTL_MILLIS, halfBucket));
-    }
-
-    /**
-     * Makes room, expired entries first, then the one closest to expiring - settled windows
-     * are held long enough that a run of zooms could leave nothing expired.
-     */
-    private void evictIfFull(long nowMillis) {
-        if (cache.size() < CACHE_MAX_ENTRIES) return;
-        cache.entrySet().removeIf(e -> e.getValue().expiresAtMillis() <= nowMillis);
-        while (cache.size() >= CACHE_MAX_ENTRIES) {
-            Map.Entry<String, Cached> soonest = cache.entrySet().stream()
-                    .min(Comparator.comparingLong(e -> e.getValue().expiresAtMillis()))
-                    .orElse(null);
-            if (soonest == null) return;
-            cache.remove(soonest.getKey());
-        }
     }
 
     private RouteStatsResultDto build(long window, Long anchorNanos, String search, Set<LogKind> kinds) {

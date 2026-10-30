@@ -10,19 +10,17 @@ import wearefrank.backend.dto.ConfigVersionDto;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.List;
 
 @Component
-public class GitLabProviderClient extends AbstractGitProviderClient {
+public class GitLabProviderClient extends AbstractGitProviderClient<GitLabConfig> {
 
     private static final String DEFAULT_HOST = "https://gitlab.com";
 
     public GitLabProviderClient(HttpClient httpClient) {
-        super(httpClient);
+        super(httpClient, GitLabConfig.class);
     }
 
     @Override
@@ -41,7 +39,7 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
         List<ConfigVersionDto.Summary> result = new ArrayList<>();
         for (JsonNode commit : commits) {
             String sha = commit.get("id").asText();
-            String message = commit.path("message").asText("").lines().findFirst().orElse("");
+            String message = firstLine(commit.path("message").asText(""));
             String createdAt = commit.path("created_at").asText();
             String author = commit.path("author_name").asText("");
             String commitUrl = commit.path("web_url").asText("");
@@ -63,7 +61,7 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
         try {
             JsonNode commitNode = get(host + "/api/v4/projects/" + encodePath(c.project())
                     + "/repository/commits/" + encode(id), c.token());
-            message = commitNode.path("message").asText("").lines().findFirst().orElse("");
+            message = firstLine(commitNode.path("message").asText(""));
             createdAt = commitNode.path("created_at").asText("");
         } catch (ResponseStatusException ignored) {}
 
@@ -78,10 +76,9 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
         String writeUrl = host + "/api/v4/projects/" + encodePath(c.project())
                 + "/repository/files/" + encodePath(c.filePath());
 
-        String encoded = Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
         ObjectNode body = objectMapper.createObjectNode();
         body.put("branch", c.branch());
-        body.put("content", encoded);
+        body.put("content", encodeBase64Content(content));
         body.put("commit_message", message);
         body.put("encoding", "base64");
 
@@ -128,11 +125,6 @@ public class GitLabProviderClient extends AbstractGitProviderClient {
         return HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Authorization", "Bearer " + token);
-    }
-
-    private GitLabConfig cast(GitProviderConfig config) {
-        if (config instanceof GitLabConfig c) return c;
-        throw new IllegalArgumentException("Expected GitLabConfig, got " + config.getClass().getSimpleName());
     }
 
     private String resolveHost(String host) {

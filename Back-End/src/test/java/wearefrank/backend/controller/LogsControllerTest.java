@@ -210,31 +210,4 @@ class LogsControllerTest {
 
         verify(logsService).describeFields("error");
     }
-
-    @Test
-    void logRangeQuery_returnsBodyUnchanged() throws Exception {
-        when(logsService.logRangeQuery(null, null, null, null, null, null, null))
-                .thenReturn("{\"status\":\"success\"}");
-
-        mockMvc.perform(get("/api/logs/range"))
-                .andExpect(status().isOk())
-                .andExpect(content().string("{\"status\":\"success\"}"));
-    }
-
-    @Test
-    void logRangeQuery_passesAllParameters() throws Exception {
-        when(logsService.logRangeQuery("error", "{app_name=\"apisix\"}", null, 1700000000L, null, 10, "forward"))
-                .thenReturn("range-result");
-
-        mockMvc.perform(get("/api/logs/range")
-                        .param("type", "error")
-                        .param("query", "{app_name=\"apisix\"}")
-                        .param("startTime", "1700000000")
-                        .param("limit", "10")
-                        .param("direction", "forward"))
-                .andExpect(status().isOk())
-                .andExpect(content().string("range-result"));
-
-        verify(logsService).logRangeQuery("error", "{app_name=\"apisix\"}", null, 1700000000L, null, 10, "forward");
-    }
 }

@@ -14,9 +14,8 @@ import wearefrank.backend.service.LokiScope;
 import java.util.List;
 
 /**
- * Loki's counterpart to the Prometheus endpoints on {@link MetricsController}: /range is
- * the raw passthrough to build new panels against, /recent is the flattened form the
- * dashboard's log table renders.
+ * The dashboard's window onto Loki: /recent and /page are the flattened lines the log
+ * tables render, /count and /volume the numbers around them.
  *
  * Every endpoint takes a `type` naming which stream to read - see {@link LogKind} for the
  * names. Several can be named comma-separated ("messages,error") and come back merged.
@@ -24,7 +23,6 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/logs")
-@CrossOrigin(origins = "http://localhost:5173")
 public class LogsController {
 
     private final LogsService logsService;
@@ -146,17 +144,5 @@ public class LogsController {
             @RequestParam(required = false) String sort) {
         return logsService.getPage(type, query, search, searchField, errorsOnly, windowSeconds, anchor, page,
                 pageSize, direction, sort);
-    }
-
-    @GetMapping("/range")
-    public String logRangeQuery(
-            @RequestParam(required = false) String type,
-            @RequestParam(required = false) String query,
-            @RequestParam(required = false) String search,
-            @RequestParam(required = false) Long startTime,
-            @RequestParam(required = false) String endCursor,
-            @RequestParam(required = false) Integer limit,
-            @RequestParam(required = false) String direction) {
-        return logsService.logRangeQuery(type, query, search, startTime, endCursor, limit, direction);
     }
 }

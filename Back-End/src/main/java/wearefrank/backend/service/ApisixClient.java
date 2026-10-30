@@ -21,76 +21,51 @@ public class ApisixClient {
 
     // reads from the Prometheus-compatible metrics port
     public String metricsGet(String path) {
-        String url = yamlStoreService.getMetricsUrl() + path;
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(10))
-                    .GET()
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                throw new RuntimeException("Metrics endpoint returned " + response.statusCode() + " for " + path);
-            }
-            return response.body();
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to reach metrics endpoint at " + url + ": " + e.getMessage(), e);
-        }
+        return get(yamlStoreService.getMetricsUrl(), path, "metrics endpoint");
     }
 
     // reads from the APISIX control API - used for schema, routes, upstreams, health
     public String controlGet(String path) {
-        String url = yamlStoreService.getControlUrl() + path;
-
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(10))
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200) {
-                throw new RuntimeException("APISIX control API returned " + response.statusCode() + " for " + path);
-            }
-
-            return response.body();
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to reach APISIX control API at " + url + ": " + e.getMessage(), e);
-        }
+        return get(yamlStoreService.getControlUrl(), path, "APISIX control API");
     }
 
     // status methods - used by the config controller to test connectivity before saving settings
     // they return false instead of throwing so the UI can show a "offline" indicator gracefully
 
     public boolean checkControl(String host, int port) {
-        String url = host + ":" + port + "/v1/schema";
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(10))
-                    .GET()
-                    .build();
-            return httpClient.send(request, HttpResponse.BodyHandlers.ofString()).statusCode() == 200;
-        } catch (Exception e) {
-            return false;
-        }
+        return isUp(host + ":" + port + "/v1/schema");
     }
 
     public boolean checkMetrics(String host, int port) {
-        String url = host + ":" + port + "/apisix/prometheus/metrics";
+        return isUp(host + ":" + port + "/apisix/prometheus/metrics");
+    }
+
+    private HttpResponse<String> send(String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    private String get(String baseUrl, String path, String what) {
+        String url = baseUrl + path;
+        HttpResponse<String> response;
         try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(10))
-                    .GET()
-                    .build();
-            return httpClient.send(request, HttpResponse.BodyHandlers.ofString()).statusCode() == 200;
+            response = send(url);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to reach " + what + " at " + url + ": " + e.getMessage(), e);
+        }
+        if (response.statusCode() != 200) {
+            throw new RuntimeException("The " + what + " returned " + response.statusCode() + " for " + path);
+        }
+        return response.body();
+    }
+
+    private boolean isUp(String url) {
+        try {
+            return send(url).statusCode() == 200;
         } catch (Exception e) {
             return false;
         }

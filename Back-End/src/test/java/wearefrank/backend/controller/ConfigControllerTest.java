@@ -10,8 +10,6 @@ import wearefrank.backend.dto.YamlApisixConfig;
 import wearefrank.backend.service.ApisixClient;
 import wearefrank.backend.service.YamlStoreService;
 
-import java.util.ArrayList;
-
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,11 +20,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ConfigController.class)
-@org.springframework.test.context.TestPropertySource(properties = {
-    "apisix.default.host=http://127.0.0.1",
-    "apisix.default.control-port=9882",
-    "apisix.default.metrics-port=9881"
-})
 class ConfigControllerTest {
 
     @Autowired
@@ -39,21 +32,9 @@ class ConfigControllerTest {
     ApisixClient apisixClient;
 
     @Test
-    void getConfig_returnsDefaults_whenConfigFieldsNull() throws Exception {
-        when(yamlStoreService.getFullConfig())
-                .thenReturn(new YamlApisixConfig(null, null, null, null));
-
-        mockMvc.perform(get("/api/config"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.host").value("http://127.0.0.1"))
-                .andExpect(jsonPath("$.controlPort").value(9882))
-                .andExpect(jsonPath("$.metricsPort").value(9881));
-    }
-
-    @Test
     void getConfig_returnsStoredValues() throws Exception {
-        when(yamlStoreService.getFullConfig())
-                .thenReturn(new YamlApisixConfig("http://10.0.0.1", 8080, 8081, new ArrayList<>()));
+        when(yamlStoreService.getConfig())
+                .thenReturn(new YamlApisixConfig("http://10.0.0.1", 8080, 8081));
 
         mockMvc.perform(get("/api/config"))
                 .andExpect(status().isOk())
@@ -96,8 +77,8 @@ class ConfigControllerTest {
 
     @Test
     void checkStoredConnection_get_defaultsToControlApi() throws Exception {
-        when(yamlStoreService.getFullConfig())
-                .thenReturn(new YamlApisixConfig("http://apisix", 9092, 9091, null));
+        when(yamlStoreService.getConfig())
+                .thenReturn(new YamlApisixConfig("http://apisix", 9092, 9091));
         when(apisixClient.checkControl("http://apisix", 9092)).thenReturn(true);
 
         mockMvc.perform(get("/api/config/check"))
@@ -110,8 +91,8 @@ class ConfigControllerTest {
 
     @Test
     void checkStoredConnection_get_usesMetrics_whenApiParamIsMetrics() throws Exception {
-        when(yamlStoreService.getFullConfig())
-                .thenReturn(new YamlApisixConfig("http://apisix", 9092, 9091, null));
+        when(yamlStoreService.getConfig())
+                .thenReturn(new YamlApisixConfig("http://apisix", 9092, 9091));
         when(apisixClient.checkMetrics("http://apisix", 9091)).thenReturn(true);
 
         mockMvc.perform(get("/api/config/check").param("api", "metrics"))
@@ -119,18 +100,5 @@ class ConfigControllerTest {
                 .andExpect(content().string("true"));
 
         verify(apisixClient).checkMetrics("http://apisix", 9091);
-    }
-
-    @Test
-    void checkStoredConnection_get_usesDefaultPort_whenConfigPortNull() throws Exception {
-        when(yamlStoreService.getFullConfig())
-                .thenReturn(new YamlApisixConfig(null, null, null, null));
-        when(apisixClient.checkControl("http://127.0.0.1", 9882)).thenReturn(false);
-
-        mockMvc.perform(get("/api/config/check"))
-                .andExpect(status().isOk())
-                .andExpect(content().string("false"));
-
-        verify(apisixClient).checkControl("http://127.0.0.1", 9882);
     }
 }

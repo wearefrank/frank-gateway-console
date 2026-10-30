@@ -1,6 +1,5 @@
 package wearefrank.backend.controller;
 
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -18,7 +17,6 @@ import wearefrank.backend.service.RouteStatsService;
  */
 @RestController
 @RequestMapping("/api/routes")
-@CrossOrigin(origins = "http://localhost:5173")
 public class RouteStatsController {
 
     private final RouteStatsService routeStatsService;
