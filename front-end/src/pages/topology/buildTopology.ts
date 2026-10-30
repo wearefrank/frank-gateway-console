@@ -29,7 +29,7 @@ export function getConnectedNodeIds(startId: string, edges: Edge[]): Set<string>
     return visited;
 }
 import type { ApisixConfig, ResourceConfiguration } from '../../actions/SchemaValidation';
-import { CATEGORY_DEFINITIONS, CATEGORY_COLOR, AUTH_PLUGINS, getIdField, getDisplayId } from '../../config/categoryDefinitions';
+import { CATEGORY_DEFINITIONS, CATEGORY_COLOR, AUTH_PLUGINS, getCategoryEntries, getIdField, getDisplayId } from '../../config/categoryDefinitions';
 
 export type ColorScheme = 'source' | 'destination';
 
@@ -211,11 +211,10 @@ export function buildTopology(config: ApisixConfig, colorScheme: ColorScheme = '
     };
 
     for (const category of categories) {
-        const raw = (config as Record<string, unknown>)[category + 's'];
-        if (!Array.isArray(raw)) continue;
+        const entries = getCategoryEntries(config, category) as ResourceConfiguration[];
 
-        for (let i = 0; i < (raw as ResourceConfiguration[]).length; i++) {
-            const entry = (raw as ResourceConfiguration[])[i];
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
             const id = nodeId(category, entry, i);
 
             // Register by original id/username so other entries can reference this node

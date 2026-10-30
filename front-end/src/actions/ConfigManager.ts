@@ -1,8 +1,13 @@
-import yaml from 'js-yaml';
+// Not js-yaml: after an empty "- " item it pulls the following, less-indented list entries
+// into that inner list. The editor parses with this library too, so both agree.
+import * as yaml from 'yaml';
 import {type ApisixConfig, type RawConfigValidation, type SchemaCatalog, SchemaValidator} from './SchemaValidation';
 import { getDisplayId } from '../config/categoryDefinitions';
 import {ValidationLog} from './ValidationLogger';
 import ErrorResolver, {type ResolvedError} from './ErrorResolver';
+
+// merge resolves "<<: *anchor" keys, which js-yaml did by default.
+const parseYaml = (text: string) => yaml.parse(text, { merge: true }) as ApisixConfig;
 
 export class ConfigManager {
     private validator: SchemaValidator;
@@ -24,11 +29,11 @@ export class ConfigManager {
         this.rawText = raw ?? saved ?? '';
 
         if (saved) {
-            try { this.config = yaml.load(saved) as ApisixConfig; } catch { /* ok */ }
+            try { this.config = parseYaml(saved); } catch { /* ok */ }
         }
 
         if (raw) {
-            try { yaml.load(raw); this.yamlValid = true; } catch { this.yamlValid = false; }
+            try { parseYaml(raw); this.yamlValid = true; } catch { this.yamlValid = false; }
         }
     }
 
@@ -48,7 +53,7 @@ export class ConfigManager {
         localStorage.setItem('apisix-config-text-raw', text);
 
         try {
-            this.config = yaml.load(text) as ApisixConfig;
+            this.config = parseYaml(text);
             this.validText = text;
             this.yamlValid = true;
             localStorage.setItem('apisix-config-text', text);

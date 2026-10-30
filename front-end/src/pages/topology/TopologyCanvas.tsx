@@ -9,8 +9,8 @@ import '@xyflow/react/dist/style.css';
 
 import {applyElkLayout, getConnectedNodeIds} from './buildTopology';
 import type {ColorScheme, ConfigNodeData} from './buildTopology';
-import {ColorSchemeContext, CATEGORY_COLOR, nodeTypes} from './ConfigNode';
-import {getDisplayId} from '../../config/categoryDefinitions';
+import {ColorSchemeContext, nodeTypes} from './ConfigNode';
+import {CATEGORY_COLOR, getDisplayId} from '../../config/categoryDefinitions';
 import {CardLayer} from './CardLayer';
 import {useDetailCards} from './useDetailCards';
 import styles from './TopologyPage.module.css';

@@ -173,6 +173,30 @@ describe('ConfigManager — setRawText', () => {
         const routes = (m.getConfig() as Record<string, unknown>)['routes'] as unknown[];
         expect(routes).toHaveLength(1);
     });
+
+    it('keeps the next entry separate after a freshly typed empty "-" in a nested list', () => {
+        // Regression: js-yaml folded upstream u2 into u1's nodes, so references to u2 broke mid-edit.
+        const m = new ConfigManager();
+        m.setRawText([
+            'upstreams:',
+            '  - id: u1',
+            '    nodes:',
+            '      - host: a',
+            '      -',
+            '',
+            '  - id: u2',
+        ].join('\n'));
+        const upstreams = (m.getConfig() as Record<string, unknown>)['upstreams'] as Record<string, unknown>[];
+        expect(upstreams.map(u => u.id)).toEqual(['u1', 'u2']);
+        expect(upstreams[0].nodes).toEqual([{ host: 'a' }, null]);
+    });
+
+    it('resolves YAML merge keys', () => {
+        const m = new ConfigManager();
+        m.setRawText(['base: &base', '  type: roundrobin', 'upstreams:', '  - id: u1', '    <<: *base'].join('\n'));
+        const upstreams = (m.getConfig() as Record<string, unknown>)['upstreams'] as Record<string, unknown>[];
+        expect(upstreams[0]).toEqual({ id: 'u1', type: 'roundrobin' });
+    });
 });
 
 // ---------------------------------------------------------------------------

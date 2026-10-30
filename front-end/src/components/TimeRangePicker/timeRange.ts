@@ -169,32 +169,6 @@ export function absoluteProblem(fromMs: number | null, toMs: number | null, nowM
 }
 
 /**
- * Persisted per log kind under its own key rather than through useAppSettings: that hook
- * writes the whole settings blob from a copy each caller holds privately, so the two tables
- * would overwrite each other.
- */
-const STORAGE_PREFIX = 'fg-log-range:';
-
-export function loadRange(kind: string): TimeRange | null {
-    try {
-        const raw = localStorage.getItem(STORAGE_PREFIX + kind);
-        if (!raw) return null;
-        const parsed: unknown = JSON.parse(raw);
-        return isTimeRange(parsed) ? parsed : null;
-    } catch {
-        return null;
-    }
-}
-
-export function saveRange(kind: string, range: TimeRange): void {
-    try {
-        localStorage.setItem(STORAGE_PREFIX + kind, JSON.stringify(range));
-    } catch {
-        // Storage can be unavailable or full; the range just does not outlive the session.
-    }
-}
-
-/**
  * How long after a window closes it can still gain lines.
  *
  * The gateway's loki-logger plugin batches before pushing - buffer_duration is 60s in the
@@ -217,16 +191,4 @@ const SETTLED_AFTER_MS = 5 * 60 * 1000;
 export function rangeCanChange(range: TimeRange, nowMs: number): boolean {
     if (range.kind === 'relative') return true;
     return range.toMs > nowMs - SETTLED_AFTER_MS;
-}
-
-function isTimeRange(value: unknown): value is TimeRange {
-    if (typeof value !== 'object' || value === null) return false;
-    const r = value as Record<string, unknown>;
-    if (r.kind === 'relative') return typeof r.seconds === 'number' && Number.isFinite(r.seconds);
-    if (r.kind === 'absolute') {
-        return typeof r.fromMs === 'number' && Number.isFinite(r.fromMs)
-            && typeof r.toMs === 'number' && Number.isFinite(r.toMs)
-            && r.fromMs < r.toMs;
-    }
-    return false;
 }

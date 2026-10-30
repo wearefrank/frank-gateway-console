@@ -1,6 +1,6 @@
 import React from 'react';
 import { useConfigManager } from '../../../../hooks/useConfigManager';
-import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_DEFINITIONS, getDisplayId } from '../../../../config/categoryDefinitions';
+import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_DEFINITIONS, getCategoryEntries, getDisplayId, isEntry } from '../../../../config/categoryDefinitions';
 import loaderStyles from '../../YamlEditor.module.css';
 import styles from './OverviewPanel.module.css';
 
@@ -14,11 +14,9 @@ interface OverviewPanelProps {
 export const OverviewPanel: React.FC<OverviewPanelProps> = ({ headerExtra, onNavigate }) => {
     const { config } = useConfigManager();
 
-    const sections = Object.entries(CATEGORY_DEFINITIONS).flatMap(([cat, def]) => {
-        const raw = config ? (config as Record<string, unknown>)[cat + 's'] : undefined;
-        if (!Array.isArray(raw) || raw.length === 0) return [];
-        return [{ category: cat, def, entries: raw as Record<string, unknown>[] }];
-    });
+    const sections = Object.keys(CATEGORY_DEFINITIONS)
+        .map(category => ({ category, entries: getCategoryEntries(config, category) }))
+        .filter(section => section.entries.length > 0);
 
     return (
         <div className={`card flex flex-column ${loaderStyles.configCard}`}>
@@ -42,7 +40,7 @@ export const OverviewPanel: React.FC<OverviewPanelProps> = ({ headerExtra, onNav
                                 {CATEGORY_LABEL[category]}
                                 <span className={styles.sectionCount}>{entries.length}</span>
                             </div>
-                            {entries.map((entry, i) => (
+                            {entries.map((entry, i) => isEntry(entry) && (
                                 <button
                                     key={i}
                                     className={styles.entryName}

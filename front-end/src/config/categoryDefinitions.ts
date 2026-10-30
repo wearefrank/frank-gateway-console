@@ -106,6 +106,18 @@ export const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
 );
 
 
+// A category's list in the config ("route" -> config.routes). Nothing is filtered out, so an
+// index still matches the entry's position in the YAML; callers skip non-object entries.
+export function getCategoryEntries(config: object | null | undefined, category: string): Record<string, unknown>[] {
+    const raw = (config as Record<string, unknown> | null | undefined)?.[`${category}s`];
+    return Array.isArray(raw) ? raw : [];
+}
+
+// An entry that is a mapping; a freshly typed "- " or a "- text" item is not.
+export function isEntry(entry: unknown): entry is Record<string, unknown> {
+    return entry !== null && typeof entry === 'object' && !Array.isArray(entry);
+}
+
 export function getIdField(category: string): string {
     return CATEGORY_DEFINITIONS[category]?.idField ?? 'id';
 }

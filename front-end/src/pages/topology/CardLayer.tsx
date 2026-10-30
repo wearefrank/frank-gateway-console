@@ -4,8 +4,7 @@ import {useViewport} from '@xyflow/react';
 import type {Edge} from '@xyflow/react';
 import {dump} from 'js-yaml';
 import type {ConfigNodeData} from './buildTopology';
-import {CATEGORY_COLOR, CATEGORY_LABEL} from './ConfigNode';
-import { getDisplayId } from '../../config/categoryDefinitions';
+import {CATEGORY_COLOR, CATEGORY_LABEL, getDisplayId} from '../../config/categoryDefinitions';
 import styles from './TopologyPage.module.css';
 
 export type DetailCard = {

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConfigManager } from '../actions/ConfigManager';
 import { ConfigManagerContext, type ConfigManagerState } from '../hooks/useConfigManager';
-import { apiFetch } from '../api/auth';
+import { client } from '../api/client';
 
 export const ConfigManagerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const configManager = useMemo(() => new ConfigManager(), []);
@@ -21,9 +21,7 @@ export const ConfigManagerProvider: React.FC<{ children: React.ReactNode }> = ({
     const fetchSchema = useCallback(async () => {
         setSchemaLoading(true);
         try {
-            const res = await apiFetch("/api/schema");
-            if (!res.ok) throw new Error(`Status: ${res.status}`);
-            const data = await res.json();
+            const data = await client<Record<string, unknown>>('/schema');
             setSchema(data);
             configManager.setSchema(data);
         } catch (err: unknown) {
