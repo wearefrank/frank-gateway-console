@@ -37,6 +37,8 @@ public final class LiveEntityFilter {
         ObjectNode out = NODES.objectNode();
         copy(entry, out, List.of("key"));
         out.set("value", entity(value));
+        // The route's own plugins once APISIX merged its plugin_config in; the difference is the config's share.
+        if (entry.path("orig_plugins").isObject()) out.set("orig_plugins", plugins(entry.get("orig_plugins")));
         return out;
     }
 

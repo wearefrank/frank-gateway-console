@@ -14,7 +14,7 @@ export interface LiveTopologyInput {
 }
 
 
-const LIVE_CATEGORIES = ['route', 'service', 'upstream', 'consumer'];
+const LIVE_CATEGORIES = ['route', 'service', 'plugin_config', 'upstream', 'consumer'];
 export type LiveCategory = typeof LIVE_CATEGORIES[number];
 
 /** The categories that can own an inline upstream or a consumer-restriction plugin. */
@@ -30,6 +30,9 @@ export const DERIVED_CONSUMER = '__from_consumer_restriction';
 /** Holds the node ids of the resources whose blacklist names this consumer. */
 export const DENIED_ON = '__denied_on';
 
+/** Routes whose merged plugins revealed this plugin config's contents. Empty means only the id is known. */
+export const PLUGINS_INFERRED_FROM = '__plugins_inferred_from';
+
 /** One resource as the control API reports it. */
 type LiveEntry = Record<string, unknown>;
 
@@ -37,22 +40,26 @@ interface LiveReference {
     field: string;
     target: LiveCategory;
     animated: boolean;
+    /** Edge runs from the target to the owner, as plugin_config -> route does. */
+    reverse: boolean;
+    dashed: boolean;
 }
 
 const RESOLVABLE_TARGETS: ReadonlySet<string> = new Set(LIVE_CATEGORIES);
 
 /**
  * Reference fields taken from the shared category schema, so a field added there also
- * shows up here. Reverse and unresolvable ones are dropped — plugin_config_id points at
- * a category the control API does not serve, so its edge could never land.
+ * shows up here. Ones pointing at a category the live graph has no nodes for are dropped.
  */
 function liveReferences(category: OwnerCategory): LiveReference[] {
     return CATEGORY_DEFINITIONS[category].referenceFields
-        .filter(ref => ref.edgeDirection === 'forward' && RESOLVABLE_TARGETS.has(ref.targetCategory))
+        .filter(ref => RESOLVABLE_TARGETS.has(ref.targetCategory))
         .map(ref => ({
             field: ref.field,
             target: ref.targetCategory as LiveCategory,
             animated: ref.animated === true,
+            reverse: ref.edgeDirection === 'reverse',
+            dashed: ref.dashed === true,
         }));
 }
 
@@ -83,6 +90,7 @@ export function buildLiveTopology(
     const byCategory: Record<LiveCategory, LiveEntry[]> = {
         route: routes,
         service: services,
+        plugin_config: derivePluginConfigs(input.routes ?? []),
         upstream: [...upstreams.values()],
         consumer: deriveConsumers(restricted),
     };
@@ -171,14 +179,27 @@ function makeEdge(spec: EdgeSpec, colorScheme: ColorScheme): Edge {
 }
 
 function referenceEdge(
-    source: string,
+    owner: string,
     target: string,
     category: OwnerCategory,
     ref: LiveReference,
     colorScheme: ColorScheme,
 ): Edge {
+    if (ref.reverse) {
+        return makeEdge({
+            source: target,
+            target: owner,
+            sourceHandle: `source-to-${category}`,
+            targetHandle: `target-from-${ref.target}`,
+            label: ref.target,
+            from: ref.target,
+            to: category,
+            dashed: ref.dashed,
+        }, colorScheme);
+    }
+
     return makeEdge({
-        source,
+        source: owner,
         target,
         sourceHandle: `source-${ref.target}`,
         targetHandle: `target-from-${category}`,
@@ -186,6 +207,7 @@ function referenceEdge(
         from: category,
         to: ref.target,
         animated: ref.animated,
+        dashed: ref.dashed,
     }, colorScheme);
 }
 
@@ -309,6 +331,42 @@ function deriveConsumers(restricted: RestrictedResource[]): DerivedConsumer[] {
         [DERIVED_CONSUMER]: true as const,
         // Left off when nobody denies them, so the node skips the blocked styling.
         ...(denied.length > 0 ? { [DENIED_ON]: denied } : {}),
+    }));
+}
+
+/**
+ * One node per plugin_config_id the routes name. The control API does not serve plugin
+ * configs, but once a route handles traffic APISIX merges the config's plugins into
+ * `plugins` and keeps the route's own in `orig_plugins`, so the difference is the config's.
+ * That is per worker and hides plugins the route overrides, hence "inferred".
+ */
+function derivePluginConfigs(routes: LiveRoute[]): LiveEntry[] {
+    const configs = new Map<string, { plugins: Record<string, unknown>; inferredFrom: string[] }>();
+
+    for (const route of routes) {
+        const configId = route.value.plugin_config_id;
+        if (configId == null) continue;
+
+        let config = configs.get(String(configId));
+        if (!config) {
+            config = { plugins: {}, inferredFrom: [] };
+            configs.set(String(configId), config);
+        }
+
+        const own = route.orig_plugins;
+        const merged = route.value.plugins;
+        if (!isRecord(own) || !isRecord(merged)) continue; // not merged yet on this worker
+
+        config.inferredFrom.push(String(route.value.id));
+        for (const [name, conf] of Object.entries(merged)) {
+            if (!(name in own)) config.plugins[name] = conf;
+        }
+    }
+
+    return [...configs].map(([id, config]) => ({
+        id,
+        ...(Object.keys(config.plugins).length > 0 ? { plugins: config.plugins } : {}),
+        [PLUGINS_INFERRED_FROM]: config.inferredFrom,
     }));
 }
 

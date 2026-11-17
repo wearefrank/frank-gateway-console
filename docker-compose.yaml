@@ -115,7 +115,7 @@ services:
       # requests at the gateway, and has no business being on the network.
       - "127.0.0.1:8090:8090"
     environment:
-      - GATEWAY=http://apisix:9080
+      - GATEWAY=${LOADGEN_GATEWAY:-http://apisix:9080}
       # Control panel: http://localhost:8090. Set to 0 to run headless.
       - UI_PORT=8090
       # Scales every interval in the scenario at once: 0.25 is four times busier,
