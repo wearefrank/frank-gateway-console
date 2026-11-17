@@ -44,7 +44,7 @@ public class SecurityConfig {
 
         http
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/health/**", "/api/health/apisix").permitAll()
                         // The login page renders before there is a session, and it asks
                         // which login mechanism to show.
                         .requestMatchers(ConsoleAuthenticator.LOGIN_PAGE, "/api/auth/mode").permitAll()

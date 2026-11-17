@@ -8,7 +8,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/metrics")
-@CrossOrigin(origins = "http://localhost:5173")
 public class MetricsController {
 
     private final MetricsService metricsService;

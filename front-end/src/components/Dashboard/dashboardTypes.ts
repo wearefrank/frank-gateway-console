@@ -47,6 +47,8 @@ export interface LiveRoute {
         plugin_config_id?: string | number;
         [key: string]: unknown;
     };
+    /** The route's own plugins, present only once APISIX merged its plugin_config into `value.plugins`. */
+    orig_plugins?: Record<string, unknown>;
 }
 
 export interface LiveUpstream {

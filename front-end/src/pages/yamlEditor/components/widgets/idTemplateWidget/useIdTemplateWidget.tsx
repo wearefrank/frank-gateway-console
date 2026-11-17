@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { RefObject } from 'react';
 import { CATEGORY_DEFINITIONS } from '../../../../../config/categoryDefinitions';
-import { IdTemplateWidgetDetector, type IdTemplateTarget } from './IdTemplateWidgetDetector';
+import { detectIdTemplate, formatIdValue, isSameIdTarget, type IdTemplateTarget } from './IdTemplateWidgetDetector';
 import type { CursorWidgetDef } from '../CursorContentWidget';
 import type { DesignerSettings } from '../../../../../hooks/useDesignerSettings';
 import { TemplatedIdField } from '../../../../../components/SchemaFormRenderer/IdField/IdField';
@@ -64,13 +64,13 @@ export function useIdTemplateWidget(
         id: 'id-template-widget',
 
         detect: (lineText, lineNumber, fullText) =>
-            IdTemplateWidgetDetector.detectTarget(lineText, lineNumber, fullText, designerSettingsRef.current),
+            detectIdTemplate(lineText, lineNumber, fullText, designerSettingsRef.current),
 
-        isSameTarget: IdTemplateWidgetDetector.isSameTarget,
+        isSameTarget: isSameIdTarget,
 
         render(data, write) {
             const categoryLabel = CATEGORY_DEFINITIONS[data.category]?.label ?? data.category;
-            const handleChange = (value: string) => write(IdTemplateWidgetDetector.formatWriteValue(value));
+            const handleChange = (value: string) => write(formatIdValue(value));
 
             return (
                 <IdTemplateWidget

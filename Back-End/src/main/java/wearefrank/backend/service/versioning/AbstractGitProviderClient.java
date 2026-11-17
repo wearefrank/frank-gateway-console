@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.server.ResponseStatusException;
+import wearefrank.backend.dto.ConfigVersionDto;
 
 import java.io.IOException;
 import java.net.URLEncoder;
@@ -25,7 +26,7 @@ import java.util.stream.Collectors;
 
 // Shared base for all Git provider clients.
 // Subclasses supply their auth headers, file URL and required settings, plus the list/get/save operations.
-abstract class AbstractGitProviderClient implements GitProviderClient {
+abstract class AbstractGitProviderClient<C extends GitProviderConfig> implements GitProviderClient {
 
     private static final Logger log = LoggerFactory.getLogger(AbstractGitProviderClient.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
@@ -33,9 +34,16 @@ abstract class AbstractGitProviderClient implements GitProviderClient {
 
     protected final HttpClient httpClient;
     protected final ObjectMapper objectMapper = new ObjectMapper();
+    private final Class<C> configType;
 
-    protected AbstractGitProviderClient(HttpClient httpClient) {
+    protected AbstractGitProviderClient(HttpClient httpClient, Class<C> configType) {
         this.httpClient = httpClient;
+        this.configType = configType;
+    }
+
+    protected C cast(GitProviderConfig config) {
+        if (configType.isInstance(config)) return configType.cast(config);
+        throw new IllegalArgumentException("Expected " + configType.getSimpleName() + ", got " + config.getClass().getSimpleName());
     }
 
     protected abstract HttpRequest.Builder baseRequest(String url, String token);
@@ -195,6 +203,22 @@ abstract class AbstractGitProviderClient implements GitProviderClient {
         // API responses sometimes include newlines inside the Base64 string
         byte[] decoded = Base64.getDecoder().decode(base64Content.replaceAll("\\s", ""));
         return new String(decoded, StandardCharsets.UTF_8);
+    }
+
+    protected static String encodeBase64Content(String content) {
+        return Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** A commit message's subject line. */
+    protected static String firstLine(String message) {
+        return message.lines().findFirst().orElse("");
+    }
+
+    /** GitHub and Gitea describe a commit the same way: a sha, plus an author node with name and date. */
+    protected static ConfigVersionDto.Summary commitSummary(String sha, String message, JsonNode author, String commitUrl) {
+        String shortId = sha.length() >= 7 ? sha.substring(0, 7) : sha;
+        return new ConfigVersionDto.Summary(shortId, message, author.path("date").asText(""), commitUrl,
+                author.path("name").asText(""));
     }
 
     /** Percent-encodes one URL component. URLEncoder does form encoding, so its '+' becomes %20. */

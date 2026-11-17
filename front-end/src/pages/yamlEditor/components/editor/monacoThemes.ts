@@ -1,11 +1,6 @@
 import { readPersisted } from '../../../../hooks/usePersistedState';
-import { configureMonacoYaml, type MonacoYaml } from 'monaco-yaml';
 import type { BeforeMount } from '@monaco-editor/react';
 import type * as MonacoType from 'monaco-editor';
-
-// Singleton - configureMonacoYaml registers language features globally and must run once,
-// before any editor model is created. The instance is read back in handleMount.
-export let monacoYamlInstance: MonacoYaml | null = null;
 
 export function getMonacoTheme(): string {
     // Same key and format as ThemeToggle's usePersistedState, read without a hook.
@@ -109,83 +104,26 @@ const LIGHT_THEME: MonacoType.editor.IStandaloneThemeData = {
     },
 };
 
+// Language setup is global to Monaco, so it runs once however many editors mount.
+let languageConfigured = false;
+
 export const beforeMount: BeforeMount = (monaco) => {
-    if (!monacoYamlInstance) {
-        // Defensive: monaco-yaml's providers reject when their worker is unreachable, so wrap
-        // provideHover to return null instead of throwing.
-        const origRegisterHover = monaco.languages.registerHoverProvider.bind(monaco.languages);
-        (monaco.languages as unknown as Record<string, unknown>).registerHoverProvider = (
-            selector: Parameters<typeof monaco.languages.registerHoverProvider>[0],
-            provider: Parameters<typeof monaco.languages.registerHoverProvider>[1],
-        ) => {
-            const orig = provider.provideHover?.bind(provider);
-            if (orig) {
-                provider.provideHover = async (...args: Parameters<typeof orig>) => {
-                    try {
-                        return await orig(...args);
-                    } catch {
-                        return null;
-                    }
-                };
-            }
-            return origRegisterHover(selector, provider);
-        };
-
-        // Same guard as hover above, for doDefinition - return undefined instead of throwing.
-        const origRegisterDefinition = monaco.languages.registerDefinitionProvider.bind(monaco.languages);
-        (monaco.languages as unknown as Record<string, unknown>).registerDefinitionProvider = (
-            selector: Parameters<typeof monaco.languages.registerDefinitionProvider>[0],
-            provider: Parameters<typeof monaco.languages.registerDefinitionProvider>[1],
-        ) => {
-            const orig = provider.provideDefinition?.bind(provider);
-            if (orig) {
-                provider.provideDefinition = async (...args: Parameters<typeof orig>) => {
-                    try {
-                        return await orig(...args);
-                    } catch {
-                        return undefined;
-                    }
-                };
-            }
-            return origRegisterDefinition(selector, provider);
-        };
-
-        // Same guard as hover above, for getCodeAction - return no actions instead of throwing.
-        const origRegister = monaco.languages.registerCodeActionProvider.bind(monaco.languages);
-        (monaco.languages as unknown as Record<string, unknown>).registerCodeActionProvider = (
-            selector: Parameters<typeof monaco.languages.registerCodeActionProvider>[0],
-            provider: Parameters<typeof monaco.languages.registerCodeActionProvider>[1],
-        ) => {
-            const orig = provider.provideCodeActions?.bind(provider);
-            if (orig) {
-                provider.provideCodeActions = async (...args: Parameters<typeof orig>) => {
-                    try {
-                        return await orig(...args);
-                    } catch {
-                        return { actions: [], dispose: () => {} };
-                    }
-                };
-            }
-            return origRegister(selector, provider);
-        };
-
-        // fileMatch ['**'] matches any URI including in-memory models
-        // (e.g. inmemory://model/apisix-config.yaml). Schema starts empty
-        // and is pushed via update() once ConfigEditor receives the catalog.
-        // format stays off: useEditorProviders.ts registers a prettier formatter instead,
-        // so the editor formats the same way the rest of the toolchain does.
-        monacoYamlInstance = configureMonacoYaml(monaco as never, {
-            validate: false,
-            completion: false,
-            format: { enable: false },
-            schemas: [],
-        });
-
-        monaco.languages.registerCodeActionProvider = origRegister;
-        monaco.languages.registerHoverProvider = origRegisterHover;
-        monaco.languages.registerDefinitionProvider = origRegisterDefinition;
-
+    if (!languageConfigured) {
+        languageConfigured = true;
         monaco.languages.setMonarchTokensProvider('yaml', YAML_TOKENIZER);
+
+        // Enter after a "- " line lines up with the entry's keys, not the dash. "Indent" adds one
+        // indent unit (whatever width is set) and appendText the dash's width on top. Replaces
+        // the built-in rules, so the trailing-colon indent is repeated last.
+        // wordPattern keeps "limit-count" one word, so accepting a suggestion replaces all of it.
+        monaco.languages.setLanguageConfiguration('yaml', {
+            wordPattern: /[A-Za-z_][\w.-]*/,
+            onEnterRules: [
+                { beforeText: /^\s*- .*:\s*$/, action: { indentAction: monaco.languages.IndentAction.Indent, appendText: '  ' } },
+                { beforeText: /^\s*- \S/, action: { indentAction: monaco.languages.IndentAction.None, appendText: '  ' } },
+                { beforeText: /:\s*$/, action: { indentAction: monaco.languages.IndentAction.Indent } },
+            ],
+        });
     }
     monaco.editor.defineTheme('fedgw-dark', DARK_THEME);
     monaco.editor.defineTheme('fedgw-light', LIGHT_THEME);

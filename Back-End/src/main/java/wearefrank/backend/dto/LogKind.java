@@ -49,13 +49,6 @@ public enum LogKind {
         return accessRecord;
     }
 
-    /** Every kind carrying an access record. */
-    public static Set<LogKind> accessRecords() {
-        return EnumSet.allOf(LogKind.class).stream()
-                .filter(LogKind::isAccessRecord)
-                .collect(Collectors.toCollection(() -> EnumSet.noneOf(LogKind.class)));
-    }
-
     /**
      * The stream selector used when the caller supplies no ?query= of their own: an exact
      * match for one kind, an alternation for several. The labels are literal words, so

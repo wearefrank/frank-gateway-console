@@ -18,6 +18,7 @@ Back-End/HELP.md
 front-end/node_modules/
 front-end/dist/
 front-end/dist-ssr/
+front-end/coverage/
 front-end/*.local
 front-end/**/*.log
 npm-debug.log*
@@ -43,9 +44,16 @@ Thumbs.db
 .claudeignore
 .claude
 
+# ── Secrets ───────────────────────────────────────────────────────────────────
+# docker-compose reads this for the TLS/FSC settings and the GitHub/GitLab OAuth
+# app credentials the Keycloak realm brokers with.
+/.env
+
 # ── Misc project artefacts ────────────────────────────────────────────────────
 /large-apisix-conifg.yaml
 /Validation_Schema_Apisix.json
+/apisix-schema.json
+/schema-edge-cases-report.txt
 /smart-forwarder.lua
 /backend-config.yaml
 /test-config.yaml

@@ -1,13 +1,10 @@
 import {Fragment} from 'react';
 import {DESIGNER_CATEGORIES} from '../ConfigDesigner';
 import styles from '../ConfigDesigner.module.css';
-
-interface ConfigManagerLike {
-    getCategoryEntries(cat: string): string[];
-}
+import type {ConfigManager} from '../../../actions/ConfigManager';
 
 interface EntryListProps {
-    configManager: ConfigManagerLike;
+    configManager: ConfigManager;
     editingEntry: {category: string; id: string} | null;
     onLoad: (cat: string, id: string) => void;
 }

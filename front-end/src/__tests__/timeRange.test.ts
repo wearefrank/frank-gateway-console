@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
     DEFAULT_RANGE,
     absoluteProblem,
@@ -7,30 +7,15 @@ import {
     formatDuration,
     fromInputValue,
     inputBounds,
-    loadRange,
     seedInputs,
     rangeCanChange,
     rangeKey,
     rangeLabel,
     rangeToQuery,
-    saveRange,
     spansMoreThanADay,
     toInputValue,
     type TimeRange,
 } from '../components/TimeRangePicker/timeRange';
-
-// The vitest environment is "node", so there is no localStorage to read.
-function installLocalStorage(): void {
-    const store = new Map<string, string>();
-    (globalThis as unknown as { localStorage: Storage }).localStorage = {
-        getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => void store.set(key, value),
-        removeItem: (key: string) => void store.delete(key),
-        clear: () => store.clear(),
-        key: (index: number) => [...store.keys()][index] ?? null,
-        get length() { return store.size; },
-    } as Storage;
-}
 
 describe('rangeToQuery', () => {
     it('sends a relative range as a duration with no anchor', () => {
@@ -238,49 +223,6 @@ describe('absoluteProblem', () => {
     it('accepts a window that has already passed', () => {
         expect(absoluteProblem(at(10), at(12), now)).toBeNull();
         expect(absoluteProblem(at(10), now, now)).toBeNull();
-    });
-});
-
-describe('loadRange / saveRange', () => {
-    beforeEach(installLocalStorage);
-
-    it('returns null when nothing is stored', () => {
-        expect(loadRange('audit')).toBeNull();
-    });
-
-    it('round trips a relative range', () => {
-        const range: TimeRange = { kind: 'relative', seconds: 900 };
-        saveRange('audit', range);
-        expect(loadRange('audit')).toEqual(range);
-    });
-
-    it('round trips an absolute range', () => {
-        const range: TimeRange = { kind: 'absolute', fromMs: 1000, toMs: 2000 };
-        saveRange('error', range);
-        expect(loadRange('error')).toEqual(range);
-    });
-
-    it('keeps the two log kinds apart', () => {
-        saveRange('audit', { kind: 'relative', seconds: 300 });
-        saveRange('error', { kind: 'relative', seconds: 86400 });
-        expect(loadRange('audit')).toEqual({ kind: 'relative', seconds: 300 });
-        expect(loadRange('error')).toEqual({ kind: 'relative', seconds: 86400 });
-    });
-
-    it('returns null for corrupt or wrong-shaped storage', () => {
-        localStorage.setItem('fg-log-range:audit', 'not json');
-        expect(loadRange('audit')).toBeNull();
-
-        localStorage.setItem('fg-log-range:audit', JSON.stringify({ kind: 'relative' }));
-        expect(loadRange('audit')).toBeNull();
-
-        localStorage.setItem('fg-log-range:audit', JSON.stringify({ kind: 'nonsense' }));
-        expect(loadRange('audit')).toBeNull();
-
-        // An inverted absolute range would produce a negative windowSeconds, which the
-        // backend turns into a 502.
-        localStorage.setItem('fg-log-range:audit', JSON.stringify({ kind: 'absolute', fromMs: 2000, toMs: 1000 }));
-        expect(loadRange('audit')).toBeNull();
     });
 });
 

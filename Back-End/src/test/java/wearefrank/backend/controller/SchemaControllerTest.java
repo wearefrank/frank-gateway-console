@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import wearefrank.backend.service.SchemaService;
+import wearefrank.backend.service.ApisixClient;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,22 +20,22 @@ class SchemaControllerTest {
     MockMvc mockMvc;
 
     @MockitoBean
-    SchemaService schemaService;
+    ApisixClient apisixClient;
 
     @Test
     void getFullSchema_returns200WithBody() throws Exception {
-        when(schemaService.getFullSchema()).thenReturn("{\"main\":{}}");
+        when(apisixClient.controlGet("/v1/schema")).thenReturn("{\"main\":{}}");
 
         mockMvc.perform(get("/api/schema"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("{\"main\":{}}"));
 
-        verify(schemaService).getFullSchema();
+        verify(apisixClient).controlGet("/v1/schema");
     }
 
     @Test
     void getFullSchema_propagatesException_onServiceFailure() throws Exception {
-        when(schemaService.getFullSchema()).thenThrow(new RuntimeException("APISIX down"));
+        when(apisixClient.controlGet("/v1/schema")).thenThrow(new RuntimeException("APISIX down"));
 
         mockMvc.perform(get("/api/schema"))
                 .andExpect(status().isBadGateway());

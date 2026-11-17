@@ -9,19 +9,17 @@ import wearefrank.backend.dto.ConfigVersionDto;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.List;
 
 @Component
-public class GitHubProviderClient extends AbstractGitProviderClient {
+public class GitHubProviderClient extends AbstractGitProviderClient<GitHubConfig> {
 
     private static final String API_BASE = "https://api.github.com";
 
     public GitHubProviderClient(HttpClient httpClient) {
-        super(httpClient);
+        super(httpClient, GitHubConfig.class);
     }
 
     @Override
@@ -39,12 +37,9 @@ public class GitHubProviderClient extends AbstractGitProviderClient {
         List<ConfigVersionDto.Summary> result = new ArrayList<>();
         for (JsonNode commit : commits) {
             String sha = commit.get("sha").asText();
-            String shortId = sha.substring(0, 7);
-            String message = commit.path("commit").path("message").asText("").lines().findFirst().orElse("");
-            String createdAt = commit.path("commit").path("author").path("date").asText();
-            String author = commit.path("commit").path("author").path("name").asText("");
-            String commitUrl = "https://github.com/" + repo + "/commit/" + sha;
-            result.add(new ConfigVersionDto.Summary(shortId, message, createdAt, commitUrl, author));
+            JsonNode detail = commit.path("commit");
+            result.add(commitSummary(sha, firstLine(detail.path("message").asText("")), detail.path("author"),
+                    "https://github.com/" + repo + "/commit/" + sha));
         }
         return result;
     }
@@ -61,7 +56,7 @@ public class GitHubProviderClient extends AbstractGitProviderClient {
         String createdAt = "";
         try {
             JsonNode commitNode = get(API_BASE + "/repos/" + encodeSegments(repo) + "/commits/" + encode(id), c.token());
-            message = commitNode.path("commit").path("message").asText("").lines().findFirst().orElse("");
+            message = firstLine(commitNode.path("commit").path("message").asText(""));
             createdAt = commitNode.path("commit").path("author").path("date").asText("");
         } catch (ResponseStatusException ignored) {}
 
@@ -77,21 +72,16 @@ public class GitHubProviderClient extends AbstractGitProviderClient {
         JsonNode current = getOrNull(fileUrl(c, c.branch()), c.token());
         String blobSha = current != null ? current.get("sha").asText() : null;
 
-        String encoded = Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
         ObjectNode body = objectMapper.createObjectNode();
         body.put("message", message);
-        body.put("content", encoded);
+        body.put("content", encodeBase64Content(content));
         if (blobSha != null) body.put("sha", blobSha);
         body.put("branch", c.branch());
 
         String putUrl = API_BASE + "/repos/" + encodeSegments(repo) + "/contents/" + encodeSegments(c.filePath());
-        JsonNode result = write("PUT", putUrl, body, c.token());
-        String newSha = result.path("commit").path("sha").asText();
-        String shortId = newSha.length() >= 7 ? newSha.substring(0, 7) : newSha;
-        String createdAt = result.path("commit").path("author").path("date").asText("");
-        String author = result.path("commit").path("author").path("name").asText("");
-        String commitUrl = "https://github.com/" + repo + "/commit/" + newSha;
-        return new ConfigVersionDto.Summary(shortId, message, createdAt, commitUrl, author);
+        JsonNode commit = write("PUT", putUrl, body, c.token()).path("commit");
+        String newSha = commit.path("sha").asText();
+        return commitSummary(newSha, message, commit.path("author"), "https://github.com/" + repo + "/commit/" + newSha);
     }
 
     @Override
@@ -116,11 +106,6 @@ public class GitHubProviderClient extends AbstractGitProviderClient {
                 .header("Authorization", "Bearer " + token)
                 .header("Accept", "application/vnd.github+json")
                 .header("X-GitHub-Api-Version", "2022-11-28");
-    }
-
-    private GitHubConfig cast(GitProviderConfig config) {
-        if (config instanceof GitHubConfig c) return c;
-        throw new IllegalArgumentException("Expected GitHubConfig, got " + config.getClass().getSimpleName());
     }
 
     private String normalizeRepo(String repo) {

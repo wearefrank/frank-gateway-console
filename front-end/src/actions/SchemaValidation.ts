@@ -469,7 +469,7 @@ export class SchemaValidator {
     }
 
     // schema.main plus the standalone-only sections, cloned before we inject our own keywords -
-    // the raw main is the same object handed to monacoSchemaSync.ts, which knows none of them
+    // the raw main is also read by the YAML editor's autocomplete, which knows none of them
     private getDefinitions(): JsonSchema | null {
         if (!this.schema?.main || !this.isJsonSchema(this.schema.main)) return null;
 

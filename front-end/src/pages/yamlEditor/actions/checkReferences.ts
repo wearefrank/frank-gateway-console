@@ -1,6 +1,6 @@
 import { ValidationLog } from '../../../actions/ValidationLogger';
 import type { ApisixConfig } from '../../../actions/SchemaValidation';
-import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../config/categoryDefinitions';
+import { CATEGORY_DEFINITIONS, getCategoryEntries, isEntry } from '../../../config/categoryDefinitions';
 
 export interface Usage {
     fromCategory: string;
@@ -18,12 +18,11 @@ export function getUsages(
     for (const [cat, def] of Object.entries(CATEGORY_DEFINITIONS)) {
         for (const ref of def.referenceFields) {
             if (ref.targetCategory !== targetCategory) continue;
-            const raw = (config as Record<string, unknown>)[cat + 's'];
-            if (!Array.isArray(raw)) continue;
-            for (const [i, entry] of (raw as Record<string, unknown>[]).entries()) {
-                const val = (entry as Record<string, unknown>)[ref.field];
+            for (const [i, entry] of getCategoryEntries(config, cat).entries()) {
+                if (!isEntry(entry)) continue;
+                const val = entry[ref.field];
                 if (val !== undefined && String(val) === String(idValue)) {
-                    results.push({ fromCategory: cat, fromEntry: entry as Record<string, unknown>, fromIndex: i, field: ref.field });
+                    results.push({ fromCategory: cat, fromEntry: entry, fromIndex: i, field: ref.field });
                 }
             }
         }
@@ -31,25 +30,13 @@ export function getUsages(
     return results;
 }
 
-export { getDisplayId };
-
 function getIds(config: ApisixConfig, category: string): Set<string | number> {
-    const raw = (config as Record<string, unknown>)[category + 's'];
-    if (!Array.isArray(raw)) return new Set();
     const idField = CATEGORY_DEFINITIONS[category]?.idField ?? 'id';
     return new Set(
-        (raw as (Record<string, unknown> | null)[])
-            .filter((e): e is Record<string, unknown> => e !== null && typeof e === 'object')
+        getCategoryEntries(config, category)
+            .filter(isEntry)
             .map(e => e[idField])
             .filter((id): id is string | number => typeof id === 'string' || typeof id === 'number'),
-    );
-}
-
-function getEntries(config: ApisixConfig, category: string): Record<string, unknown>[] {
-    const raw = (config as Record<string, unknown>)[category + 's'];
-    if (!Array.isArray(raw)) return [];
-    return (raw as (Record<string, unknown> | null)[]).filter(
-        (e): e is Record<string, unknown> => e !== null && typeof e === 'object',
     );
 }
 
@@ -62,10 +49,9 @@ function checkDuplicateIds(config: ApisixConfig): ValidationLog[] {
     const logs: ValidationLog[] = [];
 
     for (const { cat, idField } of DUPLICATE_CHECK_CATEGORIES) {
-        const entries = getEntries(config, cat);
         const seen = new Map<string, number>();
 
-        for (const entry of entries) {
+        for (const entry of getCategoryEntries(config, cat).filter(isEntry)) {
             const id = entry[idField];
             if (typeof id !== 'string' && typeof id !== 'number') continue;
             const key = String(id);
@@ -97,8 +83,8 @@ export function checkReferences(config: ApisixConfig): ValidationLog[] {
 
     for (const [category, def] of Object.entries(CATEGORY_DEFINITIONS)) {
         if (def.referenceFields.length === 0) continue;
-        const entries = getEntries(config, category);
-        for (const [i, entry] of entries.entries()) {
+        for (const [i, entry] of getCategoryEntries(config, category).entries()) {
+            if (!isEntry(entry)) continue;
             const entryId = typeof entry[def.idField] === 'string' ? entry[def.idField] as string : `[${i}]`;
             for (const ref of def.referenceFields) {
                 const val = entry[ref.field];

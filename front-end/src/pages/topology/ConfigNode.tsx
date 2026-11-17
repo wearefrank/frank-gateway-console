@@ -6,9 +6,6 @@ import { CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_DEFINITIONS, getDisplayId } fr
 import { DENIED_ON } from './buildLiveTopology';
 import styles from './TopologyPage.module.css';
 
-// Re-export so existing importers (TopologyPage, CardLayer) don't need to change
-export { CATEGORY_COLOR, CATEGORY_LABEL };
-
 // Color scheme context - provided by TopologyPage, consumed here
 
 export const ColorSchemeContext = createContext<ColorScheme>('source');
@@ -215,9 +212,9 @@ function upstreamAddresses(nodes: unknown): string[] {
     if (typeof nodes === 'object' && !Array.isArray(nodes))
         return Object.keys(nodes as Record<string, unknown>).slice(0, 3);
     if (Array.isArray(nodes))
-        return (nodes as Array<{host?: unknown; port?: unknown}>)
+        return (nodes as Array<{host?: unknown; port?: unknown} | null>)
             .slice(0, 3)
-            .map(n => `${n.host ?? '?'}:${n.port ?? '?'}`);
+            .map(n => `${n?.host ?? '?'}:${n?.port ?? '?'}`);
     return [];
 }
 

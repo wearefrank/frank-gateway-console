@@ -50,14 +50,15 @@ export function LiveTopologyPage() {
     if (failed)             return <Notice body={`Control API unavailable: ${failed}`} />;
     if (!probe.graph)       return <Notice body={probe.reason} />;
 
-    // Upstreams and consumers are counted off the graph, not the fetches: both can include
-    // nodes the builder derived rather than ones the control API listed.
+    // Plugin configs, upstreams and consumers are counted off the graph, not the fetches:
+    // they can include nodes the builder derived rather than ones the control API listed.
     const countOf = (category: string) =>
         probe.graph.nodes.filter(n => n.data.category === category).length;
 
     const counts = [
         `${routesFetch.data?.length ?? 0} routes`,
         `${servicesFetch.data?.length ?? 0} services`,
+        `${countOf('plugin_config')} plugin configs`,
         `${countOf('upstream')} upstreams`,
         `${countOf('consumer')} consumers`,
     ].join(' · ');

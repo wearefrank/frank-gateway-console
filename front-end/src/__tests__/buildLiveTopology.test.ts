@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLiveTopology, nodeSignature, DENIED_ON } from '../pages/topology/buildLiveTopology';
+import { buildLiveTopology, nodeSignature, DENIED_ON, PLUGINS_INFERRED_FROM } from '../pages/topology/buildLiveTopology';
 import type { LiveRoute, LiveUpstream } from '../components/Dashboard/dashboardTypes';
 
 // The fixtures below are trimmed copies of what a running Frank!Gateway answered on
@@ -299,6 +299,43 @@ describe('inline upstreams', () => {
         });
 
         expect(nodes.filter(n => n.data.category === 'upstream')).toHaveLength(2);
+    });
+});
+
+describe('buildLiveTopology plugin configs', () => {
+    const pcRoute = (id: string, plugins: Record<string, unknown>, own?: Record<string, unknown>): LiveRoute => ({
+        key: `/routes/${id}`,
+        value: { id, status: 1, plugin_config_id: 'partner-auth', plugins },
+        ...(own ? { orig_plugins: own } : {}),
+    });
+
+    it('infers the config plugins from merged routes and draws a dashed edge to each route', () => {
+        const { nodes, edges } = buildLiveTopology({
+            routes: [
+                pcRoute('cases', { 'key-auth': {}, 'proxy-rewrite': {} }, { 'proxy-rewrite': {} }),
+                pcRoute('docs', { 'proxy-rewrite': {} }), // not merged yet on this worker
+            ],
+            services: [], upstreams: [],
+        });
+
+        const config = nodes.find(n => n.id === 'plugin_config-partner-auth');
+        expect(config?.data.entry['plugins']).toEqual({ 'key-auth': {} });
+        expect(config?.data.entry[PLUGINS_INFERRED_FROM]).toEqual(['cases']);
+
+        const edge = edges.find(e => e.id === 'plugin_config-partner-auth->route-docs');
+        expect(edge?.sourceHandle).toBe('source-to-route');
+        expect(edge?.targetHandle).toBe('target-from-plugin_config');
+        expect(edge?.style).toHaveProperty('strokeDasharray');
+    });
+
+    it('keeps the node with only its id when no route has merged yet', () => {
+        const { nodes } = buildLiveTopology({
+            routes: [pcRoute('docs', { 'proxy-rewrite': {} })],
+            services: [], upstreams: [],
+        });
+
+        const config = nodes.find(n => n.id === 'plugin_config-partner-auth');
+        expect(config?.data.entry).toEqual({ id: 'partner-auth', [PLUGINS_INFERRED_FROM]: [] });
     });
 });
 

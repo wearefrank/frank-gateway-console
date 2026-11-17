@@ -1,7 +1,6 @@
-import type { JSONSchema as MonacoJsonSchema } from 'monaco-yaml';
-import type { ApisixConfig, SchemaCatalog } from '../../../../actions/SchemaValidation';
-import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../../config/categoryDefinitions';
-import type { CursorContext } from './CursorContext';
+import type { ApisixConfig, JsonSchema, SchemaCatalog } from '../../../../actions/SchemaValidation';
+import { CATEGORY_DEFINITIONS, getCategoryEntries, getDisplayId, isEntry } from '../../../../config/categoryDefinitions';
+import { LIST_ITEM, type CursorContext, type Siblings } from './CursorContext';
 
 export interface Candidate {
     label: string;
@@ -12,10 +11,9 @@ export interface Candidate {
 }
 
 // Follows a $ref pointer to its target in the definitions map.
-function resolveRef(schema: MonacoJsonSchema, defs: Record<string, MonacoJsonSchema>): MonacoJsonSchema {
-    const ref = (schema as Record<string, unknown>)['$ref'];
-    if (typeof ref !== 'string') return schema;
-    if (ref.startsWith('#/definitions/')) return defs[ref.slice('#/definitions/'.length)] ?? schema;
+function resolveRef(schema: JsonSchema, defs: Record<string, JsonSchema>): JsonSchema {
+    const ref = schema.$ref;
+    if (typeof ref === 'string' && ref.startsWith('#/definitions/')) return defs[ref.slice('#/definitions/'.length)] ?? schema;
     return schema;
 }
 
@@ -69,36 +67,35 @@ function evaluateIfCondition(conditions: IfCondition[], siblingValues: Map<strin
 // to whichever branch matches siblingValues once the discriminator's been typed. Own
 // properties win on collisions.
 function resolveProperties(
-    schema: MonacoJsonSchema,
-    defs: Record<string, MonacoJsonSchema>,
+    schema: JsonSchema,
+    defs: Record<string, JsonSchema>,
     siblingValues: Map<string, string>,
-): Record<string, MonacoJsonSchema> {
+): Record<string, JsonSchema> {
     const conditional = collectConditionalProperties(schema, defs, siblingValues);
-    const own = (schema as Record<string, unknown>).properties as Record<string, MonacoJsonSchema> | undefined;
+    const own = schema.properties as Record<string, JsonSchema> | undefined;
     return { ...conditional, ...own };
 }
 
 function collectConditionalProperties(
-    schema: MonacoJsonSchema,
-    defs: Record<string, MonacoJsonSchema>,
+    schema: JsonSchema,
+    defs: Record<string, JsonSchema>,
     siblingValues: Map<string, string>,
-): Record<string, MonacoJsonSchema> {
-    const collected: Record<string, MonacoJsonSchema> = {};
-    const s = schema as Record<string, unknown>;
+): Record<string, JsonSchema> {
+    const collected: Record<string, JsonSchema> = {};
 
-    const ifSchema = s.if as Record<string, unknown> | undefined;
+    const ifSchema = schema.if as Record<string, unknown> | undefined;
     const matchResult = ifSchema ? evaluateIfCondition(parseIfConditions(ifSchema), siblingValues) : 'vacuous';
 
     const branches = [
-        ...(matchResult !== 'no-match' ? [s.then] : []),
-        ...(matchResult !== 'match' ? [s.else] : []),
-        ...(Array.isArray(s.allOf) ? s.allOf as unknown[] : []),
+        ...(matchResult !== 'no-match' ? [schema.then] : []),
+        ...(matchResult !== 'match' ? [schema.else] : []),
+        ...(Array.isArray(schema.allOf) ? schema.allOf as unknown[] : []),
     ];
 
     for (const branch of branches) {
         if (!branch || typeof branch !== 'object') continue;
-        const branchSchema = resolveRef(branch as MonacoJsonSchema, defs);
-        const branchProps = (branchSchema as Record<string, unknown>).properties as Record<string, MonacoJsonSchema> | undefined;
+        const branchSchema = resolveRef(branch as JsonSchema, defs);
+        const branchProps = branchSchema.properties as Record<string, JsonSchema> | undefined;
         Object.assign(collected, branchProps);
         // then/else can nest their own if/then/else, so recurse.
         Object.assign(collected, collectConditionalProperties(branchSchema, defs, siblingValues));
@@ -107,16 +104,37 @@ function collectConditionalProperties(
     return collected;
 }
 
+// The schema of one list item. Also looks through anyOf/oneOf, since e.g. upstream "nodes"
+// is either a host map or an array of node objects.
+function listItemSchema(schema: JsonSchema, defs: Record<string, JsonSchema>): JsonSchema | null {
+    const { items, anyOf, oneOf } = schema;
+    if (items && typeof items === 'object' && !Array.isArray(items)) {
+        return resolveRef(items as JsonSchema, defs);
+    }
+    const variants = [...(Array.isArray(anyOf) ? anyOf : []), ...(Array.isArray(oneOf) ? oneOf : [])];
+    for (const variant of variants as JsonSchema[]) {
+        const items = listItemSchema(resolveRef(variant, defs), defs);
+        if (items) return items;
+    }
+    return null;
+}
+
 // Walks a JSON Schema along a property path, resolving $refs at each step.
 // Returns null if any step in the path is missing.
 function walkSchemaToPath(
-    schema: MonacoJsonSchema,
+    schema: JsonSchema,
     path: string[],
-    defs: Record<string, MonacoJsonSchema>,
+    defs: Record<string, JsonSchema>,
     siblingValues: Map<string, string>,
-): MonacoJsonSchema | null {
+): JsonSchema | null {
     let current = resolveRef(schema, defs);
     for (const key of path) {
+        if (key === LIST_ITEM) {
+            const items = listItemSchema(current, defs);
+            if (!items) return null;
+            current = items;
+            continue;
+        }
         const props = resolveProperties(current, defs, siblingValues);
         if (!(key in props)) return null;
         current = resolveRef(props[key], defs);
@@ -128,27 +146,27 @@ function walkSchemaToPath(
 // Object-type fields (e.g. "nodes", "plugins") insert a newline + child indent so the cursor
 // lands ready to type the first nested key, instead of just "key: ".
 function keyCandidates(
-    rootSchema: MonacoJsonSchema,
+    rootSchema: JsonSchema,
     path: string[],
-    defs: Record<string, MonacoJsonSchema>,
-    existingKeys: Set<string>,
-    indent: number,
-    siblingValues: Map<string, string>,
+    defs: Record<string, JsonSchema>,
+    siblings: Siblings,
+    onListMarker: boolean,
 ): Candidate[] {
-    const targetSchema = walkSchemaToPath(rootSchema, path, defs, siblingValues);
+    const targetSchema = walkSchemaToPath(rootSchema, path, defs, siblings);
     if (!targetSchema) return [];
 
-    const properties = resolveProperties(targetSchema, defs, siblingValues);
-    if (Object.keys(properties).length === 0) return [];
+    // Monaco turns "\t" into one indent unit on top of the line's own indent; on a "- key"
+    // line the key itself sits past the "- " as well.
+    const childIndent = onListMarker ? '\t  ' : '\t';
 
-    return Object.entries(properties)
-        .filter(([key]) => !existingKeys.has(key))
+    return Object.entries(resolveProperties(targetSchema, defs, siblings))
+        .filter(([key]) => !siblings.has(key))
         .map(([key, propSchema]) => {
-            const resolved = resolveRef(propSchema as MonacoJsonSchema, defs);
+            const resolved = resolveRef(propSchema, defs);
             const schemaType = (resolved as { type?: string }).type;
             const description = (resolved as { description?: string }).description;
             const insertText = schemaType === 'object'
-                ? `${key}:\n${' '.repeat(indent)}`
+                ? `${key}:\n${childIndent}`
                 : `${key}: `;
             return { label: key, insertText, schemaType, description };
         });
@@ -156,8 +174,8 @@ function keyCandidates(
 
 // Builds value candidates from a schema node - enum values or true/false for booleans.
 function valueCandidates(
-    valueSchema: MonacoJsonSchema,
-    defs: Record<string, MonacoJsonSchema>,
+    valueSchema: JsonSchema,
+    defs: Record<string, JsonSchema>,
 ): Candidate[] {
     const resolved = resolveRef(valueSchema, defs);
     const schemaType = (resolved as { type?: string }).type;
@@ -187,16 +205,13 @@ function referenceCandidates(
     targetCategory: string,
     config: ApisixConfig,
 ): Candidate[] {
-    const targetEntries = (config as Record<string, unknown>)[targetCategory + 's'];
-    if (!Array.isArray(targetEntries)) return [];
-
     const targetDef = CATEGORY_DEFINITIONS[targetCategory];
     const idField = targetDef?.idField ?? 'id';
     const categoryLabel = targetDef?.label ?? targetCategory;
 
     const candidates: Candidate[] = [];
-    for (const entry of targetEntries as Record<string, unknown>[]) {
-        if (!entry || typeof entry !== 'object') continue;
+    for (const entry of getCategoryEntries(config, targetCategory)) {
+        if (!isEntry(entry)) continue;
 
         const id = entry[idField];
         if (id === undefined || id === null || String(id).trim() === '') continue;
@@ -220,10 +235,10 @@ function getPluginSchema(
     catalog: SchemaCatalog,
     pluginName: string,
     category: string,
-): MonacoJsonSchema | null {
+): JsonSchema | null {
     const entry = ((catalog.plugins ?? {})[pluginName] ?? {}) as Record<string, unknown>;
     const schema = (category === 'consumer' ? entry['consumer_schema'] : null) ?? entry['schema'];
-    return schema ? (schema as MonacoJsonSchema) : null;
+    return schema ? (schema as JsonSchema) : null;
 }
 
 /**
@@ -234,7 +249,7 @@ export function resolveCandidates(
     catalog: SchemaCatalog,
     config: ApisixConfig | null | undefined,
 ): Candidate[] {
-    const defs = catalog.main as Record<string, MonacoJsonSchema>;
+    const defs = catalog.main as Record<string, JsonSchema>;
 
     switch (context.kind) {
         case 'unknown':
@@ -245,52 +260,33 @@ export function resolveCandidates(
                 .filter(name => (config as Record<string, unknown> | undefined)?.[`${name}s`] === undefined)
                 .map(name => ({
                     label: `${name}s`,
-                    insertText: `${name}s:\n  - `,
+                    // "\t" becomes one indent unit, whatever width the editor uses.
+                    insertText: `${name}s:\n\t- `,
                     schemaType: 'array',
                 }));
 
-        case 'key': {
-            const categorySchema = defs[context.category];
-            if (!categorySchema) return [];
+        case 'key':
+        case 'plugin-key':
+        case 'value':
+        case 'plugin-value': {
+            const root = 'pluginName' in context ? getPluginSchema(catalog, context.pluginName, context.category) : defs[context.category];
+            if (!root) return [];
 
-            return keyCandidates(categorySchema, context.location.schemaPath, defs, context.location.existingKeys, context.location.indent, context.location.existingValues);
-        }
-
-        case 'value': {
-            const categorySchema = defs[context.category];
-            if (!categorySchema) return [];
-
-            const valueSchema = walkSchemaToPath(categorySchema, context.schemaPath, defs, context.location.existingValues);
-            if (!valueSchema) return [];
-
-            return valueCandidates(valueSchema, defs);
+            if (context.kind === 'key' || context.kind === 'plugin-key') {
+                return keyCandidates(root, context.schemaPath, defs, context.siblings, context.onListMarker);
+            }
+            const valueSchema = walkSchemaToPath(root, context.schemaPath, defs, context.siblings);
+            return valueSchema ? valueCandidates(valueSchema, defs) : [];
         }
 
         case 'plugin-name':
             return Object.keys(catalog.plugins ?? {})
-                .filter(name => !context.location.existingKeys.has(name))
+                .filter(name => !context.siblings.has(name))
                 .map(name => ({
                     label: name,
                     insertText: `${name}: `,
                     schemaType: 'plugin',
                 }));
-
-        case 'plugin-key': {
-            const ps = getPluginSchema(catalog, context.pluginName, context.category);
-            if (!ps) return [];
-
-            return keyCandidates(ps, context.schemaPath, defs, context.location.existingKeys, context.location.indent, context.location.existingValues);
-        }
-
-        case 'plugin-value': {
-            const ps = getPluginSchema(catalog, context.pluginName, context.category);
-            if (!ps) return [];
-
-            const valueSchema = walkSchemaToPath(ps, context.schemaPath, defs, context.location.existingValues);
-            if (!valueSchema) return [];
-
-            return valueCandidates(valueSchema, defs);
-        }
 
         case 'reference':
             if (!config) return [];

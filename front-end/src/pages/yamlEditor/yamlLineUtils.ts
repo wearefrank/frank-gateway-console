@@ -152,11 +152,27 @@ export function buildLineSegments(line: string, showWhitespace: boolean): { text
     return segments;
 }
 
+// Normalizes a raw "key: <this>" tail to the scalar it holds, minus comment and quotes.
+export function normalizeScalarValue(raw: string): string {
+    return stripInlineComment(raw).trim().replace(/^(["'])(.*)\1$/s, '$2');
+}
+
 export const CATEGORY_KEY_MAP: Record<string, string> = {
     routes: 'route', upstreams: 'upstream', services: 'service',
     consumers: 'consumer', global_rules: 'global_rule',
     plugin_configs: 'plugin_config', ssls: 'ssl',
 };
+
+// The category a 1-indexed line falls under, from the nearest unindented section header above it.
+export function categoryAtLine(text: string, line: number): string | undefined {
+    const lines = text.split('\n');
+    for (let i = line - 1; i >= 0; i--) {
+        const raw = lines[i] ?? '';
+        if (raw.trim() === '' || /^[\s#-]/.test(raw)) continue;
+        return CATEGORY_KEY_MAP[raw.slice(0, raw.indexOf(':')).trim()];
+    }
+    return undefined;
+}
 
 export function buildCategoryLineMap(doc: Document, lineCounter: LineCounter): Map<number, string> {
     const lineMap = new Map<number, string>();
@@ -189,10 +205,6 @@ export function parseYamlDoc(configText: string): ParsedDoc {
     const lineCounter = new LineCounter();
     const doc = parseDocument(configText, {lineCounter});
     return {doc, lineCounter};
-}
-
-export function getLineHeight(el: HTMLElement): number {
-    return parseFloat(getComputedStyle(el).lineHeight) || 21;
 }
 
 export function resolvePathToNode(doc: Document, pathStr: string): Node | null {

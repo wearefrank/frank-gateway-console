@@ -9,17 +9,22 @@ import wearefrank.backend.dto.YamlApisixConfig;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 
 @Service
 public class YamlStoreService {
 
     private final File file;
+    private final YamlApisixConfig defaults;
     private final ObjectMapper mapper = new ObjectMapper(new YAMLFactory())
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    public YamlStoreService(@Value("${apisix.config.file:apisix_config.yaml}") String configFilePath) {
+    public YamlStoreService(
+            @Value("${apisix.config.file:apisix_config.yaml}") String configFilePath,
+            @Value("${apisix.default.host}") String defaultHost,
+            @Value("${apisix.default.control-port}") int defaultControlPort,
+            @Value("${apisix.default.metrics-port}") int defaultMetricsPort) {
         this.file = new File(configFilePath);
+        this.defaults = new YamlApisixConfig(defaultHost, defaultControlPort, defaultMetricsPort);
         ensureConfigExist();
     }
 
@@ -39,52 +44,41 @@ public class YamlStoreService {
         }
     }
 
+    // Seeded once; the APISIX_* environment variables only count here, after that the saved settings win.
     public void ensureConfigExist() {
-        if (!file.exists()) {
-            try {
-                boolean created = file.createNewFile();
-                if (created) {
-                    String defaultHost = System.getenv().getOrDefault("APISIX_HOST", "http://127.0.0.1");
-                    int defaultControlPort = Integer.parseInt(System.getenv().getOrDefault("APISIX_CONTROL_PORT", "9882"));
-                    int defaultMetricsPort = Integer.parseInt(System.getenv().getOrDefault("APISIX_METRICS_PORT", "9881"));
-                    YamlApisixConfig initial = new YamlApisixConfig(defaultHost, defaultControlPort, defaultMetricsPort, new ArrayList<>());
-                    writeConfig(initial);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException("Could not create config file", e);
+        if (file.exists()) return;
+        try {
+            if (file.createNewFile()) {
+                writeConfig(new YamlApisixConfig(
+                        System.getenv().getOrDefault("APISIX_HOST", defaults.host()),
+                        Integer.parseInt(System.getenv().getOrDefault("APISIX_CONTROL_PORT", String.valueOf(defaults.controlPort()))),
+                        Integer.parseInt(System.getenv().getOrDefault("APISIX_METRICS_PORT", String.valueOf(defaults.metricsPort())))));
             }
+        } catch (IOException e) {
+            throw new RuntimeException("Could not create config file", e);
         }
     }
 
-    // read-modify-write: preserve the existing routes list when updating connection settings
     public void saveApisixConfig(String host, int controlPort, int metricsPort) {
-        YamlApisixConfig current = readConfig();
-        YamlApisixConfig updated = new YamlApisixConfig(
-                host,
-                controlPort,
-                metricsPort,
-                current.routes() != null ? current.routes() : new ArrayList<>()
-        );
-        writeConfig(updated);
+        writeConfig(new YamlApisixConfig(host, controlPort, metricsPort));
     }
 
-    public YamlApisixConfig getFullConfig() {
-        return readConfig();
+    // The saved settings, with any field an older file lacks filled from the defaults.
+    public YamlApisixConfig getConfig() {
+        YamlApisixConfig config = readConfig();
+        return new YamlApisixConfig(
+                config.host() != null ? config.host() : defaults.host(),
+                config.controlPort() != null ? config.controlPort() : defaults.controlPort(),
+                config.metricsPort() != null ? config.metricsPort() : defaults.metricsPort());
     }
 
-    // fall back to safe defaults if the stored values are null (e.g. older config file missing a field)
     public String getControlUrl() {
-        YamlApisixConfig config = getFullConfig();
-        String host = config.host() != null ? config.host() : "http://127.0.0.1";
-        int port = config.controlPort() != null ? config.controlPort() : 9882;
-        return host + ":" + port;
+        YamlApisixConfig config = getConfig();
+        return config.host() + ":" + config.controlPort();
     }
 
     public String getMetricsUrl() {
-        YamlApisixConfig config = getFullConfig();
-        String host = config.host() != null ? config.host() : "http://127.0.0.1";
-        int port = config.metricsPort() != null ? config.metricsPort() : 9881;
-        return host + ":" + port;
+        YamlApisixConfig config = getConfig();
+        return config.host() + ":" + config.metricsPort();
     }
-
 }

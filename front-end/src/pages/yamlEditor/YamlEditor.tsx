@@ -1,7 +1,7 @@
 import React, {useState, useEffect, useMemo, useRef, useCallback, startTransition} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import styles from './YamlEditor.module.css';
-import { type ValidationLog, ValidationLogger } from '../../actions/ValidationLogger';
+import { ValidationLog } from '../../actions/ValidationLogger';
 import { FileUpload } from './components/panels/FileUpload';
 import { ConfigEditor } from './components/editor/ConfigEditor';
 import { ValidationLogs } from './components/panels/ValidationLogs';
@@ -29,13 +29,11 @@ const YamlEditor = () => {
     const [refLogs, setRefLogs] = useState<ValidationLog[]>([]);
     const [highlightedLog, setHighlightedLog] = useState<ValidationLog | null>(null);
 
-    const logger = useMemo(() => new ValidationLogger(), []);
-
     // APISIX standalone mode requires a #END marker at the end of the file
     const localErrors = useMemo<ValidationLog[]>(() => {
         if (!configText.trim() || configText.trimEnd().endsWith('#END')) return [];
-        return [logger.add('error', 'Config is missing the #END marker at the end')];
-    }, [configText, logger]);
+        return [new ValidationLog('error', 'Config is missing the #END marker at the end')];
+    }, [configText]);
 
     const validConfig = useMemo(
         () => configYamlValid && !logs.some(l => l.type === 'error') && localErrors.length === 0,
@@ -139,7 +137,7 @@ const YamlEditor = () => {
             if (configManager.isYamlValid()) {
                 setLogs([]);
             } else {
-                setLogs(prev => [logger.add('error', 'Failed to parse file.'), ...prev]);
+                setLogs(prev => [new ValidationLog('error', 'Failed to parse file.'), ...prev]);
             }
         };
         reader.readAsText(file);
@@ -202,7 +200,6 @@ const YamlEditor = () => {
                     yamlValid={configYamlValid}
                     fillDefaults={fillDefault}
                     validationLogs={displayLogs}
-                    config={config}
                     schema={schema}
                     designerSettings={appSettings.designer}
                     onConfigChange={handleConfigChange}

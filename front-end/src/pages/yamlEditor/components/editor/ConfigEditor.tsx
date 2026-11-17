@@ -1,20 +1,19 @@
 import React, { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type * as MonacoType from 'monaco-editor';
-import { type MonacoYaml } from 'monaco-yaml';
 import { type ValidationLog } from '../../../../actions/ValidationLogger';
 import { parseYamlDoc, resolvePathToNode, buildCategoryLineMap, type ParsedDoc } from '../../yamlLineUtils';
-import { beforeMount, getMonacoTheme, monacoYamlInstance } from './monacoThemes';
-import { pushSchema } from './monacoSchemaSync';
+import { beforeMount, getMonacoTheme } from './monacoThemes';
 import { CATEGORY_DEFINITIONS } from '../../../../config/categoryDefinitions';
 import type { ApisixConfig, SchemaCatalog } from '../../../../actions/SchemaValidation';
 import type { DesignerSettings } from '../../../../hooks/useDesignerSettings';
 import { useEditorDecorations, type LogEntry } from './useEditorDecorations';
 import { useEditorProviders } from '../providers/useEditorProviders';
-import { useCursorWidgets } from '../widgets/useCursorWidgets';
+import { registerCursorWidget } from '../widgets/CursorContentWidget';
 import { useIdTemplateWidget } from '../widgets/idTemplateWidget/useIdTemplateWidget';
-import { buildErrorAnnotations, buildReferenceAnnotations, buildIdLineMap } from './configEditorAnnotations';
+import { buildErrorAnnotations, buildAnnotations, EMPTY_ANNOTATIONS, type EditorAnnotations } from './configEditorAnnotations';
 import { ToggleButton } from '../../../../components/ToggleButton/ToggleButton';
+import { usePersistedState } from '../../../../hooks/usePersistedState';
 import styles from '../../YamlEditor.module.css';
 import '../../monacoStyles.css';
 
@@ -25,7 +24,6 @@ interface ConfigEditorProps {
     validConfig: boolean;
     yamlValid: boolean;
     validationLogs?: ValidationLog[];
-    config?: ApisixConfig | null;
     schema?: SchemaCatalog | null;
     designerSettings?: DesignerSettings;
     onConfigChange: (newValue: string) => void;
@@ -42,7 +40,6 @@ export const ConfigEditor = ({
     validConfig,
     yamlValid,
     validationLogs = [],
-    config,
     schema,
     designerSettings,
     onConfigChange,
@@ -54,11 +51,10 @@ export const ConfigEditor = ({
     // Editor instances
     const editorRef = useRef<MonacoType.editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<typeof MonacoType | null>(null);
-    const monacoYamlRef = useRef<MonacoYaml | null>(null);
 
     // Stable values for event callbacks
     const schemaRef = useRef<SchemaCatalog | null | undefined>(schema);
-    const configRef = useRef<ApisixConfig | null | undefined>(config);
+    const configRef = useRef<ApisixConfig | null>(null);
     const parsedDocRef = useRef<ParsedDoc | null>(null);
     const designerSettingsRef = useRef<DesignerSettings | null | undefined>(designerSettings);
 
@@ -68,13 +64,12 @@ export const ConfigEditor = ({
 
     // Snapshot refs for Monaco scroll and provider callbacks
     const categoryLineMapRef = useRef<Map<number, string>>(new Map());
-    const referenceTargetMapRef = useRef<Map<number, string>>(new Map());
-    const referenceValueRangesRef = useRef<Map<number, { startCol: number; endCol: number }>>(new Map());
-    const idLineMapRef = useRef<Map<number, { category: string; idValue: string | number }>>(new Map());
+    const annotationsRef = useRef<EditorAnnotations>(EMPTY_ANNOTATIONS);
 
     const [visibleCategory, setVisibleCategory] = useState<string | null>(null);
     const [monacoTheme, setMonacoTheme] = useState(getMonacoTheme);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [indentSize, setIndentSize] = usePersistedState('yamlEditor.indentSize', 2);
 
     // Derived data
 
@@ -107,32 +102,24 @@ export const ConfigEditor = ({
         return buildErrorAnnotations(parsedDoc, validationLogs);
     }, [parsedDoc, validationLogs]);
 
-    const { referenceHintMap, referenceTargetMap, referenceValueRanges } = useMemo(() => {
-        const empty = {
-            referenceHintMap: new Map<number, string>(),
-            referenceTargetMap: new Map<number, string>(),
-            referenceValueRanges: new Map<number, { startCol: number; endCol: number }>(),
-        };
-        if (!parsedDoc || !config) return empty;
-        return buildReferenceAnnotations(parsedDoc, config);
-    }, [parsedDoc, config]);
+    // Read from the same parse as the line positions. The app-wide config lags 400ms behind the
+    // text and freezes while it's invalid, so pairing it with fresh positions put hints on wrong lines.
+    const docConfig = useMemo(() => {
+        try { return (parsedDoc?.doc.toJS() ?? null) as ApisixConfig | null; }
+        catch { return null; }
+    }, [parsedDoc]);
 
-    const idLineMap = useMemo(() => {
-        if (!parsedDoc || !config) return new Map<number, { category: string; idValue: string | number }>();
-        return buildIdLineMap(parsedDoc, config);
-    }, [parsedDoc, config]);
+    const annotations = useMemo(() => buildAnnotations(parsedDoc, docConfig), [parsedDoc, docConfig]);
 
     // Keep refs current for Monaco event callbacks (these give errors of not set)
 
     useEffect(() => { onLineClickRef.current = onLineClick; }, [onLineClick]);
     useEffect(() => { scrollToTargetRef.current = scrollToTarget; }, [scrollToTarget]);
-    useEffect(() => { configRef.current = config; }, [config]);
+    useEffect(() => { configRef.current = docConfig; }, [docConfig]);
     useEffect(() => { designerSettingsRef.current = designerSettings; }, [designerSettings]);
     useEffect(() => { parsedDocRef.current = parsedDoc; }, [parsedDoc]);
     useEffect(() => { categoryLineMapRef.current = categoryLineMap; }, [categoryLineMap]);
-    useEffect(() => { referenceTargetMapRef.current = referenceTargetMap; }, [referenceTargetMap]);
-    useEffect(() => { referenceValueRangesRef.current = referenceValueRanges; }, [referenceValueRanges]);
-    useEffect(() => { idLineMapRef.current = idLineMap; }, [idLineMap]);
+    useEffect(() => { annotationsRef.current = annotations; }, [annotations]);
 
     // Watch for data-theme attribute changes to switch Monaco theme
     useEffect(() => {
@@ -141,16 +128,16 @@ export const ConfigEditor = ({
         return () => observer.disconnect();
     }, []);
 
-    // Push schema updates to the YAML language service
-    useEffect(() => {
-        schemaRef.current = schema;
-        if (!schema || !monacoYamlRef.current) return;
-        pushSchema(monacoYamlRef.current, schema);
-    }, [schema]);
+    useEffect(() => { schemaRef.current = schema; }, [schema]);
 
     useEffect(() => {
         editorRef.current?.updateOptions({ renderWhitespace: showWhitespace ? 'all' : 'none' });
     }, [showWhitespace]);
+
+    // Enter, Tab, Backspace, autocomplete and Format Document all follow the model's indent unit.
+    useEffect(() => {
+        editorRef.current?.getModel()?.updateOptions({ tabSize: indentSize, indentSize, insertSpaces: true });
+    }, [indentSize]);
 
     useEffect(() => {
         if (!scrollToTarget || !editorRef.current) return;
@@ -167,22 +154,17 @@ export const ConfigEditor = ({
     const { initCollections, errorLineLogMapRef, warningLineLogMapRef } = useEditorDecorations(
         editorRef,
         monacoRef,
-        { errorEntries, warningEntries, syntaxErrorOffsets, categoryLineMap, configText, referenceHintMap, referenceValueRanges },
+        {
+            errorEntries, warningEntries, syntaxErrorOffsets, categoryLineMap, configText,
+            referenceHintMap: annotations.referenceHintMap,
+            referenceValueRanges: annotations.referenceValueRanges,
+        },
     );
 
-    const { registerProviders } = useEditorProviders(
-        schemaRef,
-        configRef,
-        parsedDocRef,
-        referenceValueRangesRef,
-        referenceTargetMapRef,
-        idLineMapRef,
-    );
+    const { registerProviders } = useEditorProviders(schemaRef, configRef, parsedDocRef, annotationsRef);
 
-    // Cursor-triggered Monaco widgets
+    // Cursor-triggered Monaco widget
     const idTemplateWidgetDef = useIdTemplateWidget(designerSettingsRef);
-    const cursorWidgetDefs = useMemo(() => [idTemplateWidgetDef], [idTemplateWidgetDef]);
-    const { registerCursorWidgets } = useCursorWidgets(cursorWidgetDefs);
 
     // Editor mount
 
@@ -190,13 +172,8 @@ export const ConfigEditor = ({
         editorRef.current = editor;
         monacoRef.current = monaco;
 
-        // monacoYamlInstance was already initialized in beforeMount; just grab the reference.
-        // If schema loaded before the editor mounted, push it now.
-        monacoYamlRef.current = monacoYamlInstance;
-        const initialSchema = schemaRef.current;
-        if (initialSchema && monacoYamlRef.current) {
-            pushSchema(monacoYamlRef.current, initialSchema);
-        }
+        // The effect above ran before the editor existed, so apply the indent setting once here.
+        editor.getModel()?.updateOptions({ tabSize: indentSize, indentSize, insertSpaces: true });
 
         document.fonts.ready.then(() => editor.layout());
 
@@ -211,9 +188,10 @@ export const ConfigEditor = ({
             }
         }
 
-        initCollections(editor, monaco);
+        initCollections(editor);
         registerProviders(monaco);
-        registerCursorWidgets(editor, monaco);
+        const idTemplateWidget = registerCursorWidget(editor, monaco, idTemplateWidgetDef);
+        editor.onDidDispose(() => idTemplateWidget.dispose());
 
         editor.onDidScrollChange(() => {
             const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
@@ -232,12 +210,12 @@ export const ConfigEditor = ({
                 const logs = errorLineLogMapRef.current.get(line) ?? warningLineLogMapRef.current.get(line);
                 if (logs?.length) onLineClickRef.current?.(logs[0]);
             }
-            if ((e.event.ctrlKey || e.event.metaKey) && idLineMapRef.current.has(line)) {
+            if ((e.event.ctrlKey || e.event.metaKey) && annotationsRef.current.idLineMap.has(line)) {
                 editor.setPosition(e.target.position!);
                 editor.trigger('mouse', 'editor.action.referenceSearch.trigger', {});
             }
         });
-    }, [initCollections, registerProviders, registerCursorWidgets, errorLineLogMapRef, warningLineLogMapRef, idLineMapRef]);
+    }, [initCollections, registerProviders, idTemplateWidgetDef, errorLineLogMapRef, warningLineLogMapRef, indentSize]);
 
     const handleJumpToCategory = useCallback((category: string) => {
         const line = categoryStartLines.get(category);
@@ -288,6 +266,18 @@ export const ConfigEditor = ({
                     >
                         {fillDefaults ? "Don't fill defaults" : 'Fill defaults'}
                     </ToggleButton>
+                    <label className="text-small flex align-center gap-sm">
+                        Indent
+                        <select
+                            className="text-small"
+                            value={indentSize}
+                            onChange={e => setIndentSize(Number(e.target.value))}
+                        >
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map(size => (
+                                <option key={size} value={size}>{size === 1 ? '1 space' : `${size} spaces`}</option>
+                            ))}
+                        </select>
+                    </label>
                 </div>
             )}
 

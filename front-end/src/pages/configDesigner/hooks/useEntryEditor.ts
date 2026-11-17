@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, startTransition, useState} from 'react';
 import {parseDocument, isSeq, isMap} from 'yaml';
 import {getIdField} from '../../../config/categoryDefinitions';
+import type {ConfigManager} from '../../../actions/ConfigManager';
 
 type NodeWithRange = {range?: [number, number, number]};
 
@@ -28,13 +29,9 @@ function extractDomainFromYaml(configText: string, seqKey: string, idKey: string
     return match ? match[1].trim() : null;
 }
 
-interface ConfigManagerLike {
-    getCategoryEntry(cat: string, id: string): Record<string, unknown> | undefined | null;
-}
-
 interface EntryEditorProps {
     category: string;
-    configManager: ConfigManagerLike;
+    configManager: ConfigManager;
     switchCategoryForLoad: (cat: string) => void;
     loadValues: (values: Record<string, unknown>) => void;
     initialCategory: string;

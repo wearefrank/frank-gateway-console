@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
     ValidationLog,
-    ValidationLogger,
     getResourceType,
     getResourceName,
     getParentName,
@@ -164,43 +163,10 @@ describe('ValidationLog', () => {
     });
 });
 
-// ---------------------------------------------------------------------------
-// ValidationLogger
-// ---------------------------------------------------------------------------
-
-describe('ValidationLogger', () => {
-    it('starts empty', () => {
-        const logger = new ValidationLogger();
-        expect(logger.getLogs()).toHaveLength(0);
-    });
-
-    it('add() appends a log and returns it', () => {
-        const logger = new ValidationLogger();
-        const log = logger.add('info', 'hello');
-        expect(logger.getLogs()).toHaveLength(1);
-        expect(logger.getLogs()[0]).toBe(log);
-    });
-
-    it('add() accumulates multiple logs', () => {
-        const logger = new ValidationLogger();
-        logger.add('info', 'a');
-        logger.add('error', 'b');
-        logger.add('warning', 'c');
-        expect(logger.getLogs()).toHaveLength(3);
-    });
-
-    it('clear() empties the log list', () => {
-        const logger = new ValidationLogger();
-        logger.add('info', 'a');
-        logger.add('info', 'b');
-        logger.clear();
-        expect(logger.getLogs()).toHaveLength(0);
-    });
-
-    it('add() with path and errorObject stores them on the log', () => {
-        const logger = new ValidationLogger();
+describe('ValidationLog constructor', () => {
+    it('stores the path and errorObject on the log', () => {
         const err = makeError('required', { missingProperty: 'id' }, '/routes/0');
-        const log = logger.add('error', 'msg', '/routes/0', err);
+        const log = new ValidationLog('error', 'msg', '/routes/0', err);
         expect(log.path).toBe('/routes/0');
         expect(log.getErrorObject()).toBe(err);
     });

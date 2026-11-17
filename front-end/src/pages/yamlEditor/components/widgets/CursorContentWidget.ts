@@ -19,7 +19,7 @@ export interface CursorWidgetDef<T extends CursorWidgetTarget> {
     render: (data: T, write: (text: string) => void) => ReactNode;
 }
 
-function registerCursorWidget<T extends CursorWidgetTarget>(
+export function registerCursorWidget<T extends CursorWidgetTarget>(
     editor: MonacoType.editor.IStandaloneCodeEditor,
     monaco: typeof MonacoType,
     def: CursorWidgetDef<T>,
@@ -121,21 +121,6 @@ function registerCursorWidget<T extends CursorWidgetTarget>(
             contentDisposable.dispose();
             blurDisposable.dispose();
             closeWidget();
-        },
-    };
-}
-
-// `any` erases each def's own T so defs of different widget types can share one array.
-export function registerCursorWidgets(
-    editor: MonacoType.editor.IStandaloneCodeEditor,
-    monaco: typeof MonacoType,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    defs: CursorWidgetDef<any>[],
-): MonacoType.IDisposable {
-    const disposables = defs.map(def => registerCursorWidget(editor, monaco, def));
-    return {
-        dispose() {
-            disposables.forEach(d => d.dispose());
         },
     };
 }

@@ -3,21 +3,9 @@ import { resolveCandidates } from '../pages/yamlEditor/components/providers/Cand
 import { resolveCursorContext, type CursorContext } from '../pages/yamlEditor/components/providers/CursorContext';
 import { CATEGORY_DEFINITIONS } from '../config/categoryDefinitions';
 import type { SchemaCatalog, ApisixConfig } from '../actions/SchemaValidation';
-import type { CursorLocation } from '../pages/yamlEditor/components/providers/CursorLocation';
-
-function loc(overrides: Partial<CursorLocation> = {}): CursorLocation {
-    return {
-        indent: 4,
-        category: 'route',
-        schemaPath: [],
-        existingKeys: new Set(),
-        existingValues: new Map(),
-        markerIndent: 2,
-        isEntryMarkerLine: false,
-        isUnderIndentedField: false,
-        valuePositionKey: null,
-        ...overrides,
-    };
+// The shared context fields; spread first so a test's own schemaPath wins.
+function fields(siblings: [string, string][] = [], onListMarker = false) {
+    return { schemaPath: [] as string[], siblings: new Map(siblings), onListMarker };
 }
 
 describe('resolveCandidates', () => {
@@ -58,24 +46,32 @@ describe('resolveCandidates', () => {
             const context: CursorContext = {
                 kind: 'key',
                 category: 'route',
-                location: loc({ existingKeys: new Set(['uri']) }),
+                ...fields([['uri', '/foo']]),
             };
             const candidates = resolveCandidates(context, catalog, null);
             expect(candidates.map(c => c.label)).toEqual(['upstream_id']);
         });
 
         it('returns no candidates when the category has no schema', () => {
-            const context: CursorContext = { kind: 'key', category: 'unknown_cat', location: loc() };
+            const context: CursorContext = { kind: 'key', category: 'unknown_cat', ...fields() };
             expect(resolveCandidates(context, catalog, null)).toHaveLength(0);
         });
 
-        it('inserts a newline + indent for object-typed key candidates', () => {
-            const objCatalog: SchemaCatalog = {
-                main: { route: { properties: { timeout: { type: 'object' } } } },
-            };
-            const context: CursorContext = { kind: 'key', category: 'route', location: loc({ indent: 4 }) };
+        // Monaco turns "\t" into one indent unit on top of the line's own indent.
+        const objCatalog: SchemaCatalog = {
+            main: { route: { properties: { timeout: { type: 'object' } } } },
+        };
+
+        it('inserts a newline + one indent unit for object-typed key candidates', () => {
+            const context: CursorContext = { kind: 'key', category: 'route', ...fields() };
             const candidates = resolveCandidates(context, objCatalog, null);
-            expect(candidates[0].insertText).toBe('timeout:\n    ');
+            expect(candidates[0].insertText).toBe('timeout:\n\t');
+        });
+
+        it('indents past the "- " marker on an entry marker line', () => {
+            const context: CursorContext = { kind: 'key', category: 'route', ...fields([], true) };
+            const candidates = resolveCandidates(context, objCatalog, null);
+            expect(candidates[0].insertText).toBe('timeout:\n\t  ');
         });
     });
 
@@ -85,7 +81,7 @@ describe('resolveCandidates', () => {
                 main: { route: { properties: { scheme: { type: 'string', enum: ['http', 'https'] } } } },
             };
             const context: CursorContext = {
-                kind: 'value', category: 'route', location: loc(), schemaPath: ['scheme'],
+                kind: 'value', category: 'route', ...fields(), schemaPath: ['scheme'],
             };
             const candidates = resolveCandidates(context, catalog, null);
             expect(candidates.map(c => c.label)).toEqual(['http', 'https']);
@@ -96,7 +92,7 @@ describe('resolveCandidates', () => {
                 main: { route: { properties: { enabled: { type: 'boolean' } } } },
             };
             const context: CursorContext = {
-                kind: 'value', category: 'route', location: loc(), schemaPath: ['enabled'],
+                kind: 'value', category: 'route', ...fields(), schemaPath: ['enabled'],
             };
             const candidates = resolveCandidates(context, catalog, null);
             expect(candidates.map(c => c.label)).toEqual(['true', 'false']);
@@ -105,7 +101,7 @@ describe('resolveCandidates', () => {
         it('returns no candidates when the value schema path cannot be resolved', () => {
             const catalog: SchemaCatalog = { main: { route: { properties: {} } } };
             const context: CursorContext = {
-                kind: 'value', category: 'route', location: loc(), schemaPath: ['missing'],
+                kind: 'value', category: 'route', ...fields(), schemaPath: ['missing'],
             };
             expect(resolveCandidates(context, catalog, null)).toHaveLength(0);
         });
@@ -115,7 +111,7 @@ describe('resolveCandidates', () => {
         it('suggests plugin names not already used', () => {
             const catalog: SchemaCatalog = { plugins: { 'key-auth': {}, 'jwt-auth': {} } };
             const context: CursorContext = {
-                kind: 'plugin-name', category: 'route', location: loc({ existingKeys: new Set(['key-auth']) }),
+                kind: 'plugin-name', category: 'route', ...fields([['key-auth', '']]),
             };
             const candidates = resolveCandidates(context, catalog, null);
             expect(candidates.map(c => c.label)).toEqual(['jwt-auth']);
@@ -133,7 +129,7 @@ describe('resolveCandidates', () => {
 
         it('suggests keys from the plugin schema', () => {
             const context: CursorContext = {
-                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: [],
+                kind: 'plugin-key', category: 'route', ...fields(), pluginName: 'limit-count', schemaPath: [],
             };
             const candidates = resolveCandidates(context, catalog, null);
             expect(candidates.map(c => c.label).sort()).toEqual(['count', 'policy']);
@@ -141,14 +137,14 @@ describe('resolveCandidates', () => {
 
         it('returns no candidates for an unknown plugin', () => {
             const context: CursorContext = {
-                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'does-not-exist', schemaPath: [],
+                kind: 'plugin-key', category: 'route', ...fields(), pluginName: 'does-not-exist', schemaPath: [],
             };
             expect(resolveCandidates(context, catalog, null)).toHaveLength(0);
         });
 
         it('suggests enum values for a plugin field', () => {
             const context: CursorContext = {
-                kind: 'plugin-value', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: ['policy'],
+                kind: 'plugin-value', category: 'route', ...fields(), pluginName: 'limit-count', schemaPath: ['policy'],
             };
             const candidates = resolveCandidates(context, catalog, null);
             expect(candidates.map(c => c.label)).toEqual(['local', 'redis']);
@@ -168,7 +164,7 @@ describe('resolveCandidates', () => {
                 },
             };
             const context: CursorContext = {
-                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: [],
+                kind: 'plugin-key', category: 'route', ...fields(), pluginName: 'limit-count', schemaPath: [],
             };
             const candidates = resolveCandidates(context, conditionalCatalog, null);
             expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field', 'policy', 'redis_host']);
@@ -192,29 +188,30 @@ describe('resolveCandidates', () => {
                 const context: CursorContext = {
                     kind: 'plugin-key',
                     category: 'route',
-                    location: loc({ existingValues: new Map([['policy', 'redis']]) }),
+                    ...fields([['policy', 'redis']]),
                     pluginName: 'limit-count',
                     schemaPath: [],
                 };
                 const candidates = resolveCandidates(context, discriminatedCatalog, null);
-                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'policy', 'redis_host']);
+                // "policy" itself is already typed, so it isn't offered again.
+                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'redis_host']);
             });
 
             it('only offers "else" fields when the sibling discriminator does not match the if condition', () => {
                 const context: CursorContext = {
                     kind: 'plugin-key',
                     category: 'route',
-                    location: loc({ existingValues: new Map([['policy', 'local']]) }),
+                    ...fields([['policy', 'local']]),
                     pluginName: 'limit-count',
                     schemaPath: [],
                 };
                 const candidates = resolveCandidates(context, discriminatedCatalog, null);
-                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field', 'policy']);
+                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field']);
             });
 
             it('offers both branches when the discriminator has not been typed yet', () => {
                 const context: CursorContext = {
-                    kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: [],
+                    kind: 'plugin-key', category: 'route', ...fields(), pluginName: 'limit-count', schemaPath: [],
                 };
                 const candidates = resolveCandidates(context, discriminatedCatalog, null);
                 expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field', 'policy', 'redis_host']);
@@ -227,12 +224,12 @@ describe('resolveCandidates', () => {
                 const context: CursorContext = {
                     kind: 'plugin-key',
                     category: 'route',
-                    location: loc({ existingValues: new Map([['policy', '']]) }),
+                    ...fields([['policy', '']]),
                     pluginName: 'limit-count',
                     schemaPath: [],
                 };
                 const candidates = resolveCandidates(context, discriminatedCatalog, null);
-                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field', 'policy', 'redis_host']);
+                expect(candidates.map(c => c.label).sort()).toEqual(['count', 'local_only_field', 'redis_host']);
             });
 
             it('requires every field of a multi-field if condition to match before selecting "then"', () => {
@@ -249,7 +246,7 @@ describe('resolveCandidates', () => {
                     },
                 };
                 const contextWith = (values: [string, string][]): CursorContext => ({
-                    kind: 'plugin-key', category: 'route', location: loc({ existingValues: new Map(values) }), pluginName: 'limit-count', schemaPath: [],
+                    kind: 'plugin-key', category: 'route', ...fields(values), pluginName: 'limit-count', schemaPath: [],
                 });
 
                 // Both fields match -> "then" only.
@@ -283,7 +280,7 @@ describe('resolveCandidates', () => {
                 },
             };
             const context: CursorContext = {
-                kind: 'plugin-key', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: [],
+                kind: 'plugin-key', category: 'route', ...fields(), pluginName: 'limit-count', schemaPath: [],
             };
             const candidates = resolveCandidates(context, allOfCatalog, null);
             expect(candidates.map(c => c.label).sort()).toEqual(['count', 'nested_field', 'redis_host']);
@@ -306,7 +303,7 @@ describe('resolveCandidates', () => {
                 },
             };
             const context: CursorContext = {
-                kind: 'plugin-value', category: 'route', location: loc(), pluginName: 'limit-count', schemaPath: ['redis', 'mode'],
+                kind: 'plugin-value', category: 'route', ...fields(), pluginName: 'limit-count', schemaPath: ['redis', 'mode'],
             };
             const candidates = resolveCandidates(context, conditionalCatalog, null);
             expect(candidates.map(c => c.label)).toEqual(['on', 'off']);
@@ -331,7 +328,7 @@ describe('resolveCandidates', () => {
             const context: CursorContext = {
                 kind: 'plugin-value',
                 category: 'route',
-                location: loc({ existingValues: new Map([['policy', 'local']]) }),
+                ...fields([['policy', 'local']]),
                 pluginName: 'limit-count',
                 schemaPath: ['redis', 'mode'],
             };
@@ -349,7 +346,7 @@ describe('resolveCandidates', () => {
                 },
             };
             const context: CursorContext = {
-                kind: 'plugin-key', category: 'consumer', location: loc(), pluginName: 'key-auth', schemaPath: [],
+                kind: 'plugin-key', category: 'consumer', ...fields(), pluginName: 'key-auth', schemaPath: [],
             };
             const candidates = resolveCandidates(context, consumerCatalog, null);
             expect(candidates.map(c => c.label)).toEqual(['key']);
@@ -416,6 +413,27 @@ describe('resolveCandidates', () => {
         it('offers neither redis branch when policy: local is already typed', () => {
             expect(candidatesForPolicy('policy: local')).toEqual([]);
         });
+    });
+
+    it('suggests list item keys for a new "- " entry under an anyOf array (upstream nodes)', () => {
+        const catalog: SchemaCatalog = {
+            main: {
+                upstream: {
+                    properties: {
+                        pass_host: { type: 'string' },
+                        nodes: {
+                            anyOf: [
+                                { type: 'object' },
+                                { type: 'array', items: { type: 'object', properties: { host: { type: 'string' }, port: { type: 'integer' } } } },
+                            ],
+                        },
+                    },
+                },
+            },
+        };
+        const lines = ['upstreams:', '  - id: u1', '    pass_host: node', '    nodes:', '      - host: a', '        port: 1', '      - h'];
+        const context = resolveCursorContext(lines.join('\n'), lines.length, lines[lines.length - 1].length + 1, CATEGORY_DEFINITIONS);
+        expect(resolveCandidates(context, catalog, null).map(c => c.label).sort()).toEqual(['host', 'port']);
     });
 
     describe('kind: reference', () => {

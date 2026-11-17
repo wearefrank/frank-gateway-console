@@ -73,6 +73,18 @@ class LiveEntityFilterTest {
     }
 
     @Test
+    void keepsOrigPluginNamesWithoutTheirSecrets() throws Exception {
+        JsonNode out = LiveEntityFilter.filter(mapper.readTree("""
+                {"key": "/routes/r1", "value": {"id": "r1", "plugin_config_id": "pc1",
+                  "plugins": {"key-auth": {}, "limit-count": {"redis_password": "LEAK_redis"}}},
+                 "orig_plugins": {"limit-count": {"redis_password": "LEAK_redis"}}}
+                """));
+
+        assertThat(out.toString()).doesNotContain("LEAK_");
+        assertThat(out.get("orig_plugins").toString()).isEqualTo("{\"limit-count\":{}}");
+    }
+
+    @Test
     void keepsMapFormNodesAndBareEntries() throws Exception {
         JsonNode out = LiveEntityFilter.filter(mapper.readTree(
                 "{\"id\": \"u1\", \"nodes\": {\"backend:8080\": 1, \"bad\": \"LEAK_\"}, \"tls\": {\"client_key\": \"LEAK_\"}}"));

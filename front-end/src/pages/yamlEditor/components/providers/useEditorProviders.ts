@@ -6,22 +6,36 @@ import * as yamlPlugin from 'prettier/plugins/yaml';
 import * as estreePlugin from 'prettier/plugins/estree';
 import { parseDocument } from 'yaml';
 import type { ApisixConfig, SchemaCatalog } from '../../../../actions/SchemaValidation';
-import { CATEGORY_LABEL, CATEGORY_COLOR } from '../../../../config/categoryDefinitions';
-import { getDisplayId } from '../../actions/checkReferences';
-import type { ParsedDoc } from '../../yamlLineUtils';
-import { YamlCompletionProvider } from './YamlCompletionProvider';
-import { ProviderContext } from './ProviderContext';
+import { CATEGORY_LABEL, CATEGORY_COLOR, getDisplayId } from '../../../../config/categoryDefinitions';
+import { getUsages } from '../../actions/checkReferences';
+import { resolvePathToNode, type ParsedDoc } from '../../yamlLineUtils';
+import type { EditorAnnotations } from '../editor/configEditorAnnotations';
+import { registerYamlCompletion } from './YamlCompletionProvider';
+
+// The whole line holding the node at a JSON pointer path, as a Monaco location.
+function pathToLocation(
+    monaco: typeof MonacoType,
+    model: MonacoType.editor.ITextModel,
+    parsedDoc: ParsedDoc | null,
+    path: string,
+): MonacoType.languages.Location | null {
+    if (!parsedDoc) return null;
+    const node = resolvePathToNode(parsedDoc.doc, path);
+    if (!node?.range) return null;
+    const line = parsedDoc.lineCounter.linePos(node.range[0]).line;
+    return { uri: model.uri, range: new monaco.Range(line, 1, line, model.getLineContent(line).length + 1) };
+}
 
 /**
  * Formats with prettier, falling back to a yaml round-trip for documents prettier's
  * parser rejects. Returns null when the document cannot be formatted at all.
  */
-async function formatYaml(text: string): Promise<string | null> {
+async function formatYaml(text: string, indentSize: number): Promise<string | null> {
     try {
         return await format(text, {
             parser: 'yaml',
             plugins: [yamlPlugin, estreePlugin],
-            tabWidth: 2,
+            tabWidth: indentSize,
         });
     } catch (err) {
         console.warn('[yamlEditor] prettier could not format the document, falling back to yaml', err);
@@ -33,7 +47,7 @@ async function formatYaml(text: string): Promise<string | null> {
         return null;
     }
     // lineWidth 0 disables folding, which would otherwise wrap long URIs and regexes
-    return doc.toString({ indent: 2, lineWidth: 0 });
+    return doc.toString({ indent: indentSize, lineWidth: 0 });
 }
 
 /**
@@ -45,56 +59,43 @@ export function useEditorProviders(
     schemaRef: RefObject<SchemaCatalog | null | undefined>,
     configRef: RefObject<ApisixConfig | null | undefined>,
     parsedDocRef: RefObject<ParsedDoc | null>,
-    referenceValueRangesRef: RefObject<Map<number, { startCol: number; endCol: number }>>,
-    referenceTargetMapRef: RefObject<Map<number, string>>,
-    idLineMapRef: RefObject<Map<number, { category: string; idValue: string | number }>>,
+    annotationsRef: RefObject<EditorAnnotations>,
 ) {
-    const completionProviderRef = useRef<MonacoType.IDisposable | null>(null);
-    const definitionProviderRef = useRef<MonacoType.IDisposable | null>(null);
-    const hoverProviderRef = useRef<MonacoType.IDisposable | null>(null);
-    const referenceProviderRef = useRef<MonacoType.IDisposable | null>(null);
-    const formattingProviderRef = useRef<MonacoType.IDisposable | null>(null);
+    const providersRef = useRef<MonacoType.IDisposable[]>([]);
 
     // Dispose of all registered Monaco providers when the component unmounts
     useEffect(() => {
-        return () => {
-            completionProviderRef.current?.dispose();
-            definitionProviderRef.current?.dispose();
-            hoverProviderRef.current?.dispose();
-            referenceProviderRef.current?.dispose();
-            formattingProviderRef.current?.dispose();
-        };
+        const providers = providersRef.current;
+        return () => providers.forEach(p => p.dispose());
     }, []);
 
     const registerProviders = useCallback((monaco: typeof MonacoType) => {
+        const providers = providersRef.current;
+
         // Provides suggestions for keys and values based on the YAML schema
-        completionProviderRef.current = new YamlCompletionProvider(monaco).register(
-            () => schemaRef.current,
-            () => configRef.current,
-        );
+        providers.push(registerYamlCompletion(monaco, () => schemaRef.current, () => configRef.current));
 
         // Go to Definition: Allows users to Ctrl+Click on a reference (like a service_id) to jump to its declaration
-        definitionProviderRef.current = monaco.languages.registerDefinitionProvider('yaml', {
+        providers.push(monaco.languages.registerDefinitionProvider('yaml', {
             provideDefinition(model: MonacoType.editor.ITextModel, position: MonacoType.Position) {
                 const line = position.lineNumber;
-                const valueRange = referenceValueRangesRef.current.get(line);
+                const valueRange = annotationsRef.current.referenceValueRanges.get(line);
 
                 if (!valueRange || position.column < valueRange.startCol || position.column > valueRange.endCol) return null;
-                const targetPath = referenceTargetMapRef.current.get(line);
+                const targetPath = annotationsRef.current.referenceTargetMap.get(line);
 
                 if (!targetPath) return null;
-                return ProviderContext.from(configRef, parsedDocRef, monaco)?.pathToLocation(model, targetPath) ?? null;
+                return pathToLocation(monaco, model, parsedDocRef.current, targetPath);
             },
-        });
+        }));
 
         // Shows a tooltip when hovering over an ID, listing all other resources that reference it
-        hoverProviderRef.current = monaco.languages.registerHoverProvider('yaml', {
+        providers.push(monaco.languages.registerHoverProvider('yaml', {
             provideHover(_model: MonacoType.editor.ITextModel, position: MonacoType.Position) {
-                const idInfo = idLineMapRef.current.get(position.lineNumber);
-                if (!idInfo) return null;
-                const ctx = ProviderContext.from(configRef, parsedDocRef, monaco);
-                if (!ctx) return null;
-                const usages = ctx.getUsages(idInfo.category, idInfo.idValue);
+                const idInfo = annotationsRef.current.idLineMap.get(position.lineNumber);
+                const config = configRef.current;
+                if (!idInfo || !config) return null;
+                const usages = getUsages(config, idInfo.category, idInfo.idValue);
                 if (usages.length === 0) return null;
                 // text selector for singular or dual
                 const label = usages.length === 1 ? 'Used by 1 resource' : `Used by ${usages.length} resources`;
@@ -110,29 +111,32 @@ export function useEditorProviders(
                     ],
                 };
             },
-        });
+        }));
 
         // Find References: Allows users to right-click an ID and "Find All References" to see where it is used
-        referenceProviderRef.current = monaco.languages.registerReferenceProvider('yaml', {
+        providers.push(monaco.languages.registerReferenceProvider('yaml', {
             provideReferences(model: MonacoType.editor.ITextModel, position: MonacoType.Position) {
-                const idInfo = idLineMapRef.current.get(position.lineNumber);
-                if (!idInfo) return null;
-                return ProviderContext.from(configRef, parsedDocRef, monaco)?.usageLocations(model, idInfo.category, idInfo.idValue) ?? null;
+                const idInfo = annotationsRef.current.idLineMap.get(position.lineNumber);
+                const config = configRef.current;
+                if (!idInfo || !config) return null;
+                return getUsages(config, idInfo.category, idInfo.idValue)
+                    .map(u => pathToLocation(monaco, model, parsedDocRef.current, `/${u.fromCategory}s/${u.fromIndex}/${u.field}`))
+                    .filter((l): l is MonacoType.languages.Location => l !== null);
             },
-        });
+        }));
 
-        // Format Document: monaco-yaml's own formatter is disabled (see monacoThemes.ts) so
-        // prettier is the single source of truth for formatting.
-        formattingProviderRef.current = monaco.languages.registerDocumentFormattingEditProvider('yaml', {
+        // Format Document: prettier, so the editor formats the same way the rest of the toolchain does.
+        providers.push(monaco.languages.registerDocumentFormattingEditProvider('yaml', {
             displayName: 'yaml',
-            async provideDocumentFormattingEdits(model: MonacoType.editor.ITextModel) {
+            // options.tabSize is the editor's indent setting.
+            async provideDocumentFormattingEdits(model: MonacoType.editor.ITextModel, options: MonacoType.languages.FormattingOptions) {
                 const text = model.getValue();
-                const formatted = await formatYaml(text);
+                const formatted = await formatYaml(text, options.tabSize);
                 if (formatted === null || formatted === text) return [];
                 return [{ range: model.getFullModelRange(), text: formatted }];
             },
-        });
-    }, [schemaRef, configRef, parsedDocRef, referenceValueRangesRef, referenceTargetMapRef, idLineMapRef]);
+        }));
+    }, [schemaRef, configRef, parsedDocRef, annotationsRef]);
 
     return { registerProviders };
 }

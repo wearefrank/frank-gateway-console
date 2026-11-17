@@ -1,5 +1,5 @@
 import { resolvePathToNode, type ParsedDoc } from '../../yamlLineUtils';
-import { CATEGORY_DEFINITIONS, getDisplayId } from '../../../../config/categoryDefinitions';
+import { CATEGORY_DEFINITIONS, getCategoryEntries, getDisplayId, isEntry } from '../../../../config/categoryDefinitions';
 import type { ApisixConfig } from '../../../../actions/SchemaValidation';
 import type { ValidationLog } from '../../../../actions/ValidationLogger';
 import type { LogEntry } from './useEditorDecorations';
@@ -38,7 +38,7 @@ export function buildErrorAnnotations(parsedDoc: ParsedDoc, validationLogs: Vali
 // Finds every reference field (e.g. upstream_id on a route) that resolves to a real target
 // entry and precomputes its hint text, jump target, and column range - so the decoration and
 // go-to-definition providers don't each re-walk the whole config on every call.
-export function buildReferenceAnnotations(parsedDoc: ParsedDoc, config: ApisixConfig) {
+function buildReferenceAnnotations(parsedDoc: ParsedDoc, config: ApisixConfig) {
     const hintMap = new Map<number, string>();
     const targetMap = new Map<number, string>();
     const valueRanges = new Map<number, { startCol: number; endCol: number }>();
@@ -47,25 +47,18 @@ export function buildReferenceAnnotations(parsedDoc: ParsedDoc, config: ApisixCo
     for (const [category, def] of Object.entries(CATEGORY_DEFINITIONS)) {
         if (def.referenceFields.length === 0) continue;
 
-        const rawEntries = (config as Record<string, unknown>)[category + 's'];
-        if (!Array.isArray(rawEntries)) continue;
-
-        for (const [i, entry] of (rawEntries as Record<string, unknown>[]).entries()) {
-            if (!entry || typeof entry !== 'object') continue;
+        for (const [i, entry] of getCategoryEntries(config, category).entries()) {
+            if (!isEntry(entry)) continue;
 
             for (const ref of def.referenceFields) {
-                const val = (entry as Record<string, unknown>)[ref.field];
+                const val = entry[ref.field];
                 if (typeof val !== 'string' && typeof val !== 'number') continue;
 
-                const rawTargetEntries = (config as Record<string, unknown>)[ref.targetCategory + 's'];
-                if (!Array.isArray(rawTargetEntries)) continue;
                 const targetDef = CATEGORY_DEFINITIONS[ref.targetCategory];
                 if (!targetDef) continue;
 
-                const targetEntries = rawTargetEntries as Record<string, unknown>[];
-                const targetIdx = targetEntries.findIndex(
-                    e => e && typeof e === 'object' && (e as Record<string, unknown>)[targetDef.idField] === val,
-                );
+                const targetEntries = getCategoryEntries(config, ref.targetCategory);
+                const targetIdx = targetEntries.findIndex(e => isEntry(e) && e[targetDef.idField] === val);
                 // An unresolved reference gets no hint - it's either broken or not written yet.
                 if (targetIdx === -1) continue;
 
@@ -87,20 +80,33 @@ export function buildReferenceAnnotations(parsedDoc: ParsedDoc, config: ApisixCo
     return { referenceHintMap: hintMap, referenceTargetMap: targetMap, referenceValueRanges: valueRanges };
 }
 
+export type EditorAnnotations = ReturnType<typeof buildReferenceAnnotations> & { idLineMap: ReturnType<typeof buildIdLineMap> };
+
+export const EMPTY_ANNOTATIONS: EditorAnnotations = {
+    referenceHintMap: new Map(),
+    referenceTargetMap: new Map(),
+    referenceValueRanges: new Map(),
+    idLineMap: new Map(),
+};
+
+// Everything the decorations and language providers look up by line, built once per parse.
+export function buildAnnotations(parsedDoc: ParsedDoc | null, config: ApisixConfig | null | undefined): EditorAnnotations {
+    if (!parsedDoc || !config) return EMPTY_ANNOTATIONS;
+    return { ...buildReferenceAnnotations(parsedDoc, config), idLineMap: buildIdLineMap(parsedDoc, config) };
+}
+
 // Maps each referenceable id/username value to its line, so the hover provider can answer
 // "what points to this?" in O(1) instead of re-scanning the config on every hover.
-export function buildIdLineMap(parsedDoc: ParsedDoc, config: ApisixConfig) {
+function buildIdLineMap(parsedDoc: ParsedDoc, config: ApisixConfig) {
     const idLineMap = new Map<number, { category: string; idValue: string | number }>();
     const { doc, lineCounter } = parsedDoc;
 
     for (const [category, def] of Object.entries(CATEGORY_DEFINITIONS)) {
         if (def.referenceableFields.length === 0) continue;
-        const rawEntries = (config as Record<string, unknown>)[category + 's'];
-        if (!Array.isArray(rawEntries)) continue;
 
-        for (const [i, entry] of (rawEntries as Record<string, unknown>[]).entries()) {
-            if (!entry || typeof entry !== 'object') continue;
-            const idValue = (entry as Record<string, unknown>)[def.idField];
+        for (const [i, entry] of getCategoryEntries(config, category).entries()) {
+            if (!isEntry(entry)) continue;
+            const idValue = entry[def.idField];
             if (typeof idValue !== 'string' && typeof idValue !== 'number') continue;
 
             const node = resolvePathToNode(doc, `/${category}s/${i}/${def.idField}`);

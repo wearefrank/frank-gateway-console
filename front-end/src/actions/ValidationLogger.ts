@@ -125,27 +125,3 @@ export class ValidationLog {
         return `Additional properties found: ${additionalProperties} Try removing them`;
     }
 }
-
-export class ValidationLogger {
-    private logs: ValidationLog[] = [];
-
-    public add(
-        type: ValidationLog['type'],
-        message: string,
-        path?: string,
-        errorObject?: ErrorObject
-    ): ValidationLog {
-
-        const log = new ValidationLog(type, message, path, errorObject);
-        this.logs.push(log);
-        return log;
-    }
-
-    public getLogs(): ValidationLog[] {
-        return this.logs;
-    }
-
-    public clear(): void {
-        this.logs = [];
-    }
-}

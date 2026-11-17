@@ -4,7 +4,6 @@ import { useTickWhile } from '../../hooks/useTickWhile';
 import {
     rangeCanChange,
     rangeToQuery,
-    saveRange,
     type TimeRange,
 } from '../TimeRangePicker/timeRange';
 import { DEFAULT_SORT, nextSort, sortRoutes, type Sort, type SortKey } from './routeStatsSort';
@@ -45,27 +44,21 @@ export function useRouteStats(refreshKey: number, kind: string) {
     // fetches the route stats from Loki
     const statsFetch = useFetch<RouteStatsResult>(endpoint, tick);
 
-    const applyRange = useCallback((next: TimeRange) => {
-        setRange(next);
-        saveRange(STORAGE_KEY, next);
-    }, []);
-
     const pickRange = useCallback((next: TimeRange) => {
         setZoomOrigin(null);
-        applyRange(next);
-    }, [applyRange]);
-
+        setRange(next);
+    }, [setRange]);
 
     const zoomTo = useCallback((next: TimeRange) => {
         setZoomOrigin(origin => origin ?? range);
-        applyRange(next);
-    }, [range, applyRange]);
+        setRange(next);
+    }, [range, setRange]);
 
     const zoomOut = useCallback(() => {
         if (!zoomOrigin) return;
-        applyRange(zoomOrigin);
+        setRange(zoomOrigin);
         setZoomOrigin(null);
-    }, [zoomOrigin, applyRange]);
+    }, [zoomOrigin, setRange]);
 
     const toggleSort = useCallback((key: SortKey) => {
         setSort(current => nextSort(current, key));
